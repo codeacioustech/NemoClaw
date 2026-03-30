@@ -1,0 +1,32 @@
+{
+  "appId": "com.nvidia.nemoclaw-installer",
+  "productName": "NemoClaw Installer",
+  "directories": {
+    "buildResources": "build",
+    "output": "dist"
+  },
+  "files": [
+    "out/**/*"
+  ],
+  "extraResources": [
+    "assets/**/*"
+  ],
+  "win": {
+    "target": "nsis",
+    "icon": "assets/icon.png"
+  },
+  "mac": {
+    "target": "dmg",
+    "icon": "assets/icon.png",
+    "category": "public.app-category.developer-tools"
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "assets/icon.png",
+    "category": "Development"
+  },
+  "nsis": {
+    "oneClick": true,
+    "allowToChangeInstallationDirectory": false
+  }
+}
