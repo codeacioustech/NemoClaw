@@ -216,8 +216,15 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 
     try {
       // The npm_config_prefix env var ensures npm link uses ~/.npm-global instead of /opt/homebrew
-      // We also temporarily ensure ~/.npm-global/bin is on the PATH for the install session
-      const installCmd = 'mkdir -p ~/.npm-global/bin && export PATH="$HOME/.npm-global/bin:$PATH" && curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
+      // We also temporarily ensure ~/.npm-global/bin and ~/.local/bin are on the PATH.
+      // Crucially, we PRE-INSTALL OpenShell using its official script (which uses curl) 
+      // so NemoClaw onboarding skips its internal installation step (which relies on 'gh' and fails without auth).
+      const installCmd = [
+        'mkdir -p ~/.npm-global/bin ~/.local/bin',
+        'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"',
+        'curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | sh',
+        'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
+      ].join(' && ')
 
       sendOutput(win, `Running: curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`, 'info')
       sendOutput(win, '─'.repeat(60), 'info')
