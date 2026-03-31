@@ -15,7 +15,7 @@ export interface SystemCheckResponse {
 }
 
 export interface InstallConfig {
-  provider: 'nvidia' | 'openai' | 'anthropic' | 'gemini'
+  provider: 'nvidia' | 'openai' | 'anthropic' | 'gemini' | 'ollama'
   providerLabel: string
   apiKey: string
   sandboxName: string

@@ -15,20 +15,30 @@ enum Step {
 }
 
 interface ProviderOption {
-  id: 'nvidia' | 'openai' | 'anthropic' | 'gemini'
+  id: 'nvidia' | 'openai' | 'anthropic' | 'gemini' | 'ollama'
   name: string
   desc: string
   badge?: string
   keyUrl: string
   model: string
+  noApiKey?: boolean
 }
 
 const PROVIDERS: ProviderOption[] = [
   {
+    id: 'ollama',
+    name: 'Local Ollama',
+    desc: 'Use pre-installed Ollama for local inference — no API key needed',
+    badge: 'Pre-installed',
+    keyUrl: '',
+    model: 'nemotron-3-nano:30b',
+    noApiKey: true
+  },
+  {
     id: 'nvidia',
     name: 'NVIDIA Endpoints',
     desc: 'nvidia/nemotron-3-super-120b-a12b via build.nvidia.com',
-    badge: 'Recommended',
+    badge: 'Cloud',
     keyUrl: 'https://build.nvidia.com/',
     model: 'nvidia/nemotron-3-super-120b-a12b'
   },
@@ -250,10 +260,12 @@ class NemoClawWizard {
 
   /* ===================== STEP 3: Provider ===================== */
   private renderProvider(): void {
+    const isOllama = this.selectedProvider.id === 'ollama'
+
     this.container.innerHTML = `
       <div class="step-container">
         <h2 class="section-heading">Inference Provider</h2>
-        <p class="section-sub">Choose your AI inference provider and enter your API key.</p>
+        <p class="section-sub">Choose your AI inference provider. Ollama is pre-installed on this machine.</p>
         <div id="provider-grid" class="provider-grid">
           ${PROVIDERS.map(
             (p) => `
@@ -263,12 +275,12 @@ class NemoClawWizard {
                 <div class="provider-name">${p.name}</div>
                 <div class="provider-desc">${p.desc}</div>
               </div>
-              ${p.badge ? `<span class="provider-badge">${p.badge}</span>` : ''}
+              ${p.badge ? `<span class="provider-badge${p.id === 'ollama' ? ' badge-local' : ''}">${p.badge}</span>` : ''}
             </div>
           `
           ).join('')}
         </div>
-        <div class="form-group">
+        <div id="api-key-section" class="form-group" style="display:${isOllama ? 'none' : 'block'}">
           <label class="form-label" for="input-api-key">API Key</label>
           <div class="input-wrapper">
             <input type="password" id="input-api-key" class="form-input mono" placeholder="Enter your API key" value="${this.escapeHtml(this.apiKey)}" />
@@ -280,23 +292,39 @@ class NemoClawWizard {
           <div class="form-hint">Your key is stored locally at ~/.nemoclaw/credentials.json</div>
           <div id="api-key-error" class="form-error" style="display:none"></div>
         </div>
+        <div id="ollama-info" class="ollama-info-box" style="display:${isOllama ? 'flex' : 'none'}">
+          <span class="ollama-icon">🦙</span>
+          <div>
+            <div class="ollama-title">Local Inference — No API Key Required</div>
+            <div class="ollama-desc">Ollama is pre-installed on this machine. NemoClaw will use it for local model inference. No cloud credentials needed.</div>
+          </div>
+        </div>
         <div class="btn-row btn-row-spread">
           <button id="btn-provider-back" class="btn btn-secondary">&larr; Back</button>
-          <button id="btn-provider-continue" class="btn btn-primary">Continue &rarr;</button>
+          <div style="display:flex;gap:12px;align-items:center">
+            <button id="btn-skip-defaults" class="btn-text" title="Use Ollama with default settings">Skip with Defaults</button>
+            <button id="btn-provider-continue" class="btn btn-primary">${isOllama ? 'Continue →' : 'Continue →'}</button>
+          </div>
         </div>
       </div>
     `
 
     // Provider card selection
+    const updateApiKeyVisibility = (): void => {
+      const apiSection = document.getElementById('api-key-section')
+      const ollamaInfo = document.getElementById('ollama-info')
+      if (apiSection) apiSection.style.display = this.selectedProvider.noApiKey ? 'none' : 'block'
+      if (ollamaInfo) ollamaInfo.style.display = this.selectedProvider.noApiKey ? 'flex' : 'none'
+    }
+
     document.querySelectorAll('.provider-card').forEach((card) => {
       card.addEventListener('click', () => {
         const id = (card as HTMLElement).dataset.provider as string
         this.selectedProvider = PROVIDERS.find((p) => p.id === id)!
         document.querySelectorAll('.provider-card').forEach((c) => c.classList.remove('selected'))
         card.classList.add('selected')
-        // Update get key link
-        const linkEl = document.getElementById('link-get-key')!
-        linkEl.setAttribute('data-url', this.selectedProvider.keyUrl)
+        updateApiKeyVisibility()
+        this.hideApiError()
       })
     })
 
@@ -315,16 +343,35 @@ class NemoClawWizard {
 
     // Get API Key link
     document.getElementById('link-get-key')!.addEventListener('click', () => {
-      window.electronAPI.openExternalLink(this.selectedProvider.keyUrl)
+      if (this.selectedProvider.keyUrl) {
+        window.electronAPI.openExternalLink(this.selectedProvider.keyUrl)
+      }
     })
 
-    // Navigation
+    // "Skip with Defaults" — auto-select Ollama + default sandbox name, jump to Install
+    document.getElementById('btn-skip-defaults')!.addEventListener('click', () => {
+      this.selectedProvider = PROVIDERS.find((p) => p.id === 'ollama')!
+      this.apiKey = ''
+      this.sandboxName = this.sandboxName || 'my-assistant'
+      this.goTo(Step.Sandbox)
+    })
+
+    // Navigation — Back
     document.getElementById('btn-provider-back')!.addEventListener('click', () => {
-      this.apiKey = keyInput.value
+      if (keyInput) this.apiKey = keyInput.value
       this.goTo(Step.SystemCheck)
     })
 
+    // Navigation — Continue
     document.getElementById('btn-provider-continue')!.addEventListener('click', async () => {
+      // For Ollama: no API key needed, skip validation
+      if (this.selectedProvider.noApiKey) {
+        this.apiKey = ''
+        this.goTo(Step.Sandbox)
+        return
+      }
+
+      // For cloud providers: validate API key
       this.apiKey = keyInput.value.trim()
       if (!this.apiKey) {
         this.showApiError('Please enter an API key')
@@ -557,12 +604,23 @@ class NemoClawWizard {
     const lower = line.toLowerCase()
     let progress = this.installProgress
 
-    if (lower.includes('installing node')) progress = Math.max(progress, 10)
-    else if (lower.includes('installing openshell')) progress = Math.max(progress, 30)
-    else if (lower.includes('creating sandbox')) progress = Math.max(progress, 50)
-    else if (lower.includes('configuring inference')) progress = Math.max(progress, 70)
-    else if (lower.includes('applying polic')) progress = Math.max(progress, 85)
-    else if (lower.includes('complete')) progress = Math.max(progress, 100)
+    // Match the 7-step install flow from ipc-handlers
+    if (lower.includes('[1/7]')) progress = Math.max(progress, 5)
+    else if (lower.includes('[2/7]')) progress = Math.max(progress, 10)
+    else if (lower.includes('installing nvm')) progress = Math.max(progress, 15)
+    else if (lower.includes('nvm install')) progress = Math.max(progress, 20)
+    else if (lower.includes('[3/7]')) progress = Math.max(progress, 25)
+    else if (lower.includes('[4/7]')) progress = Math.max(progress, 30)
+    else if (lower.includes('fetching latest')) progress = Math.max(progress, 35)
+    else if (lower.includes('cloning')) progress = Math.max(progress, 40)
+    else if (lower.includes('npm install')) progress = Math.max(progress, 50)
+    else if (lower.includes('npm link')) progress = Math.max(progress, 55)
+    else if (lower.includes('[5/7]')) progress = Math.max(progress, 60)
+    else if (lower.includes('installing openshell')) progress = Math.max(progress, 65)
+    else if (lower.includes('[6/7]')) progress = Math.max(progress, 70)
+    else if (lower.includes('creating sandbox') || lower.includes('blueprint')) progress = Math.max(progress, 80)
+    else if (lower.includes('applying polic') || lower.includes('network policy')) progress = Math.max(progress, 90)
+    else if (lower.includes('[7/7]')) progress = Math.max(progress, 100)
 
     if (progress > this.installProgress) {
       this.setProgress(progress)
