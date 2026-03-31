@@ -3,7 +3,11 @@
     "allow": [
       "Bash(node:*)",
       "Bash(npm install:*)",
-      "Bash(npx electron-vite:*)"
+      "Bash(npx electron-vite:*)",
+      "Bash(npm --version)",
+      "Bash(wsl bash:*)",
+      "Bash(wsl sed:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

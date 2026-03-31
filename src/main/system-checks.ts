@@ -2,27 +2,49 @@ import { spawn } from 'child_process'
 import * as os from 'os'
 import type { SystemCheckResult, SystemCheckResponse } from '../shared/types'
 
+const EXEC_TIMEOUT_MS = 10000
+
 function execCommand(command: string, args: string[] = []): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    const proc = spawn(command, args, { shell: true })
+    let resolved = false
+    const proc = spawn(command, args, { shell: false })
     let stdout = ''
     let stderr = ''
+
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        proc.kill()
+        resolve({ stdout: '', stderr: 'Command timed out', code: 124 })
+      }
+    }, EXEC_TIMEOUT_MS)
+
     proc.stdout.on('data', (data: Buffer) => { stdout += data.toString() })
     proc.stderr.on('data', (data: Buffer) => { stderr += data.toString() })
     proc.on('close', (code) => {
-      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), code: code ?? 1 })
+      if (!resolved) {
+        resolved = true
+        clearTimeout(timer)
+        resolve({ stdout: stdout.trim(), stderr: stderr.trim(), code: code ?? 1 })
+      }
     })
     proc.on('error', () => {
-      resolve({ stdout: '', stderr: 'Command not found', code: 1 })
+      if (!resolved) {
+        resolved = true
+        clearTimeout(timer)
+        resolve({ stdout: '', stderr: 'Command not found', code: 1 })
+      }
     })
   })
 }
 
-function wslCmd(cmd: string): { command: string; args: string[] } {
+function wslCmd(cmd: string, login = false): { command: string; args: string[] } {
+  const flag = login ? '-l' : ''
   if (process.platform === 'win32') {
-    return { command: 'wsl', args: ['bash', '-l', '-c', cmd] }
+    return { command: 'wsl', args: flag ? ['bash', flag, '-c', cmd] : ['bash', '-c', cmd] }
   }
-  return { command: 'bash', args: ['-l', '-c', cmd] }
+  const shell = process.env.SHELL || '/bin/bash'
+  return { command: shell, args: flag ? [flag, '-c', cmd] : ['-c', cmd] }
 }
 
 function parseVersion(v: string): number[] {
@@ -40,6 +62,7 @@ function versionGte(current: string, minimum: string): boolean {
 }
 
 async function checkOS(): Promise<SystemCheckResult> {
+  console.log('[system-check] checkOS: start')
   const platform = process.platform
   const release = os.release()
   const arch = os.arch()
@@ -49,6 +72,7 @@ async function checkOS(): Promise<SystemCheckResult> {
     linux: 'Linux'
   }
   const name = labels[platform] || platform
+  console.log('[system-check] checkOS: done')
   return {
     id: 'os',
     name: 'Operating System',
@@ -59,8 +83,10 @@ async function checkOS(): Promise<SystemCheckResult> {
 }
 
 async function checkNodeJS(): Promise<SystemCheckResult> {
+  console.log('[system-check] checkNodeJS: start')
   const { command, args } = wslCmd('node --version')
   const result = await execCommand(command, args)
+  console.log('[system-check] checkNodeJS: done, code=' + result.code)
   if (result.code !== 0) {
     return {
       id: 'nodejs',
@@ -84,8 +110,10 @@ async function checkNodeJS(): Promise<SystemCheckResult> {
 }
 
 async function checkNpm(): Promise<SystemCheckResult> {
+  console.log('[system-check] checkNpm: start')
   const { command, args } = wslCmd('npm --version')
   const result = await execCommand(command, args)
+  console.log('[system-check] checkNpm: done, code=' + result.code)
   if (result.code !== 0) {
     return {
       id: 'npm',
@@ -109,23 +137,17 @@ async function checkNpm(): Promise<SystemCheckResult> {
 }
 
 async function checkDocker(): Promise<SystemCheckResult> {
-  const maxRetries = 12
-  const retryInterval = 5000
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const { command, args } = wslCmd('docker info')
-    const result = await execCommand(command, args)
-    if (result.code === 0) {
-      return {
-        id: 'runtime',
-        name: 'Container Runtime',
-        status: 'pass',
-        value: 'Docker',
-        message: 'Docker is running'
-      }
-    }
-    if (attempt < maxRetries - 1) {
-      await new Promise((r) => setTimeout(r, retryInterval))
+  console.log('[system-check] checkDocker: start')
+  const { command, args } = wslCmd('docker info')
+  const result = await execCommand(command, args)
+  console.log('[system-check] checkDocker: done, code=' + result.code)
+  if (result.code === 0) {
+    return {
+      id: 'runtime',
+      name: 'Container Runtime',
+      status: 'pass',
+      value: 'Docker',
+      message: 'Docker is running'
     }
   }
 
@@ -141,8 +163,9 @@ async function checkDocker(): Promise<SystemCheckResult> {
 
 async function checkWSL(): Promise<SystemCheckResult | null> {
   if (process.platform !== 'win32') return null
-
+  console.log('[system-check] checkWSL: start')
   const result = await execCommand('wsl', ['--status'])
+  console.log('[system-check] checkWSL: --status done, code=' + result.code)
   const output = result.stdout + result.stderr
   const hasWSL2 = output.toLowerCase().includes('wsl') || result.code === 0
 
@@ -159,6 +182,7 @@ async function checkWSL(): Promise<SystemCheckResult | null> {
   }
 
   const distroResult = await execCommand('wsl', ['-l', '-v'])
+  console.log('[system-check] checkWSL: done, distro code=' + distroResult.code)
   const hasDistro = distroResult.stdout.length > 0 && distroResult.code === 0
 
   return {
@@ -173,8 +197,10 @@ async function checkWSL(): Promise<SystemCheckResult | null> {
 }
 
 async function checkCgroup(): Promise<SystemCheckResult> {
+  console.log('[system-check] checkCgroup: start')
   const { command, args } = wslCmd("docker info --format '{{.CgroupDriver}}'")
   const result = await execCommand(command, args)
+  console.log('[system-check] checkCgroup: done, code=' + result.code)
 
   if (result.code !== 0) {
     return {
@@ -197,6 +223,7 @@ async function checkCgroup(): Promise<SystemCheckResult> {
 }
 
 async function checkDisk(): Promise<SystemCheckResult> {
+  console.log('[system-check] checkDisk: start')
   let command: string
   let args: string[]
 
@@ -209,6 +236,7 @@ async function checkDisk(): Promise<SystemCheckResult> {
   }
 
   const result = await execCommand(command, args)
+  console.log('[system-check] checkDisk: done, code=' + result.code)
   if (result.code !== 0) {
     return {
       id: 'disk',
@@ -245,9 +273,11 @@ async function checkDisk(): Promise<SystemCheckResult> {
 }
 
 async function checkRAM(): Promise<SystemCheckResult> {
+  console.log('[system-check] checkRAM: start')
   const totalBytes = os.totalmem()
   const totalGB = Math.round(totalBytes / 1024 / 1024 / 1024)
   const pass = totalGB >= 8
+  console.log('[system-check] checkRAM: done')
 
   return {
     id: 'ram',
@@ -259,21 +289,26 @@ async function checkRAM(): Promise<SystemCheckResult> {
 }
 
 export async function runSystemChecks(): Promise<SystemCheckResponse> {
-  const checks: SystemCheckResult[] = []
+  console.log('[system-check] runSystemChecks: starting all checks in parallel')
+  // Run all independent checks in parallel
+  const [osResult, nodeResult, npmResult, wslResult, dockerResult, cgroupResult, diskResult, ramResult] =
+    await Promise.all([
+      checkOS(),
+      checkNodeJS(),
+      checkNpm(),
+      checkWSL(),
+      checkDocker(),
+      checkCgroup(),
+      checkDisk(),
+      checkRAM()
+    ])
 
-  checks.push(await checkOS())
-  checks.push(await checkNodeJS())
-  checks.push(await checkNpm())
-
-  const wslCheck = await checkWSL()
-  if (wslCheck) checks.push(wslCheck)
-
-  checks.push(await checkDocker())
-  checks.push(await checkCgroup())
-  checks.push(await checkDisk())
-  checks.push(await checkRAM())
+  const checks: SystemCheckResult[] = [osResult, nodeResult, npmResult]
+  if (wslResult) checks.push(wslResult)
+  checks.push(dockerResult, cgroupResult, diskResult, ramResult)
 
   const allPassed = checks.every((c) => c.status !== 'fail')
+  console.log('[system-check] runSystemChecks: complete, allPassed=' + allPassed)
 
   return {
     platform: process.platform,

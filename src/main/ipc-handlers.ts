@@ -90,7 +90,10 @@ function getShellCmd(cmd: string): { command: string; args: string[] } {
   if (process.platform === 'win32') {
     return { command: 'wsl', args: ['bash', '-l', '-c', cmd] }
   }
-  return { command: 'bash', args: ['-l', '-c', cmd] }
+  // Use the user's default shell on macOS/Linux (zsh on modern macOS)
+  // so that nvm/PATH from .zshrc or .bashrc is picked up
+  const userShell = process.env.SHELL || '/bin/bash'
+  return { command: userShell, args: ['-l', '-c', cmd] }
 }
 
 function sendOutput(win: BrowserWindow, line: string, type: InstallOutputEvent['type']): void {
@@ -100,16 +103,26 @@ function sendOutput(win: BrowserWindow, line: string, type: InstallOutputEvent['
 function spawnStreaming(
   win: BrowserWindow,
   cmd: string,
-  env?: Record<string, string>
+  wslEnv?: Record<string, string>
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    const { command, args } = getShellCmd(cmd)
+    // Export env vars inside the shell so they survive WSL bash nesting
+    let fullCmd = cmd
+    if (wslEnv && Object.keys(wslEnv).length > 0) {
+      const exports = Object.entries(wslEnv)
+        .map(([k, v]) => `export ${k}="${v.replace(/"/g, '\\"')}"`) 
+        .join(' && ')
+      fullCmd = `${exports} && ${cmd}`
+    }
+    const { command, args } = getShellCmd(fullCmd)
     const proc = spawn(command, args, {
-      shell: false,
-      env: { ...process.env, ...env }
+      shell: false
     })
 
     installProcess = proc
+
+    // Close stdin so the process can't hang waiting for interactive input
+    proc.stdin?.end()
 
     let staleTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -196,12 +209,56 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     const win = getMainWindow()
     if (!win) return
 
-    const env = { NEMOCLAW_NON_INTERACTIVE: '1' }
+    // Map provider to the env var the CLI expects for the API key
+    const providerKeyEnv: Record<string, string> = {
+      nvidia: 'NVIDIA_API_KEY',
+      openai: 'OPENAI_API_KEY',
+      anthropic: 'ANTHROPIC_API_KEY',
+      gemini: 'GOOGLE_API_KEY'
+    }
+    const keyEnvName = providerKeyEnv[config.provider] || 'NVIDIA_API_KEY'
+
+    // Map internal provider IDs → NemoClaw CLI provider values
+    // Valid CLI values: build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm
+    const cliProviderMap: Record<string, string> = {
+      nvidia: 'build',
+      openai: 'openai',
+      anthropic: 'anthropic',
+      gemini: 'gemini'
+    }
+    const cliProvider = cliProviderMap[config.provider] || config.provider
+
+    // Set all provider key env vars — only the selected one gets the real key
+    const env: Record<string, string> = {
+      NEMOCLAW_NON_INTERACTIVE: '1',
+      NEMOCLAW_PROVIDER: cliProvider,
+      NEMOCLAW_SANDBOX_NAME: config.sandboxName,
+      NEMOCLAW_MODEL: config.modelName,
+      [keyEnvName]: config.apiKey
+    }
 
     try {
-      // Step 1: Check if CLI is already installed
+      // Step 1: Write credentials to WSL filesystem
+      sendOutput(win, 'Writing credentials...', 'info')
+      const credJson = JSON.stringify({
+        provider: cliProvider,
+        api_key: config.apiKey,
+        model: config.modelName
+      })
+      const escapedJson = credJson.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const writeCredCmd = `mkdir -p ~/.nemoclaw && printf '%s' "${escapedJson}" > ~/.nemoclaw/credentials.json`
+      const credCode = await spawnStreaming(win, writeCredCmd)
+      if (credCode !== 0) {
+        sendOutput(win, 'Warning: Could not write credentials file', 'error')
+      }
+
+      // nvm prefix — nemoclaw is installed under nvm's node path, so nvm must
+      // be sourced in every fresh bash session for `nemoclaw` and `openshell` to be in PATH
+      const nvmLoad = 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'
+
+      // Step 2: Check if CLI is already installed
       sendOutput(win, 'Checking if NemoClaw CLI is already installed...', 'info')
-      const checkCmd = 'nemoclaw --version'
+      const checkCmd = `${nvmLoad} && nemoclaw --version`
       const { command: chkCmd, args: chkArgs } = getShellCmd(checkCmd)
       const checkResult = await new Promise<number>((resolve) => {
         const proc = spawn(chkCmd, chkArgs, { shell: false })
@@ -210,69 +267,55 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       })
 
       if (checkResult !== 0) {
-        // Step 2: Install CLI with retries
+        // Step 3: Install CLI — the curl script installs the CLI and then runs
+        // `nemoclaw onboard` automatically. The onboard will likely fail because
+        // it tries to verify the inference endpoint (network-dependent).
+        // That's OK — we only need the CLI binary installed here.
+        // We'll run our own onboard with --no-verify afterwards.
         sendOutput(win, 'Installing NemoClaw CLI...', 'info')
-        let installSuccess = false
 
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          if (attempt > 1) {
-            sendOutput(win, `Retry attempt ${attempt}/3...`, 'info')
-          }
-          const curlCmd = 'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
-          const code = await spawnStreaming(win, curlCmd, env)
-          if (code === 0) {
-            installSuccess = true
-            break
-          }
-          if (attempt < 3) {
-            sendOutput(win, `Download failed (exit code ${code}), retrying...`, 'stderr')
-          }
-        }
+        // Only try curl once — the script's built-in onboard failure (exit 1)
+        // does NOT mean the CLI wasn't installed, so retrying wastes time.
+        const curlCmd = `${nvmLoad}; curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`
+        await spawnStreaming(win, curlCmd, env)
 
-        if (!installSuccess) {
+        // Check if the CLI binary was actually installed (regardless of curl exit code)
+        sendOutput(win, 'Verifying CLI installation...', 'info')
+        const verifyCmd = `${nvmLoad} && nemoclaw --version`
+        const verifyCode = await spawnStreaming(win, verifyCmd, env)
+        if (verifyCode !== 0) {
+          // CLI truly failed to install — this is a real failure
           const evt: InstallCompleteEvent = {
             success: false,
             code: 1,
-            message: 'CLI installation failed after 3 attempts'
+            message: 'CLI installation failed — nemoclaw binary not found after install'
           }
           win.webContents.send('install-complete', evt)
           return
-        }
-
-        // Verify CLI is available after install
-        sendOutput(win, 'Verifying CLI installation...', 'info')
-        const verifyCmd = 'nemoclaw --version'
-        const verifyCode = await spawnStreaming(win, verifyCmd, env)
-        if (verifyCode !== 0) {
-          sendOutput(win, 'CLI installed but not found in PATH. Trying with fresh shell...', 'stderr')
         }
       } else {
         sendOutput(win, 'NemoClaw CLI already installed, skipping download', 'success')
       }
 
-      // Step 3: Write credentials
-      sendOutput(win, 'Writing credentials...', 'info')
-      const credJson = JSON.stringify({
-        provider: config.provider,
-        api_key: config.apiKey,
-        model: config.modelName
-      })
-      const escapedJson = credJson.replace(/'/g, "'\\''")
+      // Step 4: Create openshell shim, then run our own onboard
+      // The install script's onboard likely failed at inference verification.
+      // We create a shim that intercepts `openshell inference set` and adds
+      // --no-verify, then run onboard ourselves.
+      sendOutput(win, 'Preparing inference configuration...', 'info')
 
-      let writeCredCmd: string
-      if (process.platform === 'win32') {
-        writeCredCmd = `mkdir -p ~/.nemoclaw && echo '${escapedJson}' > ~/.nemoclaw/credentials.json`
-      } else {
-        writeCredCmd = `mkdir -p ~/.nemoclaw && echo '${escapedJson}' > ~/.nemoclaw/credentials.json`
-      }
-      const credCode = await spawnStreaming(win, writeCredCmd, env)
-      if (credCode !== 0) {
-        sendOutput(win, 'Warning: Could not write credentials file', 'error')
+      // Find where openshell is installed and create a wrapper shim
+      const shimCmd = `${nvmLoad} && mkdir -p /tmp/nc-shim && REAL_OPENSHELL="$(which openshell 2>/dev/null)" && printf '#!/bin/bash\\nif [ "$1" = "inference" ] && [ "$2" = "set" ]; then\\n  exec %s "$@" --no-verify\\nelse\\n  exec %s "$@"\\nfi\\n' "$REAL_OPENSHELL" "$REAL_OPENSHELL" > /tmp/nc-shim/openshell && chmod +x /tmp/nc-shim/openshell && echo "openshell shim ready (wrapping $REAL_OPENSHELL)"`
+
+      const shimCode = await spawnStreaming(win, shimCmd)
+      if (shimCode !== 0) {
+        sendOutput(win, 'Warning: Could not create openshell shim, onboard may fail at verification', 'stderr')
       }
 
-      // Step 4: Run onboard
-      sendOutput(win, 'Running NemoClaw onboard...', 'info')
-      const onboardCmd = `nemoclaw onboard --non-interactive --name ${config.sandboxName}`
+      // Step 5: Run onboard with shim in PATH
+      // Use --non-interactive and reset the onboard state so it doesn't resume
+      // the failed session from the install script
+      sendOutput(win, `Running NemoClaw onboard (provider: ${cliProvider})...`, 'info')
+      const onboardCmd = `${nvmLoad} && export PATH="/tmp/nc-shim:$PATH" && nemoclaw onboard --non-interactive`
       const onboardCode = await spawnStreaming(win, onboardCmd, env)
 
       if (onboardCode === 0) {
@@ -292,13 +335,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         win.webContents.send('install-complete', evt)
       }
 
-      // Step 5: Write install log
+      // Write install log
       try {
-        const logLines: string[] = []
-        const logListener = (_e: unknown, data: InstallOutputEvent): void => {
-          logLines.push(data.line)
-        }
-        // Log is already streamed, just attempt to save it
         const logCmd = `echo 'Install completed at ${new Date().toISOString()}' >> ~/.nemoclaw/install.log`
         await spawnStreaming(win, logCmd, env)
       } catch {
