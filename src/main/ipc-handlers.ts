@@ -219,14 +219,24 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       // We also temporarily ensure ~/.npm-global/bin and ~/.local/bin are on the PATH.
       // Crucially, we PRE-INSTALL OpenShell using its official script (which uses curl) 
       // so NemoClaw onboarding skips its internal installation step (which relies on 'gh' and fails without auth).
-      const installCmd = [
+      const installSteps = [
         'mkdir -p ~/.npm-global/bin ~/.local/bin',
         'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"',
-        'curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | sh',
-        'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
-      ].join(' && ')
+        'curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | sh'
+      ]
 
-      sendOutput(win, `Running: curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`, 'info')
+      if (isOllama) {
+        // Pre-pull the model manually here! 
+        // Why? The NemoClaw CLI 'onboard' command has a hardcoded 10-minute timeout for downloading models.
+        // A 24GB model takes >10 mins on most connections. By pulling it first, onboard will skip downloading.
+        installSteps.push(`ollama pull ${config.modelName}`)
+      }
+
+      installSteps.push('curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash')
+
+      const installCmd = installSteps.join(' && ')
+
+      sendOutput(win, `Running installation sequence...`, 'info')
       sendOutput(win, '─'.repeat(60), 'info')
 
       const exitCode = await spawnStreaming(win, installCmd, env)
