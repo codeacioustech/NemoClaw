@@ -460,7 +460,10 @@ class NemoClawWizard {
           <div id="install-progress-bar" class="progress-bar-fill" style="width:0%"></div>
         </div>
         <div id="install-status" class="progress-status">Starting...</div>
-        <div id="install-terminal" class="terminal-area"></div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:4px">
+          <button id="btn-toggle-debug">Show Debug Logs</button>
+        </div>
+        <div id="install-terminal" class="terminal-area hide-debug"></div>
         <div class="btn-row btn-row-spread">
           <button id="btn-cancel-install" class="btn btn-danger">Cancel</button>
           <button id="btn-retry-install" class="btn btn-primary" style="display:none">Retry</button>
@@ -476,6 +479,17 @@ class NemoClawWizard {
       const el = document.getElementById('install-elapsed')
       if (el) el.textContent = `${mins}:${secs.toString().padStart(2, '0')}`
     }, 1000)
+
+    // Debug log toggle
+    document.getElementById('btn-toggle-debug')!.addEventListener('click', () => {
+      const terminal = document.getElementById('install-terminal')!
+      const btn = document.getElementById('btn-toggle-debug')!
+      terminal.classList.toggle('hide-debug')
+      const showing = !terminal.classList.contains('hide-debug')
+      btn.textContent = showing ? 'Hide Debug Logs' : 'Show Debug Logs'
+      btn.classList.toggle('active', showing)
+      terminal.scrollTop = terminal.scrollHeight
+    })
 
     // Cancel
     document.getElementById('btn-cancel-install')!.addEventListener('click', async () => {

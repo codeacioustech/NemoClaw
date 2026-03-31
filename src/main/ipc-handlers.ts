@@ -100,6 +100,11 @@ function sendOutput(win: BrowserWindow, line: string, type: InstallOutputEvent['
   win.webContents.send('install-output', { line, type } as InstallOutputEvent)
 }
 
+function sendDebug(_win: BrowserWindow, msg: string): void {
+  const ts = new Date().toISOString().slice(11, 23) // HH:mm:ss.SSS
+  console.log(`[DEBUG ${ts}] ${msg}`)
+}
+
 function spawnStreaming(
   win: BrowserWindow,
   cmd: string,
@@ -115,11 +120,13 @@ function spawnStreaming(
       fullCmd = `${exports} && ${cmd}`
     }
     const { command, args } = getShellCmd(fullCmd)
+    sendDebug(win, `Spawning: ${command} ${args.map(a => a.length > 60 ? a.substring(0, 60) + '…' : a).join(' ')}`)
     const proc = spawn(command, args, {
       shell: false
     })
 
     installProcess = proc
+    sendDebug(win, `Process PID: ${proc.pid ?? 'unknown'}`)
 
     // Close stdin so the process can't hang waiting for interactive input
     proc.stdin?.end()
@@ -154,12 +161,14 @@ function spawnStreaming(
 
     proc.on('close', (code) => {
       if (staleTimer) clearTimeout(staleTimer)
+      sendDebug(win, `Process PID ${proc.pid} closed with code ${code}`)
       installProcess = null
       resolve(code ?? 1)
     })
 
     proc.on('error', (err) => {
       if (staleTimer) clearTimeout(staleTimer)
+      sendDebug(win, `Process PID ${proc.pid} error: ${err.message}`)
       installProcess = null
       reject(err)
     })
@@ -238,6 +247,10 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     }
 
     try {
+      sendDebug(win, `Platform: ${process.platform}, Node: ${process.version}`)
+      sendDebug(win, `Provider: ${cliProvider}, Model: ${config.modelName}, Sandbox: ${config.sandboxName}`)
+      sendDebug(win, `Env key variable: ${keyEnvName}`)
+
       // Step 1: Write credentials to WSL filesystem
       sendOutput(win, 'Writing credentials...', 'info')
       const credJson = JSON.stringify({
@@ -247,7 +260,9 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       })
       const escapedJson = credJson.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
       const writeCredCmd = `mkdir -p ~/.nemoclaw && printf '%s' "${escapedJson}" > ~/.nemoclaw/credentials.json`
+      sendDebug(win, `CMD: ${writeCredCmd.substring(0, 120)}...`)
       const credCode = await spawnStreaming(win, writeCredCmd)
+      sendDebug(win, `Credentials write exited with code ${credCode}`)
       if (credCode !== 0) {
         sendOutput(win, 'Warning: Could not write credentials file', 'error')
       }
@@ -259,12 +274,18 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       // Step 2: Check if CLI is already installed
       sendOutput(win, 'Checking if NemoClaw CLI is already installed...', 'info')
       const checkCmd = `${nvmLoad} && nemoclaw --version`
+      sendDebug(win, `CMD: ${checkCmd}`)
       const { command: chkCmd, args: chkArgs } = getShellCmd(checkCmd)
+      sendDebug(win, `Shell: ${chkCmd} ${chkArgs.join(' ')}`)
       const checkResult = await new Promise<number>((resolve) => {
         const proc = spawn(chkCmd, chkArgs, { shell: false })
         proc.on('close', (code) => resolve(code ?? 1))
-        proc.on('error', () => resolve(1))
+        proc.on('error', (err) => {
+          sendDebug(win, `CLI check spawn error: ${err.message}`)
+          resolve(1)
+        })
       })
+      sendDebug(win, `CLI check exited with code ${checkResult}`)
 
       if (checkResult !== 0) {
         // Step 3: Install CLI — the curl script installs the CLI and then runs
@@ -274,17 +295,19 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         // We'll run our own onboard with --no-verify afterwards.
         sendOutput(win, 'Installing NemoClaw CLI...', 'info')
 
-        // Only try curl once — the script's built-in onboard failure (exit 1)
-        // does NOT mean the CLI wasn't installed, so retrying wastes time.
         const curlCmd = `${nvmLoad}; curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`
-        await spawnStreaming(win, curlCmd, env)
+        sendDebug(win, `CMD: ${curlCmd}`)
+        const curlCode = await spawnStreaming(win, curlCmd, env)
+        sendDebug(win, `curl install exited with code ${curlCode}`)
 
         // Check if the CLI binary was actually installed (regardless of curl exit code)
         sendOutput(win, 'Verifying CLI installation...', 'info')
         const verifyCmd = `${nvmLoad} && nemoclaw --version`
+        sendDebug(win, `CMD: ${verifyCmd}`)
         const verifyCode = await spawnStreaming(win, verifyCmd, env)
+        sendDebug(win, `CLI verify exited with code ${verifyCode}`)
         if (verifyCode !== 0) {
-          // CLI truly failed to install — this is a real failure
+          sendDebug(win, 'FATAL: nemoclaw binary not found after install — aborting')
           const evt: InstallCompleteEvent = {
             success: false,
             code: 1,
@@ -306,17 +329,19 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       // Find where openshell is installed and create a wrapper shim
       const shimCmd = `${nvmLoad} && mkdir -p /tmp/nc-shim && REAL_OPENSHELL="$(which openshell 2>/dev/null)" && printf '#!/bin/bash\\nif [ "$1" = "inference" ] && [ "$2" = "set" ]; then\\n  exec %s "$@" --no-verify\\nelse\\n  exec %s "$@"\\nfi\\n' "$REAL_OPENSHELL" "$REAL_OPENSHELL" > /tmp/nc-shim/openshell && chmod +x /tmp/nc-shim/openshell && echo "openshell shim ready (wrapping $REAL_OPENSHELL)"`
 
+      sendDebug(win, `CMD (shim): ${shimCmd.substring(0, 120)}...`)
       const shimCode = await spawnStreaming(win, shimCmd)
+      sendDebug(win, `Shim creation exited with code ${shimCode}`)
       if (shimCode !== 0) {
         sendOutput(win, 'Warning: Could not create openshell shim, onboard may fail at verification', 'stderr')
       }
 
       // Step 5: Run onboard with shim in PATH
-      // Use --non-interactive and reset the onboard state so it doesn't resume
-      // the failed session from the install script
       sendOutput(win, `Running NemoClaw onboard (provider: ${cliProvider})...`, 'info')
       const onboardCmd = `${nvmLoad} && export PATH="/tmp/nc-shim:$PATH" && nemoclaw onboard --non-interactive`
+      sendDebug(win, `CMD: ${onboardCmd}`)
       const onboardCode = await spawnStreaming(win, onboardCmd, env)
+      sendDebug(win, `Onboard exited with code ${onboardCode}`)
 
       if (onboardCode === 0) {
         sendOutput(win, 'Installation complete!', 'success')
@@ -344,6 +369,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       }
     } catch (err) {
       const message = (err as Error).message || 'Unknown error'
+      sendDebug(win, `Uncaught error: ${message}`)
+      sendDebug(win, `Stack: ${(err as Error).stack || 'no stack'}`)
       sendOutput(win, `Error: ${message}`, 'error')
       const evt: InstallCompleteEvent = {
         success: false,

@@ -697,6 +697,44 @@ body {
   color: var(--nv-green);
 }
 
+.terminal-line.debug {
+  color: #6a6a8a;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.terminal-line.debug::before {
+  content: 'DEBUG ';
+  color: #5555aa;
+  font-weight: 600;
+}
+
+.terminal-area.hide-debug .terminal-line.debug {
+  display: none;
+}
+
+#btn-toggle-debug {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+#btn-toggle-debug:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+#btn-toggle-debug.active {
+  border-color: #5555aa;
+  color: #8888cc;
+}
+
 /* ===== Progress Bar ===== */
 .progress-bar-container {
   width: 100%;

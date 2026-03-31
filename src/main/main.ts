@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc-handlers'
 
@@ -35,6 +35,13 @@ function createWindow(): void {
 registerIpcHandlers(() => mainWindow)
 
 app.whenReady().then(() => {
+  // Set application menu with Edit role so Cmd+C/V/X/A (mac) and Ctrl+C/V/X/A work
+  // Required for frameless windows where the default menu is absent
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' } as const] : []),
+    { role: 'editMenu' }
+  ]))
+
   createWindow()
 
   app.on('activate', () => {

@@ -24,7 +24,7 @@ export interface InstallConfig {
 
 export interface InstallOutputEvent {
   line: string
-  type: 'stdout' | 'stderr' | 'info' | 'error' | 'success'
+  type: 'stdout' | 'stderr' | 'info' | 'error' | 'success' | 'debug'
 }
 
 export interface InstallCompleteEvent {
