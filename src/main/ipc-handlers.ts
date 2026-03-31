@@ -212,10 +212,11 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     sendOutput(win, '', 'info')
 
     try {
-      // That's it. One command. The same one that works via curl.
-      const installCmd = 'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
+      // We configure npm to use a user-local directory before running the script
+      // This prevents EACCES (Permission Denied) errors on Macs using Homebrew Node
+      const installCmd = 'mkdir -p ~/.npm-global && npm config set prefix "$HOME/.npm-global" && export PATH="$HOME/.npm-global/bin:$PATH" && curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
 
-      sendOutput(win, `Running: ${installCmd}`, 'info')
+      sendOutput(win, `Running: curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`, 'info')
       sendOutput(win, '─'.repeat(60), 'info')
 
       const exitCode = await spawnStreaming(win, installCmd, env)
