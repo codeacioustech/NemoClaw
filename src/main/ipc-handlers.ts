@@ -229,6 +229,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         // Pre-pull the model manually here! 
         // Why? The NemoClaw CLI 'onboard' command has a hardcoded 10-minute timeout for downloading models.
         // A 24GB model takes >10 mins on most connections. By pulling it first, onboard will skip downloading.
+        // We also try to start the Ollama app first just in case it is completely closed on the Mac.
+        installSteps.push(`curl -sf http://localhost:11434 >/dev/null 2>&1 || (open -a Ollama 2>/dev/null || ollama serve >/dev/null 2>&1 & sleep 4)`)
         installSteps.push(`ollama pull ${config.modelName}`)
       }
 
