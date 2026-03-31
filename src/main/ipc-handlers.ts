@@ -198,7 +198,10 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       NEMOCLAW_NON_INTERACTIVE: '1',
       NEMOCLAW_PROVIDER: cliProvider,
       NEMOCLAW_SANDBOX_NAME: config.sandboxName,
-      NEMOCLAW_MODEL: config.modelName
+      NEMOCLAW_MODEL: config.modelName,
+      // Bulletproof fix for macOS Homebrew EACCES errors: 
+      // Force npm to use a user-owned directory for global installs (npm link)
+      npm_config_prefix: `${process.env.HOME || '~'}/.npm-global`
     }
 
     // Set API key only for cloud providers
@@ -212,9 +215,9 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     sendOutput(win, '', 'info')
 
     try {
-      // We configure npm to use a user-local directory before running the script
-      // This prevents EACCES (Permission Denied) errors on Macs using Homebrew Node
-      const installCmd = 'mkdir -p ~/.npm-global && npm config set prefix "$HOME/.npm-global" && export PATH="$HOME/.npm-global/bin:$PATH" && curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
+      // The npm_config_prefix env var ensures npm link uses ~/.npm-global instead of /opt/homebrew
+      // We also temporarily ensure ~/.npm-global/bin is on the PATH for the install session
+      const installCmd = 'mkdir -p ~/.npm-global/bin && export PATH="$HOME/.npm-global/bin:$PATH" && curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash'
 
       sendOutput(win, `Running: curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`, 'info')
       sendOutput(win, '─'.repeat(60), 'info')
