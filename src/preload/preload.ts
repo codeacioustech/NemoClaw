@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ElectronAPI, InstallConfig, InstallOutputEvent, InstallCompleteEvent } from '../shared/types'
+import type { ElectronAPI, InstallConfig, InstallOutputEvent, InstallCompleteEvent, BootstrapEvent, AppConfig } from '../shared/types'
 
 const api: ElectronAPI = {
+  // ── Existing wizard APIs ────────────────────────────────────────────────
   checkSystemRequirements: () => ipcRenderer.invoke('check-system-requirements'),
 
   validateApiKey: (provider: string, apiKey: string) =>
@@ -30,7 +31,42 @@ const api: ElectronAPI = {
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
 
-  getPlatform: () => process.platform
+  getPlatform: () => process.platform,
+
+  // ── Config APIs ─────────────────────────────────────────────────────────
+  getConfig: () => ipcRenderer.invoke('get-config'),
+
+  saveConfig: (config: Partial<AppConfig>) => ipcRenderer.invoke('save-config', config),
+
+  isFirstLaunch: () => ipcRenderer.invoke('is-first-launch'),
+
+  // ── Bootstrap APIs (macOS) ──────────────────────────────────────────────
+  onBootstrapProgress: (callback: (event: BootstrapEvent) => void) => {
+    ipcRenderer.on('bootstrap-progress', (_event, data: BootstrapEvent) => callback(data))
+  },
+
+  onDockerMissing: (callback: () => void) => {
+    ipcRenderer.on('docker-missing', () => callback())
+  },
+
+  onArchUnsupported: (callback: (message: string) => void) => {
+    ipcRenderer.on('arch-unsupported', (_event, message: string) => callback(message))
+  },
+
+  onBootstrapComplete: (callback: (success: boolean) => void) => {
+    ipcRenderer.on('bootstrap-complete', (_event, success: boolean) => callback(success))
+  },
+
+  removeBootstrapListeners: () => {
+    ipcRenderer.removeAllListeners('bootstrap-progress')
+    ipcRenderer.removeAllListeners('docker-missing')
+    ipcRenderer.removeAllListeners('arch-unsupported')
+    ipcRenderer.removeAllListeners('bootstrap-complete')
+  },
+
+  retryDocker: () => ipcRenderer.invoke('retry-docker'),
+
+  openDockerDownload: () => ipcRenderer.invoke('open-docker-download')
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

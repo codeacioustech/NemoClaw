@@ -5,3 +5,7 @@ dist/
 .DS_Store
 Thumbs.db
 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
+
+# Claude / AI tools
+open-coot-designs-*/
+claude_code_prompt.md

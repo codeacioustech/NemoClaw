@@ -33,7 +33,53 @@ export interface InstallCompleteEvent {
   message: string
 }
 
+// ── open-coot config & bootstrap types ──────────────────────────────────────
+
+export interface AppConfig {
+  setupComplete: boolean
+  workspaceType: string
+  tools: string[]
+  teamSize: string
+  connectors: Record<string, boolean>
+  microapps: string[]
+  invites: InviteEntry[]
+  sandboxName: string
+  provider: string
+  model: string
+  configVersion: number
+}
+
+export interface InviteEntry {
+  email: string
+  role: 'admin' | 'member' | 'viewer'
+}
+
+export type BootstrapStage =
+  | 'arch-check'
+  | 'nemoclaw-check'
+  | 'nemoclaw-install'
+  | 'docker-check'
+  | 'docker-waiting'
+  | 'ollama-check'
+  | 'ollama-install'
+  | 'ollama-serve'
+  | 'model-check'
+  | 'model-pull'
+  | 'sandbox-create'
+  | 'complete'
+  | 'error'
+
+export interface BootstrapEvent {
+  stage: BootstrapStage
+  status: 'running' | 'done' | 'error' | 'skipped'
+  message: string
+  progress: number // 0-100
+}
+
+// ── Electron API ────────────────────────────────────────────────────────────
+
 export interface ElectronAPI {
+  // Existing wizard APIs
   checkSystemRequirements: () => Promise<SystemCheckResponse>
   validateApiKey: (provider: string, apiKey: string) => Promise<{ valid: boolean; message?: string }>
   runInstall: (config: InstallConfig) => Promise<void>
@@ -46,6 +92,20 @@ export interface ElectronAPI {
   maximizeWindow: () => void
   closeWindow: () => void
   getPlatform: () => string
+
+  // Config APIs
+  getConfig: () => Promise<AppConfig | null>
+  saveConfig: (config: Partial<AppConfig>) => Promise<void>
+  isFirstLaunch: () => Promise<boolean>
+
+  // Bootstrap APIs (macOS)
+  onBootstrapProgress: (callback: (event: BootstrapEvent) => void) => void
+  onDockerMissing: (callback: () => void) => void
+  onArchUnsupported: (callback: (message: string) => void) => void
+  onBootstrapComplete: (callback: (success: boolean) => void) => void
+  removeBootstrapListeners: () => void
+  retryDocker: () => Promise<void>
+  openDockerDownload: () => Promise<void>
 }
 
 declare global {

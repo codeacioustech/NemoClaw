@@ -4,13 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'" />
-  <title>NemoClaw Installer</title>
+  <title>open-coot — AI Workspace</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <!-- Legacy Wizard UI (Windows & Linux) -->
   <div id="app">
     <!-- Title Bar -->
     <div id="title-bar">
@@ -60,6 +61,11 @@
     <!-- Wizard Content -->
     <div id="wizard-content"></div>
   </div>
-  <script type="module" src="./app.ts"></script>
+
+  <!-- open-coot Root (macOS: bootstrap → onboarding → dashboard) -->
+  <div id="oc-root" style="display:none"></div>
+
+  <!-- Router decides which UI to load -->
+  <script type="module" src="./router.ts"></script>
 </body>
 </html>

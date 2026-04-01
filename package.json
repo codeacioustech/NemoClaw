@@ -1,7 +1,7 @@
 {
-  "name": "nemoclaw-installer",
+  "name": "open-coot",
   "version": "0.1.0-alpha",
-  "description": "Desktop installer for NVIDIA NemoClaw",
+  "description": "open-coot — Self-hosted AI workspace powered by NemoClaw",
   "main": "./out/main/main.js",
   "scripts": {
     "dev": "electron-vite dev",

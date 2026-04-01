@@ -275,6 +275,11 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     await shell.openExternal(url)
   })
 
+  // Docker helpers (macOS bootstrap)
+  ipcMain.handle('open-docker-download', async () => {
+    await shell.openExternal('https://www.docker.com/products/docker-desktop/')
+  })
+
   // Window controls
   ipcMain.on('window-minimize', () => getMainWindow()?.minimize())
   ipcMain.on('window-maximize', () => {
