@@ -139,6 +139,29 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
   }
 }
 
+async function installOpenShell(win: BrowserWindow): Promise<boolean> {
+  sendBootstrap(win, 'nemoclaw-install', 'running', 'Pre-installing OpenShell...', 23)
+
+  try {
+    const code = await runShellLong(
+      'mkdir -p ~/.npm-global/bin ~/.local/bin && export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | sh',
+      win,
+      'nemoclaw-install'
+    )
+
+    if (code === 0) {
+      return true
+    } else {
+      console.error('[bootstrap] OpenShell installation failed')
+      // Note: we don't necessarily abort the whole process here, but we return false
+      return false
+    }
+  } catch (err) {
+    console.error(`[bootstrap] OpenShell install error: ${(err as Error).message}`)
+    return false
+  }
+}
+
 async function checkDocker(): Promise<boolean> {
   try {
     const result = await runShell('docker info')
@@ -376,13 +399,17 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       return
     }
 
-    // Step 4: NemoClaw
-    sendBootstrap(win, 'nemoclaw-check', 'running', 'Checking for NemoClaw...', 25)
+    // Step 4: NemoClaw pre-requisites
+    sendBootstrap(win, 'nemoclaw-check', 'running', 'Checking for NemoClaw...', 23)
     const hasNemoclaw = await checkNemoclawInstalled()
 
     if (hasNemoclaw) {
       sendBootstrap(win, 'nemoclaw-check', 'done', 'NemoClaw already installed ✓', 35)
     } else {
+      // Pre-install OpenShell via curl to bypass 'gh' authentication requirement
+      await installOpenShell(win)
+
+      sendBootstrap(win, 'nemoclaw-install', 'running', 'Installing NemoClaw...', 25)
       const installed = await installNemoclaw(win)
       if (!installed) {
         sendBootstrap(win, 'error', 'error', 'Failed to install NemoClaw. Please try again.', 35)
