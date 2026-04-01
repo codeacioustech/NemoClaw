@@ -1,0 +1,9 @@
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Downloaded Ollama binaries (fetched by scripts/download-ollama.sh)
+resources/ollama-mac/
+resources/ollama-darwin.tgz
