@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NemoClaw Electron Installer — a cross-platform desktop GUI wizard that replaces the CLI-based `curl | bash` installation of NVIDIA's NemoClaw (open-source reference stack for running OpenClaw AI agents in sandboxed environments).
+NemoClaw Electron Installer ("open-coot") — a cross-platform desktop GUI wizard that replaces the CLI-based `curl | bash` installation of NVIDIA's NemoClaw (open-source reference stack for running OpenClaw AI agents in sandboxed environments).
 
 Full docs: https://docs.nvidia.com/nemoclaw/latest/
 
@@ -12,7 +12,7 @@ Full docs: https://docs.nvidia.com/nemoclaw/latest/
 
 - **Framework**: Electron (latest), frameless window, dark theme
 - **Language**: TypeScript (both main and renderer processes)
-- **Build**: Vite via `electron-vite` template (`npm create @quick-start/electron@latest`)
+- **Build**: Vite via `electron-vite` template
 - **Styling**: Vanilla CSS only (no Tailwind, no CSS frameworks)
 - **UI**: Vanilla TypeScript + DOM manipulation (no React/Vue/Angular)
 - **Packaging**: electron-builder
@@ -24,7 +24,10 @@ Full docs: https://docs.nvidia.com/nemoclaw/latest/
 npm install          # Install dependencies
 npm run dev          # Run in dev mode with hot reload
 npm run build        # Compile TypeScript via electron-vite
-npm run dist         # Package with electron-builder (outputs to dist/)
+npm run dist         # Build + package for current platform (outputs to dist/)
+npm run dist:win     # Package for Windows (NSIS installer)
+npm run dist:mac     # Package for macOS (DMG)
+npm run dist:linux   # Package for Linux (AppImage)
 ```
 
 ## Architecture
@@ -32,42 +35,60 @@ npm run dist         # Package with electron-builder (outputs to dist/)
 ### Process Model (Electron)
 
 ```
-src/main/           # Main process (Node.js)
-  main.ts           # Window creation, IPC handler registration
-  preload.ts        # contextBridge — exposes typed ElectronAPI to renderer
-  ipc-handlers.ts   # All IPC handler logic (system checks, install, validation)
-  system-checks.ts  # OS/platform detection & prerequisite checks
+src/main/              # Main process (Node.js)
+  main.ts              # Window creation, IPC + config handler registration, mac bootstrap trigger
+  ipc-handlers.ts      # IPC handlers: system checks, API key validation, install streaming, window controls
+  system-checks.ts     # OS/platform detection & prerequisite checks
+  config-service.ts    # Persistent AppConfig (JSON in userData dir), first-launch detection
+  mac-bootstrap.ts     # macOS-only: silent first-launch bootstrap (Docker, NemoClaw, Ollama, model pull, sandbox)
 
-src/renderer/       # Renderer process (browser context)
-  index.html        # App shell
-  styles.css        # All styling (CSS custom properties, NVIDIA dark theme)
-  app.ts            # 6-step wizard logic & UI rendering
+src/preload/           # Preload script
+  preload.ts           # contextBridge — exposes typed ElectronAPI to renderer
 
-src/shared/         # Shared between processes
-  types.ts          # TypeScript interfaces (SystemCheckResult, InstallConfig, ElectronAPI, etc.)
+src/renderer/          # Renderer process (browser context)
+  index.html           # App shell
+  styles.css           # All styling (CSS custom properties, NVIDIA dark theme)
+  router.ts            # Entry point — routes to wizard (Win/Linux) or bootstrap→onboarding→dashboard (macOS)
+  app.ts               # 6-step wizard (Windows/Linux flow)
+  bootstrap-view.ts    # macOS first-launch loading screen with progress stages
+  onboarding-view.ts   # macOS post-bootstrap onboarding flow
+  dashboard-view.ts    # macOS return-launch dashboard
+
+src/shared/
+  types.ts             # Shared TypeScript interfaces (SystemCheckResult, InstallConfig, BootstrapEvent, ElectronAPI, etc.)
 ```
+
+### Platform-Specific UI Flows
+
+The renderer `router.ts` is the entry point for all platforms:
+
+- **Windows/Linux**: Loads the 6-step wizard (`app.ts`) — Welcome → System Check → Provider → Sandbox Config → Install → Complete
+- **macOS first launch**: Shows bootstrap loading screen (`bootstrap-view.ts`) while main process silently installs Docker/NemoClaw/Ollama/model, then transitions to onboarding → dashboard
+- **macOS return launch**: Skips to dashboard directly (config has `setupComplete: true`)
 
 ### IPC Communication
 
-- **Renderer → Main**: `ipcRenderer.invoke` (request-response) for system checks, API key validation, install commands
-- **Main → Renderer**: `webContents.send` for streaming events (`install-output` line-by-line, `install-complete`)
+- **Renderer → Main**: `ipcRenderer.invoke` (request-response) for system checks, API key validation, install commands, config read/write
+- **Main → Renderer**: `webContents.send` for streaming events (`install-output` line-by-line, `install-complete`, `bootstrap-progress`, `docker-missing`, `bootstrap-complete`)
 - **Security**: `contextIsolation: true`, `nodeIntegration: false`, all APIs exposed via `contextBridge`
 
-### Wizard Steps
+### Build Output
 
-1. Welcome — feature overview
-2. System Requirements — auto-validates OS, Node.js, npm, Docker, WSL2, disk (20GB), RAM (8GB), cgroup v2
-3. Inference Provider — radio card selection (NVIDIA/OpenAI/Anthropic/Gemini) + API key validation
-4. Sandbox Config — name input with RFC 1123 validation (`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
-5. Installation Progress — real-time terminal output streaming, progress bar, cancelable
-6. Completion — success confirmation, quick action command grid
+electron-vite compiles to `out/` (main, preload, renderer subdirs). electron-builder packages from `out/` into `dist/`. Config in `electron-builder.json`.
 
 ## Critical Conventions
 
 ### Windows WSL Handling
-- All shell commands on Windows go through `wsl bash -l -c "command"`
+- All shell commands on Windows go through `wsl bash -l -c "command"` (see `getShellCmd` in `ipc-handlers.ts`)
 - Write `credentials.json` to WSL filesystem (`~/.nemoclaw/`) via WSL command, NOT Node `fs` (which writes to Windows C:\)
 - Check WSL disk with `wsl df -k /`, not Windows disk
+
+### macOS Bootstrap Handling
+- On macOS, `mac-bootstrap.ts` runs in the main process and communicates progress via `bootstrap-progress` IPC events
+- Uses `bash -l -c` directly (not WSL) with `spawn` for all shell commands
+- Ollama startup: tries `ollama serve` (detached) first, falls back to `open -a Ollama`, polls `localhost:11434`
+- Model pull happens *before* `nemoclaw onboard` to avoid NemoClaw's 10-minute hardcoded timeout on large models
+- Docker: if missing, sends `docker-missing` event to renderer which shows a modal; polls `docker info` every 5s for up to 2 minutes
 
 ### Process Spawning
 - Always use `child_process.spawn` (NOT `exec`) for installation commands — `exec` buffers output and breaks real-time terminal streaming
@@ -77,15 +98,18 @@ src/shared/         # Shared between processes
 ### API Key Validation
 - 5-second timeout per request, retry once before failing
 - Specific error mapping: 401/403 → "Invalid API key", 429 → "Rate limited", 5xx → "Service unavailable"
+- Ollama provider skips validation entirely (no API key needed)
 
 ### Install Resilience
 - Check if CLI already installed before running `curl | bash` (idempotent)
-- Retry curl download up to 3 times
-- Docker startup: retry `docker info` every 5 seconds for up to 60 seconds
-- Abort if no stdout/stderr for 120 seconds (stale output timeout)
+- Pre-install OpenShell via curl to bypass GitHub CLI (`gh auth`) requirement
+- Set `npm_config_prefix` to `~/.npm-global` to fix macOS Homebrew EACCES errors
+- Stale output timeout: kill process if no stdout/stderr for 180 seconds
+- Command timeouts: 10 min per regular command, 15 min for long ops (model pull)
 
 ### Design System
 - NVIDIA green: `#76b900`, dark backgrounds: `#0a0a0a` / `#141414` / `#1e1e1e`
 - Fonts: Inter (UI), JetBrains Mono (terminal) — loaded from Google Fonts
 - Glassmorphism cards with backdrop-filter blur, green glow on focus
 - Every interactive element needs a unique `id`
+- Frameless window with custom title bar (minimize/maximize/close buttons wired via IPC)

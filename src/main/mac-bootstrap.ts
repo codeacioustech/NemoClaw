@@ -120,7 +120,10 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
       'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash',
       win,
       'nemoclaw-install',
-      { NEMOCLAW_NON_INTERACTIVE: '1' }
+      {
+        NEMOCLAW_NON_INTERACTIVE: '1',
+        NEMOCLAW_PROVIDER: 'ollama'
+      }
     )
 
     if (code === 0) {
@@ -364,7 +367,16 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       sendBootstrap(win, 'docker-check', 'done', 'Docker Desktop detected ✓', 20)
     }
 
-    // Step 3: NemoClaw
+    // Step 3: Write credentials.json before NemoClaw install
+    // This forces the official installer to use Ollama during its internal onboarding, bypassing API key requirements
+    const credsWritten = await writeCredentials(win)
+    if (!credsWritten) {
+      sendBootstrap(win, 'error', 'error', 'Failed to write credentials.', 22)
+      win.webContents.send('bootstrap-complete', false)
+      return
+    }
+
+    // Step 4: NemoClaw
     sendBootstrap(win, 'nemoclaw-check', 'running', 'Checking for NemoClaw...', 25)
     const hasNemoclaw = await checkNemoclawInstalled()
 
@@ -379,7 +391,7 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       }
     }
 
-    // Step 4: Ollama
+    // Step 5: Ollama
     sendBootstrap(win, 'ollama-check', 'running', 'Checking for Ollama...', 45)
     const hasOllama = await checkOllamaInstalled()
 
@@ -430,14 +442,6 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
         win.webContents.send('bootstrap-complete', false)
         return
       }
-    }
-
-    // Step 7: Write credentials.json before sandbox creation
-    const credsWritten = await writeCredentials(win)
-    if (!credsWritten) {
-      sendBootstrap(win, 'error', 'error', 'Failed to write credentials.', 83)
-      win.webContents.send('bootstrap-complete', false)
-      return
     }
 
     // Step 8: Create sandbox
