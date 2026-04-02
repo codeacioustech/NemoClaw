@@ -338,10 +338,10 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
 
   try {
     const code = await runShellLong(
-      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive',
+      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive --skip-openshell',
       win,
       'sandbox-create',
-      { 
+      {
         NEMOCLAW_NON_INTERACTIVE: '1',
         NEMOCLAW_SANDBOX_NAME: 'open-coot-default'
       }
@@ -378,7 +378,7 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       // Signal renderer to show Docker modal
       win.webContents.send('docker-missing')
       let success = await waitForDockerRetry(win)
-      
+
       while (!success) {
         console.log('[bootstrap] Docker waiting timed out. Waiting for user to click Retry.')
         await new Promise<void>((resolve) => {
@@ -402,16 +402,22 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       return
     }
 
-    // Step 4: NemoClaw pre-requisites
-    sendBootstrap(win, 'nemoclaw-check', 'running', 'Checking for NemoClaw...', 23)
+    // Step 4: NemoClaw & OpenShell pre-requisites
+    sendBootstrap(win, 'nemoclaw-check', 'running', 'Checking for OpenShell...', 23)
+
+    // Always ensure OpenShell is installed, even if NemoClaw is already installed
+    // This is because previous runs might have failed to install it properly
+    const hasOpenShell = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && openshell version')
+    if (hasOpenShell.code !== 0) {
+      await installOpenShell(win)
+    }
+
+    sendBootstrap(win, 'nemoclaw-check', 'running', 'Checking for NemoClaw...', 24)
     const hasNemoclaw = await checkNemoclawInstalled()
 
     if (hasNemoclaw) {
       sendBootstrap(win, 'nemoclaw-check', 'done', 'NemoClaw already installed ✓', 35)
     } else {
-      // Pre-install OpenShell via curl to bypass 'gh' authentication requirement
-      await installOpenShell(win)
-
       sendBootstrap(win, 'nemoclaw-install', 'running', 'Installing NemoClaw...', 25)
       const installed = await installNemoclaw(win)
       if (!installed) {
