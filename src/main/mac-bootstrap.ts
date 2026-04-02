@@ -338,7 +338,7 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
 
   try {
     const code = await runShellLong(
-      'nemoclaw onboard --non-interactive',
+      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive',
       win,
       'sandbox-create',
       { 
@@ -484,7 +484,7 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
 
     // Step 9: Verify sandbox creation
     sendBootstrap(win, 'sandbox-create', 'running', 'Verifying sandbox creation...', 98)
-    const verifySandbox = await runShell('nemoclaw list')
+    const verifySandbox = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw list')
     if (verifySandbox.code !== 0 || !verifySandbox.stdout.includes('open-coot-default')) {
       throw new Error("Sandbox creation failed")
     }
