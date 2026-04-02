@@ -47,7 +47,7 @@ function spawnGateway() {
   const entryPoint = resolveOpenclawEntry();
 
   const child = fork(entryPoint, ["gateway", "run"], {
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
