@@ -26,7 +26,6 @@ function writeSecure(filePath, data) {
 function seedOpenclawConfig() {
   ensureDir(OPENCLAW_DIR);
   const configPath = path.join(OPENCLAW_DIR, "openclaw.json");
-  if (fs.existsSync(configPath)) return;
 
   writeSecure(configPath, {
     gateway: {
@@ -43,8 +42,7 @@ function seedNemoclawConfig() {
   const now = new Date().toISOString();
 
   const configPath = path.join(NEMOCLAW_DIR, "config.json");
-  if (!fs.existsSync(configPath)) {
-    writeSecure(configPath, {
+  writeSecure(configPath, {
       endpointType: "ollama",
       endpointUrl: "http://localhost:11434/v1",
       ncpPartner: null,
@@ -54,11 +52,10 @@ function seedNemoclawConfig() {
       provider: "ollama-local",
       providerLabel: "NemoClaw Mac",
       onboardedAt: now,
-    });
-  }
+  });
 
   const sessionPath = path.join(NEMOCLAW_DIR, "onboard-session.json");
-  if (!fs.existsSync(sessionPath)) {
+  {
     const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const stepComplete = { status: "complete", startedAt: now, completedAt: now, error: null };
     const stepSkipped = { status: "skipped", startedAt: null, completedAt: null, error: null };
@@ -96,9 +93,7 @@ function seedNemoclawConfig() {
   }
 
   const credPath = path.join(NEMOCLAW_DIR, "credentials.json");
-  if (!fs.existsSync(credPath)) {
-    writeSecure(credPath, { OPENAI_API_KEY: "ollama" });
-  }
+  writeSecure(credPath, { OPENAI_API_KEY: "ollama" });
 }
 
 function seedAll() {
