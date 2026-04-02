@@ -71,3 +71,10 @@ components:
           - host: "nim-service.local"
             port: 8000
             protocol: rest
+
+      llamacpp-service:
+        name: llamacpp-service
+        endpoints:
+          - host: "llamacpp-service.local"
+            port: 8081
+            protocol: rest
