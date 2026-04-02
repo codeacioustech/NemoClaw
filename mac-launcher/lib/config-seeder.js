@@ -34,6 +34,37 @@ function seedOpenclawConfig() {
       port: GATEWAY_PORT,
       auth: { mode: "none" },
     },
+    models: {
+      mode: "merge",
+      providers: {
+        ollama: {
+          baseUrl: "http://127.0.0.1:11434",
+          apiKey: "OLLAMA_API_KEY",
+          api: "ollama",
+          models: [
+            {
+              id: MODEL,
+              name: "Qwen 2.5 0.5B",
+              reasoning: false,
+              input: ["text"],
+              cost: { input: 0, output: 0 },
+              contextWindow: 32768,
+              maxTokens: 8192,
+            },
+          ],
+        },
+      },
+    },
+    agents: {
+      defaults: {
+        model: {
+          primary: `ollama/${MODEL}`,
+        },
+        models: {
+          [`ollama/${MODEL}`]: {},
+        },
+      },
+    },
   });
 }
 
