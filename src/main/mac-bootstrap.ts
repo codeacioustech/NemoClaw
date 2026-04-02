@@ -343,7 +343,9 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
       'sandbox-create',
       {
         NEMOCLAW_NON_INTERACTIVE: '1',
-        NEMOCLAW_SANDBOX_NAME: 'open-coot-default'
+        NEMOCLAW_SANDBOX_NAME: 'open-coot-default',
+        NEMOCLAW_PROVIDER: 'ollama',
+        NEMOCLAW_MODEL: 'llama3:8b'
       }
     )
 
