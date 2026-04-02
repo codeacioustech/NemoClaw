@@ -42,7 +42,8 @@ function resolveOpenclawEntry() {
  * Spawn the OpenClaw gateway process using Electron with ELECTRON_RUN_AS_NODE=1.
  * This lets Electron's bundled Node runtime execute the .mjs file headlessly.
  */
-function spawnGateway() {
+function spawnGateway(opts = {}) {
+  const { onLog } = opts;
   const entryPoint = resolveOpenclawEntry();
 
   const child = spawn(process.execPath, [entryPoint, "gateway", "run"], {
@@ -56,20 +57,30 @@ function spawnGateway() {
 
   child.stdout?.on("data", (d) => {
     const msg = d.toString().trim();
-    if (msg) console.log("[gateway]", msg);
+    if (msg) {
+      console.log("[gateway]", msg);
+      onLog?.(msg);
+    }
   });
 
   child.stderr?.on("data", (d) => {
     const msg = d.toString().trim();
-    if (msg) console.error("[gateway]", msg);
+    if (msg) {
+      console.error("[gateway]", msg);
+      onLog?.(msg);
+    }
   });
 
   child.on("error", (err) => {
-    console.error("[gateway] Failed to spawn:", err.message);
+    const msg = `[gateway] Failed to spawn: ${err.message}`;
+    console.error(msg);
+    onLog?.(msg);
   });
 
   child.on("exit", (code, signal) => {
-    console.error(`[gateway] Process exited with code ${code}, signal ${signal}`);
+    const msg = `[gateway] Process exited with code ${code}, signal ${signal}`;
+    console.error(msg);
+    onLog?.(msg);
   });
 
   return child;

@@ -52,6 +52,10 @@ function sendError(message) {
   splashWindow?.webContents.send("setup-error", { message });
 }
 
+function sendLog(line) {
+  splashWindow?.webContents.send("gateway-log", { line });
+}
+
 // ── Window creation ──────────────────────────────────────────────
 
 function createSplashWindow() {
@@ -132,7 +136,7 @@ async function runFirstTimeSetup() {
 
 async function startGateway(splash) {
   sendStatus("gateway", "Starting NemoClaw gateway…");
-  const gatewayProc = spawnGateway();
+  const gatewayProc = spawnGateway({ onLog: sendLog });
   trackProcess("gateway", gatewayProc);
 
   await waitForGatewayReady(120000);
