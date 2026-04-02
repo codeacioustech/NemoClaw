@@ -102,6 +102,13 @@ export function getProviderSelectionConfig(
         credentialEnv: DEFAULT_ROUTE_CREDENTIAL_ENV,
         providerLabel: "Local vLLM",
       };
+    case "llamacpp-local":
+      return {
+        ...base,
+        model: model || "llamacpp-model",
+        credentialEnv: DEFAULT_ROUTE_CREDENTIAL_ENV,
+        providerLabel: "Local llama.cpp",
+      };
     case "ollama-local":
       return {
         ...base,
@@ -116,7 +123,12 @@ export function getProviderSelectionConfig(
 
 export function getOpenClawPrimaryModel(provider: string, model?: string): string {
   const resolvedModel =
-    model || (provider === "ollama-local" ? DEFAULT_OLLAMA_MODEL : DEFAULT_CLOUD_MODEL);
+    model ||
+    (provider === "ollama-local"
+      ? DEFAULT_OLLAMA_MODEL
+      : provider === "llamacpp-local"
+        ? "llamacpp-model"
+        : DEFAULT_CLOUD_MODEL);
   return `${MANAGED_PROVIDER_ID}/${resolvedModel}`;
 }
 

@@ -11,6 +11,7 @@ profiles:
   - ncp
   - nim-local
   - vllm
+  - llamacpp
 
 description: |
   NemoClaw blueprint: orchestrates OpenClaw sandbox creation, migration,

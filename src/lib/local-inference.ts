@@ -30,6 +30,8 @@ export function getLocalProviderBaseUrl(provider: string): string | null {
   switch (provider) {
     case "vllm-local":
       return `${HOST_GATEWAY_URL}:8000/v1`;
+    case "llamacpp-local":
+      return `${HOST_GATEWAY_URL}:8081/v1`;
     case "ollama-local":
       return `${HOST_GATEWAY_URL}:11434/v1`;
     default:
@@ -41,6 +43,8 @@ export function getLocalProviderValidationBaseUrl(provider: string): string | nu
   switch (provider) {
     case "vllm-local":
       return "http://localhost:8000/v1";
+    case "llamacpp-local":
+      return "http://localhost:8081/v1";
     case "ollama-local":
       return "http://localhost:11434/v1";
     default:
@@ -52,6 +56,8 @@ export function getLocalProviderHealthCheck(provider: string): string | null {
   switch (provider) {
     case "vllm-local":
       return "curl -sf http://localhost:8000/v1/models 2>/dev/null";
+    case "llamacpp-local":
+      return "curl -sf http://localhost:8081/v1/models 2>/dev/null";
     case "ollama-local":
       return "curl -sf http://localhost:11434/api/tags 2>/dev/null";
     default:
@@ -63,6 +69,8 @@ export function getLocalProviderContainerReachabilityCheck(provider: string): st
   switch (provider) {
     case "vllm-local":
       return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8000/v1/models 2>/dev/null`;
+    case "llamacpp-local":
+      return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8081/v1/models 2>/dev/null`;
     case "ollama-local":
       return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:11434/api/tags 2>/dev/null`;
     default:
@@ -86,6 +94,12 @@ export function validateLocalProvider(
         return {
           ok: false,
           message: "Local vLLM was selected, but nothing is responding on http://localhost:8000.",
+        };
+      case "llamacpp-local":
+        return {
+          ok: false,
+          message:
+            "Local llama.cpp was selected, but nothing is responding on http://localhost:8081.",
         };
       case "ollama-local":
         return {
@@ -115,6 +129,12 @@ export function validateLocalProvider(
         message:
           "Local vLLM is responding on localhost, but containers cannot reach http://host.openshell.internal:8000. Ensure the server is reachable from containers, not only from the host shell.",
       };
+    case "llamacpp-local":
+      return {
+        ok: false,
+        message:
+          "Local llama.cpp is responding on localhost, but containers cannot reach http://host.openshell.internal:8081. Ensure llama-server listens on 0.0.0.0:8081 instead of 127.0.0.1 so sandboxes can reach it.",
+      };
     case "ollama-local":
       return {
         ok: false,
@@ -127,6 +147,25 @@ export function validateLocalProvider(
         message: "The selected local inference provider is unavailable from containers.",
       };
   }
+}
+
+export function parseLlamaCppModels(output: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(output || ""));
+    return Array.isArray(parsed?.data)
+      ? parsed.data.map((m: { id?: string }) => m && m.id).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getLlamaCppModelId(runCapture: RunCaptureFn): string | null {
+  const output = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
+    ignoreError: true,
+  });
+  const models = parseLlamaCppModels(output);
+  return models.length > 0 ? models[0] : null;
 }
 
 export function parseOllamaList(output: unknown): string[] {

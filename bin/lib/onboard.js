@@ -1643,7 +1643,7 @@ function destroyGateway() {
 async function ensureNamedCredential(envName, label, helpUrl = null) {
   let key = getCredential(envName);
   if (key) {
-    process.env[envName] = key,;
+    process.env[envName] = key;
     return key;
   }
   return replaceNamedCredential(envName, label, helpUrl);
@@ -2842,7 +2842,7 @@ async function setupNim(gpu) {
         }
         preferredInferenceApi = "openai-completions";
         break;
-      } else if (selected.key === "llamacpp-local") {
+      } else if (selected.key === "llamacpp") {
         console.log("  ✓ Using existing llama.cpp on localhost:8081");
         provider = "llamacpp-local";
         credentialEnv = "OPENAI_API_KEY";
@@ -2856,7 +2856,7 @@ async function setupNim(gpu) {
               console.error(`  Detected model ID contains invalid characters: ${model}`);
               process.exit(1);
             }
-            console.log(` Detected model: ${model}`);
+            console.log(`  Detected model: ${model}`);
           } else {
             console.error("  Could not detect model from llama.cpp. Is a model loaded?");
             process.exit(1);
