@@ -47,11 +47,7 @@
       "!node_modules/openai",
       "!node_modules/playwright-core"
     ],
-    "asar": true,
-    "asarUnpack": [
-      "**/*.node",
-      "node_modules/openclaw/**/*"
-    ],
+    "asar": false,
     "mac": {
       "target": [
         "dmg"
