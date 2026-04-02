@@ -1,17 +1,36 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const { spawn } = require("child_process");
+const { spawn, execFileSync } = require("child_process");
 const http = require("http");
 const paths = require("./paths");
 const { GATEWAY_PORT } = require("./config-seeder");
 
+function findSystemNode() {
+  const candidates = [
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+  ];
+  for (const p of candidates) {
+    try {
+      const ver = execFileSync(p, ["--version"], { encoding: "utf-8" }).trim();
+      const major = parseInt(ver.replace("v", ""), 10);
+      if (major >= 22) return p;
+    } catch {
+      // not found, try next
+    }
+  }
+  // Fallback: assume node is on PATH
+  return "node";
+}
+
 function startGateway(onStdout, onStderr) {
   const openclawMjs = paths.resolveOpenclawMjs();
   const openclawDir = paths.resolveOpenclawDir();
+  const nodeBin = findSystemNode();
 
   const child = spawn(
-    process.execPath,
+    nodeBin,
     [
       openclawMjs,
       "gateway",
@@ -28,7 +47,6 @@ function startGateway(onStdout, onStderr) {
     {
       env: {
         ...process.env,
-        ELECTRON_RUN_AS_NODE: "1",
         OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
         NODE_OPTIONS: "",
       },
