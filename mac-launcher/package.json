@@ -1,21 +1,11 @@
 {
   "name": "nemoclaw-mac-launcher",
   "version": "1.0.0",
-  "description": "NemoClaw macOS desktop launcher — standalone Electron app wrapping the OpenClaw gateway",
+  "description": "NemoClaw macOS desktop launcher",
   "main": "index.js",
   "scripts": {
     "start": "electron .",
-    "prebuild": "chmod +x resources/ollama-mac/ollama 2>/dev/null || true",
-    "build": "npm run prebuild && npx electron-builder",
-    "build:clean": "npm install && npm run build",
-    "download-ollama": "bash scripts/download-ollama.sh"
-  },
-  "dependencies": {
-    "openclaw": "^2026.3.31"
-  },
-  "devDependencies": {
-    "electron": "^35.0.0",
-    "electron-builder": "^26.8.2"
+    "build": "npx electron-builder"
   },
   "build": {
     "appId": "com.nemoclaw.launcher",
@@ -25,26 +15,17 @@
     },
     "files": [
       "index.js",
-      "preload.js",
-      "splash.html",
-      "lib/**/*",
-      "resources/**/*",
-      "node_modules/openclaw/**/*"
+      "preload.js"
     ],
-    "asar": false,
-    "afterPack": "scripts/after-pack.js",
     "mac": {
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.developer-tools",
-      "icon": "icon.icns"
-    },
-    "extraResources": [
-      {
-        "from": "resources/ollama-mac",
-        "to": "ollama-mac"
-      }
-    ]
+      "category": "public.app-category.developer-tools"
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.8.2"
   }
 }
