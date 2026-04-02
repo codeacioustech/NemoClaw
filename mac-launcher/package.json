@@ -19,7 +19,7 @@
     "appId": "com.nemoclaw.launcher",
     "productName": "NemoClaw",
     "mac": {
-      "target": "zip",
+      "target": "dmg",
       "category": "public.app-category.developer-tools"
     },
     "asarUnpack": [
