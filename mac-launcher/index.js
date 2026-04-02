@@ -176,6 +176,25 @@ app.whenReady().then(async () => {
   }
 });
 
+// ── Retry handler ────────────────────────────────────────────────
+
+ipcMain.on("retry-setup", async () => {
+  console.log("[main] Retry requested, killing existing processes…");
+  await killAll();
+
+  // Reset splash state
+  sendStatus("ollama", "Starting local inference server…");
+  sendProgress({ status: "", completed: 0, total: 0, percent: 0 });
+
+  try {
+    // Re-run full setup
+    await runFirstTimeSetup();
+  } catch (err) {
+    console.error("[main] Retry failed:", err);
+    sendError(err.message || "Unknown error during retry");
+  }
+});
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
