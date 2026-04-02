@@ -54,6 +54,14 @@ components:
         credential_env: "OPENAI_API_KEY"
         credential_default: "dummy"
 
+      llamacpp:
+        provider_type: "openai"
+        provider_name: "llamacpp-local"
+        endpoint: "http://localhost:8081/v1"
+        model: "llamacpp-model"
+        credential_env: "OPENAI_API_KEY"
+        credential_default: "dummy"
+
   policy:
     base: "sandboxes/openclaw/policy.yaml"
     additions:
