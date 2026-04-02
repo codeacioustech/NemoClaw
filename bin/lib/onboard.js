@@ -2869,15 +2869,23 @@ async function setupNim(gpu) {
           );
           process.exit(1);
         }
-        preferredInferenceApi = await validateOpenAiLikeSelection(
+        const llamacppValidation = await validateOpenAiLikeSelection(
           "Local llama.cpp",
           getLocalProviderValidationBaseUrl(provider),
           model,
           credentialEnv,
         );
-        if (!preferredInferenceApi) {
+        if (
+          llamacppValidation.retry === "selection" ||
+          llamacppValidation.retry === "back" ||
+          llamacppValidation.retry === "model"
+        ) {
           continue selectionLoop;
         }
+        if (!llamacppValidation.ok) {
+          continue selectionLoop;
+        }
+        preferredInferenceApi = llamacppValidation.api;
         break;
       }
     }
@@ -3372,8 +3380,11 @@ const { resolveDashboardForwardTarget, buildControlUiUrls } = dashboard;
 function ensureDashboardForward(sandboxName, chatUiUrl = `http://127.0.0.1:${CONTROL_UI_PORT}`) {
   const forwardTarget = resolveDashboardForwardTarget(chatUiUrl);
   runOpenshell(["forward", "stop", String(CONTROL_UI_PORT)], { ignoreError: true });
+  // Use detached stdio so the background SSH child forked by `forward start`
+  // does not hold the pipes open and block spawnSync indefinitely.
   runOpenshell(["forward", "start", "--background", forwardTarget, sandboxName], {
     ignoreError: true,
+    stdio: ["ignore", "ignore", "ignore"],
   });
 }
 
