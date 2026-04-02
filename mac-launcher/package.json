@@ -31,22 +31,7 @@
       "!node_modules/openclaw/assets",
       "!node_modules/openclaw/CHANGELOG.md",
       "!node_modules/openclaw/README.md",
-      "!node_modules/openclaw/scripts",
-      "!node_modules/pdfjs-dist",
-      "!node_modules/@napi-rs",
-      "!node_modules/@matrix-org",
-      "!node_modules/matrix-js-sdk",
-      "!node_modules/matrix-widget-api",
-      "!node_modules/@line",
-      "!node_modules/@google/genai",
-      "!node_modules/@anthropic-ai",
-      "!node_modules/@mistralai",
-      "!node_modules/@aws-sdk",
-      "!node_modules/@smithy",
-      "!node_modules/@silvia-odwyer",
-      "!node_modules/telegraf",
-      "!node_modules/openai",
-      "!node_modules/playwright-core"
+      "!node_modules/openclaw/scripts"
     ],
     "asar": false,
     "mac": {
