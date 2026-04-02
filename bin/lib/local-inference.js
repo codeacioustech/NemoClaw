@@ -4,9 +4,6 @@
 // Thin re-export shim — the implementation lives in src/lib/local-inference.ts,
 // compiled to dist/lib/local-inference.js.
 
-<<<<<<< HEAD
-module.exports = require("../../dist/lib/local-inference");
-=======
 const { shellQuote } = require("./runner");
 
 const HOST_GATEWAY_URL = "http://host.openshell.internal";
@@ -233,7 +230,7 @@ function validateOllamaModel(model, runCapture) {
 }
 
 function getLlamaCppModelId(runCapture) {
-  const output = runCapture("curl -sf https://localhost:8081/v1/models 2>/dev/null", {
+  const output = runCapture("curl -sf http://localhost:8001/v1/models 2>/dev/null", {
     ignoreError: true,
   });
   if (!output) return null;
@@ -269,4 +266,3 @@ module.exports = {
   validateLocalProvider,
   getLlamaCppModelId,
 };
->>>>>>> 43c85ad (feat: add llamacpp-local to core local provider wiring)
