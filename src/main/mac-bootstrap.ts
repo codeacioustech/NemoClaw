@@ -339,8 +339,13 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
   sendBootstrap(win, 'sandbox-create', 'running', 'Creating sandbox...', 85)
 
   try {
+    // Generate a secure macOS native graphical password prompt for sudo
+    const askPassPath = '/tmp/opencoot_askpass.sh'
+    const askPassScript = `#!/bin/bash\nosascript -e 'tell application "SystemUIServer" to activate' -e 'tell application "SystemUIServer" to display dialog "Open-Coot requires administrator privileges to configure isolated sandbox networking (CoreDNS/Docker)." default answer "" with hidden answer with title "Authentication Required"' -e 'text returned of result'\n`
+    writeFileSync(askPassPath, askPassScript, { mode: 0o755, encoding: 'utf-8' })
+
     const code = await runShellLong(
-      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive',
+      `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v && export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive`,
       win,
       'sandbox-create',
       {
