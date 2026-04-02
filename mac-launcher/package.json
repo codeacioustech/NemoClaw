@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "electron": "^35.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.8.2"
   },
   "build": {
     "appId": "com.nemoclaw.launcher",
@@ -24,12 +24,12 @@
       "output": "dist"
     },
     "files": [
-      "**/*",
-      "!dist",
-      "!node_modules/openclaw/docs",
-      "!node_modules/openclaw/CHANGELOG.md",
-      "!node_modules/openclaw/README.md",
-      "!node_modules/**/*.map"
+      "index.js",
+      "preload.js",
+      "splash.html",
+      "lib/**/*",
+      "resources/**/*",
+      "node_modules/openclaw/**/*"
     ],
     "asar": false,
     "afterPack": "scripts/after-pack.js",
