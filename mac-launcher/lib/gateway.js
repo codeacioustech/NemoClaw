@@ -1,6 +1,6 @@
 "use strict";
 
-const { fork } = require("child_process");
+const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
@@ -39,15 +39,14 @@ function resolveOpenclawEntry() {
 }
 
 /**
- * Fork the OpenClaw gateway process using child_process.fork().
- * Passes ELECTRON_RUN_AS_NODE=1 to prevent Electron from booting
- * another Chromium window when executing the raw JS file.
+ * Spawn the OpenClaw gateway process using Electron with ELECTRON_RUN_AS_NODE=1.
+ * This lets Electron's bundled Node runtime execute the .mjs file headlessly.
  */
 function spawnGateway() {
   const entryPoint = resolveOpenclawEntry();
 
-  const child = fork(entryPoint, ["gateway", "run"], {
-    stdio: ["pipe", "pipe", "pipe", "ipc"],
+  const child = spawn(process.execPath, [entryPoint, "gateway", "run"], {
+    stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
@@ -67,6 +66,10 @@ function spawnGateway() {
 
   child.on("error", (err) => {
     console.error("[gateway] Failed to spawn:", err.message);
+  });
+
+  child.on("exit", (code, signal) => {
+    console.error(`[gateway] Process exited with code ${code}, signal ${signal}`);
   });
 
   return child;
