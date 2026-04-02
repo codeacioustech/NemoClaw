@@ -4,6 +4,7 @@ const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 
 const GATEWAY_PORT = 18789;
 const GATEWAY_URL = `http://127.0.0.1:${GATEWAY_PORT}`;
@@ -27,6 +28,7 @@ function resolveOpenclawEntry() {
       ),
     ];
     for (const candidate of candidates) {
+      console.log("[gateway] Checking path:", candidate, "exists:", fs.existsSync(candidate));
       if (fs.existsSync(candidate)) {
         return candidate;
       }
@@ -51,8 +53,11 @@ function spawnGateway(opts = {}) {
   const { onLog } = opts;
   const entryPoint = resolveOpenclawEntry();
 
+  const homeDir = os.homedir();
   console.log("[gateway] Starting with entry:", entryPoint);
   console.log("[gateway] Port:", GATEWAY_PORT);
+  console.log("[gateway] HOME:", homeDir);
+  console.log("[gateway] USER:", process.env.USER);
 
   const child = spawn(
     process.execPath,
@@ -73,6 +78,8 @@ function spawnGateway(opts = {}) {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",
         NODE_ENV: "production",
+        HOME: homeDir,
+        USER: process.env.USER || process.env.LOGNAME || os.userInfo().username,
       },
     },
   );

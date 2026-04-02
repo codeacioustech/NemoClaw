@@ -163,7 +163,7 @@ app.whenReady().then(async () => {
       const ollamaProc = spawnOllama();
       trackProcess("ollama", ollamaProc);
       try {
-        await waitForOllamaReady(15000);
+        await waitForOllamaReady(60000);
       } catch {
         // Ollama might already be running from a previous session
         console.log("[main] Ollama not responding to spawn, may already be running");
