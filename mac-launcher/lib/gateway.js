@@ -1,17 +1,34 @@
 "use strict";
 
-const { spawn } = require("child_process");
+const { fork } = require("child_process");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
 
 const GATEWAY_PORT = 18789;
 const GATEWAY_URL = `http://127.0.0.1:${GATEWAY_PORT}`;
 
 /**
  * Resolve the path to the bundled openclaw CLI entry point.
- * In a packaged Electron app, node_modules are under app.asar or app directory.
+ * In a packaged Electron app, node_modules are unpacked under
+ * process.resourcesPath/app.asar.unpacked/node_modules/.
  */
 function resolveOpenclawEntry() {
+  // Packaged app: use process.resourcesPath to find unpacked openclaw
+  if (process.resourcesPath) {
+    const unpackedPath = path.join(
+      process.resourcesPath,
+      "app.asar.unpacked",
+      "node_modules",
+      "openclaw",
+      "openclaw.mjs",
+    );
+    if (fs.existsSync(unpackedPath)) {
+      return unpackedPath;
+    }
+  }
+
+  // Dev mode: require.resolve works normally
   try {
     return require.resolve("openclaw/openclaw.mjs");
   } catch {
@@ -22,17 +39,18 @@ function resolveOpenclawEntry() {
 }
 
 /**
- * Spawn the OpenClaw gateway process using the bundled openclaw binary.
- * Uses spawn() with node to execute the .mjs entry point directly.
+ * Fork the OpenClaw gateway process using child_process.fork().
+ * Passes ELECTRON_RUN_AS_NODE=1 to prevent Electron from booting
+ * another Chromium window when executing the raw JS file.
  */
 function spawnGateway() {
   const entryPoint = resolveOpenclawEntry();
-  const nodeExec = process.execPath || "node";
 
-  const child = spawn(nodeExec, [entryPoint, "gateway", "run"], {
+  const child = fork(entryPoint, ["gateway", "run"], {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
       NODE_ENV: "production",
     },
   });
