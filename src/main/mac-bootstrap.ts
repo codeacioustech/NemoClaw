@@ -35,9 +35,10 @@ function runShell(cmd: string, env?: Record<string, string>): Promise<{ code: nu
       reject(new Error(`Command timed out after 600s: ${cmd.substring(0, 80)}`))
     }, 600000)
 
-    proc.on('close', (code) => {
+    proc.on('exit', (code) => {
       clearTimeout(timeout)
-      resolve({ code: code ?? 1, stdout, stderr })
+      // Small delay ensures stdout has time to flush if it is finishing gracefully
+      setTimeout(() => resolve({ code: code ?? 1, stdout, stderr }), 50)
     })
 
     proc.on('error', (err) => {
@@ -73,9 +74,10 @@ function runShellLong(cmd: string, win: BrowserWindow, stage: BootstrapStage, en
       reject(new Error(`Command timed out: ${cmd.substring(0, 80)}`))
     }, 900000)
 
-    proc.on('close', (code) => {
+    proc.on('exit', (code) => {
       clearTimeout(timeout)
-      resolve(code ?? 1)
+      // Small delay to ensure stdout has time to flush
+      setTimeout(() => resolve(code ?? 1), 50)
     })
 
     proc.on('error', (err) => {
