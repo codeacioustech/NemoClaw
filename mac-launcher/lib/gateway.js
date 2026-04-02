@@ -7,7 +7,11 @@ const paths = require("./paths");
 const { GATEWAY_PORT } = require("./config-seeder");
 
 function findSystemNode() {
+  // OpenClaw requires Node 22.x — newer majors (23+, 24+, 25+) break chalk ESM exports.
+  // Prefer the exact Node 22 brew cellar path, then fall back to general locations.
   const candidates = [
+    "/opt/homebrew/opt/node@22/bin/node",
+    "/usr/local/opt/node@22/bin/node",
     "/opt/homebrew/bin/node",
     "/usr/local/bin/node",
   ];
@@ -15,13 +19,14 @@ function findSystemNode() {
     try {
       const ver = execFileSync(p, ["--version"], { encoding: "utf-8" }).trim();
       const major = parseInt(ver.replace("v", ""), 10);
-      if (major >= 22) return p;
+      if (major === 22) return p;
     } catch {
       // not found, try next
     }
   }
-  // Fallback: assume node is on PATH
-  return "node";
+  throw new Error(
+    "Node.js 22.x is required but not found. Install it with: brew install node@22"
+  );
 }
 
 function startGateway(onStdout, onStderr) {
