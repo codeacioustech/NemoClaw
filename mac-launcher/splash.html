@@ -95,6 +95,46 @@
       .retry-btn:hover {
         background: #a4e600;
       }
+      .log-panel {
+        width: 440px;
+        margin-top: 16px;
+        background: #0a0e14;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        overflow: hidden;
+        -webkit-app-region: no-drag;
+      }
+      .log-header {
+        padding: 4px 10px;
+        background: #161b22;
+        font-size: 11px;
+        font-weight: 600;
+        color: #8b949e;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 1px solid #30363d;
+      }
+      .log-content {
+        height: 120px;
+        overflow-y: auto;
+        padding: 6px 10px;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        color: #c9d1d9;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .log-content::-webkit-scrollbar {
+        width: 6px;
+      }
+      .log-content::-webkit-scrollbar-track {
+        background: #0d1117;
+      }
+      .log-content::-webkit-scrollbar-thumb {
+        background: #30363d;
+        border-radius: 3px;
+      }
     </style>
   </head>
   <body>
@@ -107,6 +147,10 @@
     </div>
     <div class="progress-detail" id="progress-detail"></div>
     <button class="retry-btn hidden" id="retry-btn">Retry</button>
+    <div class="log-panel hidden" id="log-panel">
+      <div class="log-header">Gateway Logs</div>
+      <div class="log-content" id="log-content"></div>
+    </div>
 
     <script>
       const statusText = document.getElementById("status-text");
@@ -115,6 +159,9 @@
       const progressDetail = document.getElementById("progress-detail");
       const spinner = document.getElementById("spinner");
       const retryBtn = document.getElementById("retry-btn");
+      const logPanel = document.getElementById("log-panel");
+      const logContent = document.getElementById("log-content");
+      const MAX_LOG_LINES = 200;
 
       window.nemoclaw.onStatus((data) => {
         statusText.textContent = data.message || "";
@@ -122,6 +169,9 @@
         if (data.phase === "pulling") {
           spinner.classList.add("hidden");
           progressContainer.classList.remove("hidden");
+        }
+        if (data.phase === "gateway") {
+          logPanel.classList.remove("hidden");
         }
       });
 
@@ -147,12 +197,29 @@
         retryBtn.classList.remove("hidden");
       });
 
+      window.nemoclaw.onLog((data) => {
+        logPanel.classList.remove("hidden");
+        const line = document.createElement("div");
+        line.textContent = data.line || "";
+        logContent.appendChild(line);
+
+        // Trim old lines to prevent memory buildup
+        while (logContent.children.length > MAX_LOG_LINES) {
+          logContent.removeChild(logContent.firstChild);
+        }
+
+        // Auto-scroll to bottom
+        logContent.scrollTop = logContent.scrollHeight;
+      });
+
       retryBtn.addEventListener("click", () => {
         retryBtn.classList.add("hidden");
         spinner.classList.remove("hidden");
         progressContainer.classList.add("hidden");
+        logPanel.classList.add("hidden");
         progressBar.style.width = "0%";
         progressDetail.textContent = "";
+        logContent.innerHTML = "";
         statusText.textContent = "Retrying…";
         window.nemoclaw.retrySetup();
       });
