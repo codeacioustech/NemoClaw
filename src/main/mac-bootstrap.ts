@@ -338,10 +338,13 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
 
   try {
     const code = await runShellLong(
-      'nemoclaw onboard --non-interactive --name open-coot-default',
+      'nemoclaw onboard --non-interactive',
       win,
       'sandbox-create',
-      { NEMOCLAW_NON_INTERACTIVE: '1' }
+      { 
+        NEMOCLAW_NON_INTERACTIVE: '1',
+        NEMOCLAW_SANDBOX_NAME: 'open-coot-default'
+      }
     )
 
     if (code === 0) {
