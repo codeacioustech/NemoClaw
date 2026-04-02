@@ -1,31 +1,41 @@
 {
   "name": "nemoclaw-mac-launcher",
-  "version": "1.0.0",
-  "description": "NemoClaw macOS desktop launcher",
+  "version": "0.1.0",
+  "description": "macOS desktop launcher for NemoClaw",
   "main": "index.js",
   "scripts": {
     "start": "electron .",
-    "build": "npx electron-builder"
+    "dist": "npm run download-ollama && electron-builder",
+    "download-ollama": "bash scripts/download-ollama.sh"
+  },
+  "dependencies": {
+    "openclaw": "^2026.3.11"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.0"
   },
   "build": {
     "appId": "com.nemoclaw.launcher",
     "productName": "NemoClaw",
-    "directories": {
-      "output": "dist"
+    "mac": {
+      "target": "zip",
+      "category": "public.app-category.developer-tools"
     },
+    "asarUnpack": [
+      "node_modules/openclaw/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/ollama-mac",
+        "to": "ollama-mac"
+      }
+    ],
     "files": [
       "index.js",
-      "preload.js"
-    ],
-    "mac": {
-      "target": [
-        "dmg"
-      ],
-      "category": "public.app-category.developer-tools"
-    }
-  },
-  "devDependencies": {
-    "electron": "^35.0.0",
-    "electron-builder": "^26.8.2"
+      "preload.js",
+      "splash.html",
+      "lib/**"
+    ]
   }
 }
