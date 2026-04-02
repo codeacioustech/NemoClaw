@@ -26,14 +26,13 @@
     "files": [
       "**/*",
       "!dist",
-      "!resources/ollama-mac",
       "!node_modules/openclaw/docs",
-      "!node_modules/openclaw/assets",
       "!node_modules/openclaw/CHANGELOG.md",
       "!node_modules/openclaw/README.md",
-      "!node_modules/openclaw/scripts"
+      "!node_modules/**/*.map"
     ],
     "asar": false,
+    "afterPack": "scripts/after-pack.js",
     "mac": {
       "target": [
         "dmg"
