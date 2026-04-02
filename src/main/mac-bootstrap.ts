@@ -338,7 +338,7 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
 
   try {
     const code = await runShellLong(
-      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive --skip-openshell',
+      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive',
       win,
       'sandbox-create',
       {
