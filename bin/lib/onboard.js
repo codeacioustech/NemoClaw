@@ -2324,7 +2324,7 @@ async function setupNim(gpu) {
     });
   }
   if (llamacppRunning) {
-    options.push({ key: "llamacpp", label: "Local llama.cpp model"})
+    options.push({ key: "llamacpp", label: "Local llama.cpp model" });
   }
   if (EXPERIMENTAL && gpu && gpu.nimCapable) {
     options.push({ key: "nim-local", label: "Local NVIDIA NIM [experimental]" });
@@ -2847,7 +2847,9 @@ async function setupNim(gpu) {
         provider = "llamacpp-local";
         credentialEnv = "OPENAI_API_KEY";
         endpointUrl = getLocalProviderBaseUrl(provider);
-        const modelsRaw = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", { ignoreError: true });
+        const modelsRaw = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
+          ignoreError: true,
+        });
         try {
           const models = JSON.parse(modelsRaw);
           if (models.data && models.data.length > 0) {
@@ -2862,14 +2864,16 @@ async function setupNim(gpu) {
             process.exit(1);
           }
         } catch {
-          console.error("  Could not query llama.cpp models endpoint. Is llama-server running on localhost:8081?");
+          console.error(
+            "  Could not query llama.cpp models endpoint. Is llama-server running on localhost:8081?",
+          );
           process.exit(1);
         }
         preferredInferenceApi = await validateOpenAiLikeSelection(
           "Local llama.cpp",
           getLocalProviderValidationBaseUrl(provider),
           model,
-          credentialEnv
+          credentialEnv,
         );
         if (!preferredInferenceApi) {
           continue selectionLoop;
@@ -3028,7 +3032,15 @@ async function setupInference(
     upsertProvider("llamacpp-local", "openai", "OPENAI_API_KEY", baseUrl, {
       OPENAI_API_KEY: "dummy",
     });
-    runOpenshell(["inference", "set", "--no-verify", "--provider", "llamacpp-local", "--model", model]);
+    runOpenshell([
+      "inference",
+      "set",
+      "--no-verify",
+      "--provider",
+      "llamacpp-local",
+      "--model",
+      model,
+    ]);
   }
 
   verifyInferenceRoute(provider, model);
