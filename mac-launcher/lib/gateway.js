@@ -14,17 +14,22 @@ const GATEWAY_URL = `http://127.0.0.1:${GATEWAY_PORT}`;
  * process.resourcesPath/app.asar.unpacked/node_modules/.
  */
 function resolveOpenclawEntry() {
-  // Packaged app: use process.resourcesPath to find unpacked openclaw
+  // Packaged app: asar is disabled, so files are on the regular filesystem
   if (process.resourcesPath) {
-    const unpackedPath = path.join(
-      process.resourcesPath,
-      "app.asar.unpacked",
-      "node_modules",
-      "openclaw",
-      "openclaw.mjs",
-    );
-    if (fs.existsSync(unpackedPath)) {
-      return unpackedPath;
+    const candidates = [
+      path.join(process.resourcesPath, "app", "node_modules", "openclaw", "openclaw.mjs"),
+      path.join(
+        process.resourcesPath,
+        "app.asar.unpacked",
+        "node_modules",
+        "openclaw",
+        "openclaw.mjs",
+      ),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
   }
 
