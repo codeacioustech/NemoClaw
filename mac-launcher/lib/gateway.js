@@ -51,7 +51,7 @@ function spawnGateway(opts = {}) {
   const { onLog } = opts;
   const entryPoint = resolveOpenclawEntry();
 
-  const child = spawn(process.execPath, [entryPoint, "gateway", "run"], {
+  const child = spawn(process.execPath, [entryPoint, "gateway", "run", "--allow-unconfigured"], {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
