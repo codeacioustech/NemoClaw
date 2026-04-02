@@ -1509,6 +1509,8 @@ function getEffectiveProviderName(providerKey) {
       return "ollama-local";
     case "vllm":
       return "vllm-local";
+    case "llamacpp":
+      return "llamacpp-local";
     default:
       return providerKey;
   }
@@ -1641,7 +1643,7 @@ function destroyGateway() {
 async function ensureNamedCredential(envName, label, helpUrl = null) {
   let key = getCredential(envName);
   if (key) {
-    process.env[envName] = key;
+    process.env[envName] = key,;
     return key;
   }
   return replaceNamedCredential(envName, label, helpUrl);
@@ -1682,6 +1684,7 @@ function getNonInteractiveProvider() {
     nim: "nim-local",
     vllm: "vllm",
     anthropiccompatible: "anthropicCompatible",
+    llamacpp: "llamacpp",
   };
   const normalized = aliases[providerKey] || providerKey;
   const validProviders = new Set([
@@ -1694,11 +1697,12 @@ function getNonInteractiveProvider() {
     "custom",
     "nim-local",
     "vllm",
+    "llamacpp",
   ]);
   if (!validProviders.has(normalized)) {
     console.error(`  Unsupported NEMOCLAW_PROVIDER: ${providerKey}`);
     console.error(
-      "  Valid values: build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm",
+      "  Valid values: build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm, llamacpp",
     );
     process.exit(1);
   }
@@ -1911,7 +1915,7 @@ async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
 
   const gwArgs = ["--name", GATEWAY_NAME];
   // Do NOT pass --gpu here. On DGX Spark (and most GPU hosts), inference is
-  // routed through a host-side provider (Ollama, vLLM, or cloud API) — the
+  // routed through a host-side provider (Ollama, vLLM, llama.cpp, or cloud API) — the
   // sandbox itself does not need direct GPU access. Passing --gpu causes
   // FailedPrecondition errors when the gateway's k3s device plugin cannot
   // allocate GPUs. See: https://build.nvidia.com/spark/nemoclaw/instructions
@@ -2297,6 +2301,9 @@ async function setupNim(gpu) {
   const vllmRunning = !!runCapture("curl -sf http://localhost:8000/v1/models 2>/dev/null", {
     ignoreError: true,
   });
+  const llamacppRunning = !!runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
+    ignoreError: true,
+  });
   const requestedProvider = isNonInteractive() ? getNonInteractiveProvider() : null;
   const requestedModel = isNonInteractive()
     ? getNonInteractiveModel(requestedProvider || "build")
@@ -2315,6 +2322,9 @@ async function setupNim(gpu) {
         `Local Ollama (localhost:11434)${ollamaRunning ? " — running" : ""}` +
         (ollamaRunning ? " (suggested)" : ""),
     });
+  }
+  if (llamacppRunning) {
+    options.push({ key: "llamacpp", label: "Local llama.cpp model"})
   }
   if (EXPERIMENTAL && gpu && gpu.nimCapable) {
     options.push({ key: "nim-local", label: "Local NVIDIA NIM [experimental]" });
@@ -2347,6 +2357,7 @@ async function setupNim(gpu) {
       } else {
         const suggestions = [];
         if (vllmRunning) suggestions.push("vLLM");
+        if (llamacppRunning) suggestions.push("llama.cpp");
         if (ollamaRunning) suggestions.push("Ollama");
         if (suggestions.length > 0) {
           console.log(
@@ -2831,6 +2842,39 @@ async function setupNim(gpu) {
         }
         preferredInferenceApi = "openai-completions";
         break;
+      } else if (selected.key === "llamacpp-local") {
+        console.log("  ✓ Using existing llama.cpp on localhost:8081");
+        provider = "llamacpp-local";
+        credentialEnv = "OPENAI_API_KEY";
+        endpointUrl = getLocalProviderBaseUrl(provider);
+        const modelsRaw = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", { ignoreError: true });
+        try {
+          const models = JSON.parse(modelsRaw);
+          if (models.data && models.data.length > 0) {
+            model = models.data[0].id;
+            if (!isSafeModelId(model)) {
+              console.error(`  Detected model ID contains invalid characters: ${model}`);
+              process.exit(1);
+            }
+            console.log(` Detected model: ${model}`);
+          } else {
+            console.error("  Could not detect model from llama.cpp. Is a model loaded?");
+            process.exit(1);
+          }
+        } catch {
+          console.error("  Could not query llama.cpp models endpoint. Is llama-server running on localhost:8081?");
+          process.exit(1);
+        }
+        preferredInferenceApi = await validateOpenAiLikeSelection(
+          "Local llama.cpp",
+          getLocalProviderValidationBaseUrl(provider),
+          model,
+          credentialEnv
+        );
+        if (!preferredInferenceApi) {
+          continue selectionLoop;
+        }
+        break;
       }
     }
   }
@@ -2974,6 +3018,17 @@ async function setupInference(
       console.error(`  ${probe.message}`);
       process.exit(1);
     }
+  } else if (provider === "llamacpp-local") {
+    const validation = validateLocalProvider(provider, runCapture);
+    if (!validation.ok) {
+      console.error(`  ${validation.message}`);
+      process.exit(1);
+    }
+    const baseUrl = getLocalProviderBaseUrl(provider);
+    upsertProvider("llamacpp-local", "openai", "OPENAI_API_KEY", baseUrl, {
+      OPENAI_API_KEY: "dummy",
+    });
+    runOpenshell(["inference", "set", "--no-verify", "--provider", "llamacpp-local", "--model", model]);
   }
 
   verifyInferenceRoute(provider, model);
@@ -3369,6 +3424,7 @@ function printDashboard(sandboxName, model, provider, nimContainer = null) {
   else if (provider === "gemini-api") providerLabel = "Google Gemini";
   else if (provider === "compatible-endpoint") providerLabel = "Other OpenAI-compatible endpoint";
   else if (provider === "vllm-local") providerLabel = "Local vLLM";
+  else if (provider === "llamacpp-local") providerLabel = "Local llama.cpp";
   else if (provider === "ollama-local") providerLabel = "Local Ollama";
 
   const token = fetchGatewayAuthTokenFromSandbox(sandboxName);
