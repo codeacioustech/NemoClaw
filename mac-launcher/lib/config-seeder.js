@@ -18,7 +18,7 @@ const NEMOCLAW_DIR = path.join(os.homedir(), ".nemoclaw");
 function seedInferenceConfig(opts) {
   const config = {
     endpointType: "custom",
-    endpointUrl: "https://inference.local/v1",
+    endpointUrl: "http://localhost:11434/v1",
     ncpPartner: null,
     model: opts.model || "qwen2.5:0.5b",
     profile: "inference-local",

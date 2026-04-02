@@ -3,6 +3,7 @@
 const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
 
 const OLLAMA_PORT = 11434;
 const OLLAMA_BASE = `http://127.0.0.1:${OLLAMA_PORT}`;
@@ -15,6 +16,15 @@ const OLLAMA_BASE = `http://127.0.0.1:${OLLAMA_PORT}`;
  */
 function spawnOllama() {
   const ollamaPath = getOllamaPath();
+  try {
+    fs.accessSync(ollamaPath, fs.constants.X_OK);
+  } catch {
+    throw new Error(
+      `Ollama binary not found or not executable at: ${ollamaPath}\n` +
+        "Run 'npm run download-ollama' in mac-launcher/ first.",
+    );
+  }
+
   const child = spawn(ollamaPath, ["serve"], {
     env: {
       ...process.env,
