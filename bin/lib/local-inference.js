@@ -17,7 +17,7 @@ function getLocalProviderBaseUrl(provider) {
     case "vllm-local":
       return `${HOST_GATEWAY_URL}:8000/v1`;
     case "llamacpp-local":
-      return `${HOST_GATEWAY_URL}:8001/v1`;
+      return `${HOST_GATEWAY_URL}:8081/v1`;
     case "ollama-local":
       return `${HOST_GATEWAY_URL}:11434/v1`;
     default:
@@ -30,7 +30,7 @@ function getLocalProviderValidationBaseUrl(provider) {
     case "vllm-local":
       return "http://localhost:8000/v1";
     case "llamacpp-local":
-      return "http://localhost:8001/v1";
+      return "http://localhost:8081/v1";
     case "ollama-local":
       return "http://localhost:11434/v1";
     default:
@@ -43,7 +43,7 @@ function getLocalProviderHealthCheck(provider) {
     case "vllm-local":
       return "curl -sf http://localhost:8000/v1/models 2>/dev/null";
     case "llamacpp-local":
-      return "curl -sf http://localhost:8001/v1/models 2>/dev/null";
+      return "curl -sf http://localhost:8081/v1/models 2>/dev/null";
     case "ollama-local":
       return "curl -sf http://localhost:11434/api/tags 2>/dev/null";
     default:
@@ -56,7 +56,7 @@ function getLocalProviderContainerReachabilityCheck(provider) {
     case "vllm-local":
       return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8000/v1/models 2>/dev/null`;
     case "llamacpp-local":
-      return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8001/v1/models 2>/dev/null`;
+      return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8081/v1/models 2>/dev/null`;
     case "ollama-local":
       return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:11434/api/tags 2>/dev/null`;
     default:
@@ -82,7 +82,7 @@ function validateLocalProvider(provider, runCapture) {
         return {
           ok: false,
           message:
-            "Local llama.cpp was selected, but nothing is responding on http://localhost:8001.",
+            "Local llama.cpp was selected, but nothing is responding on http://localhost:8081.",
         };
       case "ollama-local":
         return {
@@ -116,7 +116,7 @@ function validateLocalProvider(provider, runCapture) {
       return {
         ok: false,
         message:
-          "Local llama.cpp is responding on localhost, but containers cannot reach http://host.openshell.internal:8001. Ensure the server is reachable from containers, not only from the host shell.",
+          "Local llama.cpp is responding on localhost, but containers cannot reach http://host.openshell.internal:8081. Ensure the server is reachable from containers, not only from the host shell.",
       };
     case "ollama-local":
       return {
@@ -230,7 +230,7 @@ function validateOllamaModel(model, runCapture) {
 }
 
 function getLlamaCppModelId(runCapture) {
-  const output = runCapture("curl -sf http://localhost:8001/v1/models 2>/dev/null", {
+  const output = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
     ignoreError: true,
   });
   if (!output) return null;
