@@ -5,8 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "electron .",
-    "build": "npx electron-builder",
-    "build:clean": "npm install && npx electron-builder",
+    "prebuild": "chmod +x resources/ollama-mac/ollama 2>/dev/null || true",
+    "build": "npm run prebuild && npx electron-builder",
+    "build:clean": "npm install && npm run build",
     "download-ollama": "bash scripts/download-ollama.sh"
   },
   "dependencies": {

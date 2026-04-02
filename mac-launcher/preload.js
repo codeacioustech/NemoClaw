@@ -10,4 +10,7 @@ contextBridge.exposeInMainWorld("nemoclaw", {
   onError: (callback) => {
     ipcRenderer.on("setup-error", (_event, data) => callback(data));
   },
+  retrySetup: () => {
+    ipcRenderer.send("retry-setup");
+  },
 });
