@@ -10,7 +10,7 @@ import { saveConfig } from './config-service'
 let capturedOpenClawUrl: string | null = null
 
 // Pin NemoClaw to a known working version to avoid upstream breaking changes
-const NEMOCLAW_VERSION = 'v0.0.2'
+const NEMOCLAW_VERSION = 'v0.0.1'
 
 function startOllamaDetached(): void {
   const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
@@ -61,7 +61,20 @@ function runShellLong(cmd: string, win: BrowserWindow, stage: BootstrapStage, en
     const proc = spawn('bash', ['-l', '-c', cmd], { shell: false, env: fullEnv })
     proc.stdin?.end()
 
+    // Stale output timer — kill if no stdout/stderr for 180 seconds
+    let staleTimer: ReturnType<typeof setTimeout> | null = null
+    const resetStale = (): void => {
+      if (staleTimer) clearTimeout(staleTimer)
+      staleTimer = setTimeout(() => {
+        console.error(`[bootstrap:${stage}] No output for 180s — killing stalled process`)
+        proc.kill('SIGKILL')
+        reject(new Error(`Process stalled (no output for 180s): ${cmd.substring(0, 80)}`))
+      }, 180000)
+    }
+    resetStale()
+
     proc.stdout?.on('data', (data: Buffer) => {
+      resetStale()
       const lines = data.toString().split('\n').filter((l: string) => l.trim())
       for (const line of lines) {
         console.log(`[bootstrap:${stage}] ${line}`)
@@ -75,26 +88,30 @@ function runShellLong(cmd: string, win: BrowserWindow, stage: BootstrapStage, en
     })
 
     proc.stderr?.on('data', (data: Buffer) => {
+      resetStale()
       const lines = data.toString().split('\n').filter((l: string) => l.trim())
       for (const line of lines) {
         console.log(`[bootstrap:${stage}:stderr] ${line}`)
       }
     })
 
-    // 15-minute timeout for long operations (model pull etc.)
+    // 15-minute hard timeout for long operations (model pull etc.)
     const timeout = setTimeout(() => {
-      proc.kill()
-      reject(new Error(`Command timed out: ${cmd.substring(0, 80)}`))
+      if (staleTimer) clearTimeout(staleTimer)
+      proc.kill('SIGKILL')
+      reject(new Error(`Command timed out after 15min: ${cmd.substring(0, 80)}`))
     }, 900000)
 
     proc.on('exit', (code) => {
       clearTimeout(timeout)
+      if (staleTimer) clearTimeout(staleTimer)
       // Small delay to ensure stdout has time to flush
       setTimeout(() => resolve(code ?? 1), 50)
     })
 
     proc.on('error', (err) => {
       clearTimeout(timeout)
+      if (staleTimer) clearTimeout(staleTimer)
       reject(err)
     })
   })
@@ -127,6 +144,20 @@ async function checkNemoclawInstalled(): Promise<boolean> {
     return result.code === 0
   } catch (err) {
     console.error(`[bootstrap] checkNemoclawInstalled error:`, err)
+    return false
+  }
+}
+
+async function checkNemoclawVersion(): Promise<boolean> {
+  console.log(`[bootstrap] Checking if installed NemoClaw matches pinned version ${NEMOCLAW_VERSION}...`)
+  try {
+    const result = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw --version 2>/dev/null || echo "unknown"')
+    const installedVersion = result.stdout.trim()
+    console.log(`[bootstrap] Installed NemoClaw version: ${installedVersion}`)
+    // Check if the installed version contains our pinned version (e.g. "0.0.1" in "v0.0.1" or "nemoclaw 0.0.1")
+    const pinned = NEMOCLAW_VERSION.replace(/^v/, '')
+    return installedVersion.includes(pinned)
+  } catch {
     return false
   }
 }
@@ -188,6 +219,7 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
       'nemoclaw-install',
       {
         NEMOCLAW_NON_INTERACTIVE: '1',
+        NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: '1',
         NEMOCLAW_PROVIDER: 'ollama',
         NEMOCLAW_INSTALL_TAG: NEMOCLAW_VERSION
       }
@@ -235,7 +267,7 @@ async function installOpenShell(win: BrowserWindow): Promise<boolean> {
 
 async function checkDocker(): Promise<boolean> {
   try {
-    const result = await runShell('docker info')
+    const result = await runShell('docker ps -q 2>/dev/null')
     return result.code === 0
   } catch {
     return false
@@ -419,11 +451,12 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
 
     console.log('[bootstrap] Sudo acquired, running nemoclaw onboard...')
     const code = await runShellLong(
-      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive',
+      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive --name open-coot-default',
       win,
       'sandbox-create',
       {
         NEMOCLAW_NON_INTERACTIVE: '1',
+        NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: '1',
         NEMOCLAW_SANDBOX_NAME: 'open-coot-default',
         NEMOCLAW_PROVIDER: 'ollama',
         NEMOCLAW_MODEL: 'llama3.2:3b'
@@ -466,8 +499,9 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       while (!success) {
         console.log('[bootstrap] Docker waiting timed out. Waiting for user to click Retry.')
         await new Promise<void>((resolve) => {
-          ipcMain.handle('retry-docker', async () => {
-            ipcMain.removeHandler('retry-docker')
+          // Remove any existing handler before registering to avoid duplicate handler errors
+          try { ipcMain.removeHandler('retry-docker') } catch { /* no existing handler */ }
+          ipcMain.handleOnce('retry-docker', async () => {
             resolve()
           })
         })
@@ -500,7 +534,20 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
     const hasNemoclaw = await checkNemoclawInstalled()
 
     if (hasNemoclaw) {
-      sendBootstrap(win, 'nemoclaw-check', 'done', 'NemoClaw already installed ✓', 35)
+      // Verify the installed version matches our pinned version
+      const versionOk = await checkNemoclawVersion()
+      if (versionOk) {
+        sendBootstrap(win, 'nemoclaw-check', 'done', `NemoClaw ${NEMOCLAW_VERSION} already installed ✓`, 35)
+      } else {
+        console.log(`[bootstrap] NemoClaw version mismatch — reinstalling ${NEMOCLAW_VERSION}...`)
+        sendBootstrap(win, 'nemoclaw-install', 'running', `Updating NemoClaw to ${NEMOCLAW_VERSION}...`, 25)
+        const installed = await installNemoclaw(win)
+        if (!installed) {
+          sendBootstrap(win, 'error', 'error', 'Failed to update NemoClaw. Please try again.', 35)
+          win.webContents.send('bootstrap-complete', false)
+          return
+        }
+      }
     } else {
       sendBootstrap(win, 'nemoclaw-install', 'running', 'Installing NemoClaw...', 25)
       const installed = await installNemoclaw(win)
