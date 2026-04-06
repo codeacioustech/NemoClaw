@@ -20,7 +20,7 @@ function defaultConfig(): AppConfig {
     invites: [],
     sandboxName: 'open-coot-default',
     provider: 'ollama',
-    model: 'qwen2.5:7b',
+    model: 'llama3.1:8b',
     configVersion: 1
   }
 }

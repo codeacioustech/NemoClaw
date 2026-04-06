@@ -31,7 +31,7 @@ const PROVIDERS: ProviderOption[] = [
     desc: 'Use pre-installed Ollama for local inference — no API key needed',
     badge: 'Pre-installed',
     keyUrl: '',
-    model: 'qwen2.5:7b', // Changed to an extremely lightweight model for faster install/testing
+    model: 'llama3.1:8b', // Changed to an extremely lightweight model for faster install/testing
     noApiKey: true
   },
   {
