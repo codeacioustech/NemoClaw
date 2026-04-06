@@ -11,7 +11,7 @@
 #   - Global nemoclaw npm install/link
 #   - OpenShell binary if it was installed to the standard installer path
 #
-# Preserves shared system tooling such as Docker, Node.js, npm, and Ollama by default.
+# Preserves shared system tooling such as Docker, Node.js, npm, llama.cpp, and Ollama by default.
 
 set -euo pipefail
 
@@ -97,7 +97,7 @@ print_banner() {
   printf "  ${C_GREEN}${C_BOLD} ╚═╝  ╚═══╝╚══════╝╚═╝     ╚═╝ ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝${C_RESET}\n"
   printf "\n"
   printf "  ${C_DIM}Uninstaller — This will remove all NemoClaw resources.${C_RESET}\n"
-  printf "  ${C_DIM}Docker, Node.js, Ollama, and npm are preserved.${C_RESET}\n"
+  printf "  ${C_DIM}Docker, Node.js, Ollama, llama.cpp, and npm are preserved.${C_RESET}\n"
   printf "\n"
 }
 
@@ -116,7 +116,7 @@ NEMOCLAW_STATE_DIR="${HOME}/.nemoclaw"
 OPENSHELL_CONFIG_DIR="${HOME}/.config/openshell"
 NEMOCLAW_CONFIG_DIR="${HOME}/.config/nemoclaw"
 DEFAULT_GATEWAY="nemoclaw"
-PROVIDERS=("nvidia-nim" "vllm-local" "ollama-local" "nvidia-ncp" "nim-local")
+PROVIDERS=("nvidia-nim" "vllm-local" "ollama-local" "llamacpp-local" "nvidia-ncp" "nim-local")
 OPEN_SHELL_INSTALL_PATHS=("/usr/local/bin/openshell" "${XDG_BIN_HOME:-$HOME/.local/bin}/openshell")
 OLLAMA_MODELS=("nemotron-3-super:120b" "nemotron-3-nano:30b")
 TMP_ROOT="${TMPDIR:-/tmp}"
@@ -134,32 +134,32 @@ usage() {
   printf "  ${C_GREEN}Options:${C_RESET}\n"
   printf "    --yes             Skip the confirmation prompt\n"
   printf "    --keep-openshell  Leave the openshell binary installed\n"
-  printf "    --delete-models   Remove NemoClaw-pulled Ollama models\n"
+  printf "    --delete-models   Remove NemoClaw-pulled Ollama models and llama.cpp cache\n"
   printf "    -h, --help        Show this help\n"
   printf "\n"
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --yes)
-      ASSUME_YES=true
-      shift
-      ;;
-    --keep-openshell)
-      KEEP_OPEN_SHELL=true
-      shift
-      ;;
-    --delete-models)
-      DELETE_MODELS=true
-      shift
-      ;;
-    -h | --help)
-      usage
-      exit 0
-      ;;
-    *)
-      fail "Unknown argument: $1"
-      ;;
+  --yes)
+    ASSUME_YES=true
+    shift
+    ;;
+  --keep-openshell)
+    KEEP_OPEN_SHELL=true
+    shift
+    ;;
+  --delete-models)
+    DELETE_MODELS=true
+    shift
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    fail "Unknown argument: $1"
+    ;;
   esac
 done
 
@@ -176,11 +176,12 @@ confirm() {
   printf "  ${C_DIM}  · Global nemoclaw npm package${C_RESET}\n"
   if [ "$DELETE_MODELS" = true ]; then
     printf "  ${C_DIM}  · Ollama models: %s${C_RESET}\n" "${OLLAMA_MODELS[*]}"
+    printf "  ${C_DIM}  · llama.cpp model cache (~/.cache/llama.cpp)${C_RESET}\n"
   else
-    printf "  ${C_DIM}  · Ollama models: ${C_RESET}${C_GREEN}kept${C_RESET}${C_DIM} (pass --delete-models to remove)${C_RESET}\n"
+    printf "  ${C_DIM}  · Local models: ${C_RESET}${C_GREEN}kept${C_RESET}${C_DIM} (pass --delete-models to remove)${C_RESET}\n"
   fi
   printf "\n"
-  printf "  ${C_DIM}Docker, Node.js, npm, and Ollama are not touched.${C_RESET}\n"
+  printf "  ${C_DIM}Docker, Node.js, npm, llama.cpp, and Ollama are not touched.${C_RESET}\n"
   printf "\n"
   printf "  ${C_BOLD}Continue?${C_RESET} [y/N] "
   local reply=""
@@ -190,11 +191,11 @@ confirm() {
     read -r reply || true
   fi
   case "$reply" in
-    y | Y | yes | YES) ;;
-    *)
-      info "Aborted."
-      exit 0
-      ;;
+  y | Y | yes | YES) ;;
+  *)
+    info "Aborted."
+    exit 0
+    ;;
   esac
 }
 
@@ -278,6 +279,31 @@ stop_openshell_forward_processes() {
   done
 }
 
+stop_llamacpp_server() {
+  if ! command -v pgrep >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local -a pids=()
+  local pid
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    pids+=("$pid")
+  done < <(pgrep -f 'llama-server' 2>/dev/null || true)
+
+  if [ "${#pids[@]}" -eq 0]; then
+    return 0
+  fi
+
+  for pid in "{pids[@]}"; do
+    if kill "$pid" >/dev/null 2>&1 || kill -9 "$pid" >/dev/null 2>&1; then
+      info "Stopped llama-server process $pid"
+    else
+      warn "Failed to stop llama-server process $pid"
+    fi
+  done
+}
+
 remove_openshell_resources() {
   if ! command -v openshell >/dev/null 2>&1; then
     warn "openshell not found; skipping gateway/provider/sandbox cleanup."
@@ -337,9 +363,9 @@ is_installer_managed_nemoclaw_shim() {
   local exec_line="exec \""
   local exec_suffix="/nemoclaw\" \"\$@\""
   case "$contents" in
-    '#!/usr/bin/env bash'$'\n'"$path_line"*"$path_suffix"$'\n'"$exec_line"*"$exec_suffix")
-      return 0
-      ;;
+  '#!/usr/bin/env bash'$'\n'"$path_line"*"$path_suffix"$'\n'"$exec_line"*"$exec_suffix")
+    return 0
+    ;;
   esac
   return 1
 }
@@ -396,8 +422,8 @@ remove_related_docker_containers() {
     [ -n "$line" ] || continue
     container_ids+=("$line")
   done < <(
-    docker ps -a --format '{{.ID}} {{.Image}} {{.Names}}' 2>/dev/null \
-      | awk '
+    docker ps -a --format '{{.ID}} {{.Image}} {{.Names}}' 2>/dev/null |
+      awk '
           BEGIN { IGNORECASE=1 }
           {
             ref=$0
@@ -405,8 +431,8 @@ remove_related_docker_containers() {
               print $1
             }
           }
-        ' \
-      | awk '!seen[$0]++'
+        ' |
+      awk '!seen[$0]++'
   )
 
   if [ "${#container_ids[@]}" -eq 0 ]; then
@@ -447,8 +473,8 @@ remove_related_docker_images() {
     [ -n "$line" ] || continue
     image_ids+=("$line")
   done < <(
-    docker images --format '{{.ID}} {{.Repository}}:{{.Tag}}' 2>/dev/null \
-      | awk '
+    docker images --format '{{.ID}} {{.Repository}}:{{.Tag}}' 2>/dev/null |
+      awk '
           BEGIN { IGNORECASE=1 }
           {
             ref=$0
@@ -456,8 +482,8 @@ remove_related_docker_images() {
               print $1
             }
           }
-        ' \
-      | awk '!seen[$0]++'
+        ' |
+      awk '!seen[$0]++'
   )
 
   if [ "${#image_ids[@]}" -eq 0 ]; then
@@ -548,6 +574,20 @@ remove_optional_ollama_models() {
   done
 }
 
+remove_optional_llamacpp_cache() {
+  if [ "$DELETE_MODELS" != true ]; then
+    return 0
+  fi
+
+  local cache_dir="${HOME}/.cache/llama.cpp"
+  if [ -d "$cache_dir" ]; then
+    rm -rf "$cache_dir"
+    info "Removed llama.cpp model cache ($cache_dir)"
+  else
+    info "No llama.cpp model cache found"
+  fi
+}
+
 remove_nemoclaw_swap() {
   if [ ! -f /swapfile ]; then
     info "No /swapfile found; skipping swap cleanup."
@@ -626,6 +666,7 @@ main() {
   step 1 "Stopping services"
   stop_helper_services
   stop_openshell_forward_processes
+  stop_llamacpp_server
 
   step 2 "OpenShell resources"
   remove_openshell_resources
@@ -636,8 +677,9 @@ main() {
   step 4 "Docker resources"
   spin "Removing Docker resources..." remove_docker_resources
 
-  step 5 "Ollama models"
+  step 5 "Local models"
   remove_optional_ollama_models
+  remove_optional_llamacpp_cache
 
   step 6 "State and binaries"
   info "Removing NemoClaw-managed swap file..."
