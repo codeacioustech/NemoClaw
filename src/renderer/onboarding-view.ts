@@ -504,7 +504,7 @@ async function finishOnboarding(): Promise<void> {
     microapps: state.microapps,
     sandboxName: 'open-coot-default',
     provider: 'ollama',
-    model: 'llama3.1:8b',
+    model: 'llama3.2:3b',
     configVersion: 1
   }
 
