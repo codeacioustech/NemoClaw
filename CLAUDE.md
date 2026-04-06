@@ -30,6 +30,8 @@ npm run dist:mac     # Package for macOS (DMG)
 npm run dist:linux   # Package for Linux (AppImage)
 ```
 
+No test framework or linter is configured. TypeScript compilation (`npm run build`) is the only validation step.
+
 ## Architecture
 
 ### Process Model (Electron)
@@ -71,6 +73,18 @@ The renderer `router.ts` is the entry point for all platforms:
 - **Renderer → Main**: `ipcRenderer.invoke` (request-response) for system checks, API key validation, install commands, config read/write
 - **Main → Renderer**: `webContents.send` for streaming events (`install-output` line-by-line, `install-complete`, `bootstrap-progress`, `docker-missing`, `bootstrap-complete`)
 - **Security**: `contextIsolation: true`, `nodeIntegration: false`, all APIs exposed via `contextBridge`
+
+### TypeScript Configuration
+
+Uses project references (`tsconfig.json` → `tsconfig.main.json`, `tsconfig.preload.json`, `tsconfig.renderer.json`). Each sub-config targets its respective Electron process.
+
+### Renderer Dual-Root Pattern
+
+The renderer has two DOM roots: `#app` (legacy wizard for Windows/Linux) and `#oc-root` (macOS bootstrap/onboarding/dashboard). `router.ts` toggles visibility between them based on platform. When adding new macOS views, mount under `#oc-root`; wizard changes go in `#app`.
+
+### Config Persistence
+
+`config-service.ts` stores `config.json` in Electron's `userData` directory (e.g., `~/Library/Application Support/NemoClaw Installer/` on macOS, `%APPDATA%/NemoClaw Installer/` on Windows). The `setupComplete` flag gates whether macOS shows bootstrap or dashboard on launch.
 
 ### Build Output
 
