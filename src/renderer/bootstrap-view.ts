@@ -185,30 +185,23 @@ function setupListeners(container: HTMLElement): void {
     window.electronAPI.removeBootstrapListeners()
 
     if (success) {
-      // Check if onboarding was already completed on a previous launch
-      const config = await window.electronAPI.getConfig()
+      // Launch OpenClaw directly — skipping onboarding for now as requested
+      const stageEl = document.getElementById('oc-bootstrap-stage')!
+      stageEl.textContent = 'Launching OpenClaw...'
 
-      if (config && config.setupComplete) {
-        // Return launch — skip onboarding, launch OpenClaw directly
-        const stageEl = document.getElementById('oc-bootstrap-stage')!
-        stageEl.textContent = 'Launching OpenClaw...'
+      // Make sure setupComplete is saved so future logic works
+      await window.electronAPI.saveConfig({ setupComplete: true })
 
-        const result = await window.electronAPI.launchOpenClaw()
-        if (!result.success) {
-          // Show error with retry
-          const errorDiv = document.getElementById('oc-bootstrap-error')!
-          errorDiv.style.display = 'flex'
-          document.getElementById('oc-error-message')!.textContent =
-            result.error || 'Failed to connect to OpenClaw. Make sure Docker and your sandbox are running.'
-          document.getElementById('oc-error-retry-btn')!.addEventListener('click', () => {
-            window.location.reload()
-          })
-        }
-      } else {
-        // First launch — go through onboarding
-        setTimeout(() => {
-          navigateToOnboarding()
-        }, 800)
+      const result = await window.electronAPI.launchOpenClaw()
+      if (!result.success) {
+        // Show error with retry
+        const errorDiv = document.getElementById('oc-bootstrap-error')!
+        errorDiv.style.display = 'flex'
+        document.getElementById('oc-error-message')!.textContent =
+          result.error || 'Failed to connect to OpenClaw. Make sure Docker and your sandbox are running.'
+        document.getElementById('oc-error-retry-btn')!.addEventListener('click', () => {
+          window.location.reload()
+        })
       }
     } else {
       // Show error state
