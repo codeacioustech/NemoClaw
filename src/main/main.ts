@@ -37,7 +37,8 @@ function createWindow(): void {
 
 /**
  * Discover the OpenClaw URL and load it in the main window.
- * Sends status updates via 'openclaw-status' IPC events.
+ * Prioritizes the saved tokenized URL from config (captured during bootstrap).
+ * Falls back to multi-strategy discovery if no saved URL is available.
  * Returns { success, error? }.
  */
 async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: boolean; error?: string }> {
@@ -47,20 +48,24 @@ async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: bo
 
   win.webContents.send('openclaw-status', 'Connecting to OpenClaw service...')
 
+  // Fast path: use saved tokenized URL from bootstrap (already has #token=...)
+  if (savedUrl && savedUrl.includes('#token=')) {
+    console.log('[Main] Using saved tokenized URL from config')
+    win.webContents.send('openclaw-status', 'Loading OpenClaw...')
+    resizeForOpenClaw(win)
+    win.loadURL(savedUrl)
+    return { success: true }
+  }
+
+  // Slow path: discover URL via nemoclaw CLI strategies
   try {
+    win.webContents.send('openclaw-status', 'Discovering OpenClaw URL...')
     const url = await getOpenClawUrl(sandboxName)
     const finalUrl = url || savedUrl
 
     if (finalUrl) {
       saveConfig({ openclawUrl: finalUrl })
-      // Make the window bigger for the full OpenClaw UI
-      win.setMinimumSize(1000, 700)
-      const [w, h] = win.getSize()
-      if (w < 1200 || h < 800) {
-        win.setSize(1400, 900)
-        win.center()
-      }
-      // Remove frameless constraint — load the actual web UI
+      resizeForOpenClaw(win)
       win.loadURL(finalUrl)
       return { success: true }
     }
@@ -70,7 +75,7 @@ async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: bo
     const message = (err as Error).message
     console.error('[Main] Error launching OpenClaw:', message)
 
-    // Try saved URL as fallback
+    // Try saved URL as last fallback (even without token)
     if (savedUrl) {
       console.log('[Main] Trying saved URL as fallback...')
       try {
@@ -91,6 +96,15 @@ async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: bo
     }
 
     return { success: false, error: message }
+  }
+}
+
+function resizeForOpenClaw(win: BrowserWindow): void {
+  win.setMinimumSize(1000, 700)
+  const [w, h] = win.getSize()
+  if (w < 1200 || h < 800) {
+    win.setSize(1400, 900)
+    win.center()
   }
 }
 

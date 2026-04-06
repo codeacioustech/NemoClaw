@@ -4,6 +4,10 @@ import * as os from 'os'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import type { BootstrapEvent, BootstrapStage } from '../shared/types'
+import { saveConfig } from './config-service'
+
+// Captured during sandbox creation — the tokenized OpenClaw URL
+let capturedOpenClawUrl: string | null = null
 
 function startOllamaDetached(): void {
   const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
@@ -58,6 +62,12 @@ function runShellLong(cmd: string, win: BrowserWindow, stage: BootstrapStage, en
       const lines = data.toString().split('\n').filter((l: string) => l.trim())
       for (const line of lines) {
         console.log(`[bootstrap:${stage}] ${line}`)
+        // Capture tokenized OpenClaw URL from sandbox creation output
+        const urlMatch = line.match(/http:\/\/127\.0\.0\.1:18789\/#token=[a-f0-9]+/)
+        if (urlMatch) {
+          capturedOpenClawUrl = urlMatch[0]
+          console.log(`[bootstrap] Captured OpenClaw URL: ${capturedOpenClawUrl}`)
+        }
       }
     })
 
@@ -504,8 +514,16 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       throw new Error("Sandbox creation failed")
     }
 
+    // Step 10: Save captured OpenClaw URL to config
+    if (capturedOpenClawUrl) {
+      console.log(`[bootstrap] Saving OpenClaw URL to config: ${capturedOpenClawUrl}`)
+      saveConfig({ openclawUrl: capturedOpenClawUrl })
+    } else {
+      console.warn('[bootstrap] No tokenized OpenClaw URL was captured during sandbox creation')
+    }
+
     // Done!
-    sendBootstrap(win, 'complete', 'done', 'Bootstrap complete — launching onboarding...', 100)
+    sendBootstrap(win, 'complete', 'done', 'Bootstrap complete!', 100)
     win.webContents.send('bootstrap-complete', true)
 
   } catch (err) {
