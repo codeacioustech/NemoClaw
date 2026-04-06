@@ -9,6 +9,9 @@ import { saveConfig } from './config-service'
 // Captured during sandbox creation — the tokenized OpenClaw URL
 let capturedOpenClawUrl: string | null = null
 
+// Pin NemoClaw to a known working version to avoid upstream breaking changes
+const NEMOCLAW_VERSION = 'v0.0.2'
+
 function startOllamaDetached(): void {
   const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
   proc.unref()
@@ -178,13 +181,15 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
       return false
     }
 
+    console.log(`[bootstrap] Installing NemoClaw ${NEMOCLAW_VERSION}...`)
     const code = await runShellLong(
       'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash',
       win,
       'nemoclaw-install',
       {
         NEMOCLAW_NON_INTERACTIVE: '1',
-        NEMOCLAW_PROVIDER: 'ollama'
+        NEMOCLAW_PROVIDER: 'ollama',
+        NEMOCLAW_INSTALL_TAG: NEMOCLAW_VERSION
       }
     )
 
