@@ -28,6 +28,9 @@ const {
   getOllamaWarmupCommand,
   validateOllamaModel,
   validateLocalProvider,
+  getBootstrapLlamaCppModelOptions,
+  getLlamaCppStartCommand,
+  waitForLlamaCppReady,
 } = require("./local-inference");
 const {
   CLOUD_MODEL_OPTIONS,
@@ -1729,6 +1732,23 @@ async function promptOllamaModel(gpu = null) {
   return promptManualModelId("  Ollama model id: ", "Ollama");
 }
 
+async function promptLlamaCppModel(gpu = null) {
+  const options = getBootstrapLlamaCppModelOptions(gpu);
+  console.log("");
+  console.log("  llama.cpp models (downloaded from HuggingFace on first launch):");
+  options.forEach((option, index) => {
+    console.log(`    ${index + 1}) ${option.label}`);
+  });
+  console.log("");
+
+  const choice = await prompt(`  Choose model [1]: `);
+  const index = parseInt(choice || "1", 10) - 1;
+  if (index >= 0 && index < options.length) {
+    return options[index];
+  }
+  return options[0];
+}
+
 function pullOllamaModel(model) {
   const result = spawnSync("bash", ["-c", `ollama pull ${shellQuote(model)}`], {
     cwd: ROOT,
@@ -1805,6 +1825,9 @@ function getEffectiveProviderName(providerKey) {
       return "ollama-local";
     case "vllm":
       return "vllm-local";
+    case "llamacpp":
+    case "install-llamacpp":
+      return "llamacpp-local";
     default:
       return providerKey;
   }
@@ -1984,6 +2007,8 @@ function getNonInteractiveProvider() {
     nim: "nim-local",
     vllm: "vllm",
     anthropiccompatible: "anthropicCompatible",
+    llamacpp: "llamacpp",
+    "install-llamacpp": "install-llamacpp",
   };
   const normalized = aliases[providerKey] || providerKey;
   const validProviders = new Set([
@@ -1996,11 +2021,13 @@ function getNonInteractiveProvider() {
     "custom",
     "nim-local",
     "vllm",
+    "llamacpp",
+    "install-llamacpp",
   ]);
   if (!validProviders.has(normalized)) {
     console.error(`  Unsupported NEMOCLAW_PROVIDER: ${providerKey}`);
     console.error(
-      "  Valid values: build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm",
+      "  Valid values: build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm, llamacpp, install-llamacpp",
     );
     process.exit(1);
   }
@@ -2224,7 +2251,7 @@ async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
 
   const gwArgs = ["--name", GATEWAY_NAME];
   // Do NOT pass --gpu here. On DGX Spark (and most GPU hosts), inference is
-  // routed through a host-side provider (Ollama, vLLM, or cloud API) — the
+  // routed through a host-side provider (Ollama, vLLM, llama.cpp, or cloud API) — the
   // sandbox itself does not need direct GPU access. Passing --gpu causes
   // FailedPrecondition errors when the gateway's k3s device plugin cannot
   // allocate GPUs. See: https://build.nvidia.com/spark/nemoclaw/instructions
@@ -2642,6 +2669,11 @@ async function setupNim(gpu) {
   const vllmRunning = !!runCapture("curl -sf http://localhost:8000/v1/models 2>/dev/null", {
     ignoreError: true,
   });
+  const hasLlamaServer = !!runCapture("command -v llama-server", { ignoreError: true });
+  const hasBrew = !!runCapture("command -v brew", { ignoreError: true });
+  const llamacppRunning = !!runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
+    ignoreError: true,
+  });
   const requestedProvider = isNonInteractive() ? getNonInteractiveProvider() : null;
   const requestedModel = isNonInteractive()
     ? getNonInteractiveModel(requestedProvider || "build")
@@ -2660,6 +2692,13 @@ async function setupNim(gpu) {
         `Local Ollama (localhost:11434)${ollamaRunning ? " — running" : ""}` +
         (ollamaRunning ? " (suggested)" : ""),
     });
+  }
+  if (llamacppRunning) {
+    options.push({ key: "llamacpp", label: "Local llama.cpp model" });
+  }
+  // Offer to install llama.cpp when Homebrew is available but llama-server isn't
+  if (!llamacppRunning && !hasLlamaServer && hasBrew) {
+    options.push({ key: "install-llamacpp", label: "Install llama.cpp (Homebrew)" });
   }
   if (EXPERIMENTAL && gpu && gpu.nimCapable) {
     options.push({ key: "nim-local", label: "Local NVIDIA NIM [experimental]" });
@@ -2692,6 +2731,7 @@ async function setupNim(gpu) {
       } else {
         const suggestions = [];
         if (vllmRunning) suggestions.push("vLLM");
+        if (llamacppRunning) suggestions.push("llama.cpp");
         if (ollamaRunning) suggestions.push("Ollama");
         if (suggestions.length > 0) {
           console.log(
@@ -3135,6 +3175,74 @@ async function setupNim(gpu) {
           break;
         }
         break;
+      } else if (selected.key === "install-llamacpp") {
+        console.log("  Installing llama.cpp via Homebrew...");
+        const installResult = spawnSync("bash", ["-c", "brew install llama.cpp"], {
+          cwd: ROOT,
+          encoding: "utf8",
+          stdio: "inherit",
+          timeout: 300_000,
+          env: { ...process.env },
+        });
+        if (installResult.status !== 0) {
+          console.error("  Failed to install llama.cpp. Check Homebrew and try again.");
+          continue selectionLoop;
+        }
+
+        // Pick model
+        let selectedModel;
+        if (isNonInteractive()) {
+          selectedModel = getBootstrapLlamaCppModelOptions(gpu)[0];
+        } else {
+          selectedModel = await promptLlamaCppModel(gpu);
+        }
+
+        // Start llama-server with HuggingFace auto-download
+        const llamaHost = isWsl() ? "127.0.0.1" : "0.0.0.0";
+        const startCmd = getLlamaCppStartCommand(selectedModel, { host: llamaHost });
+        console.log(
+          `  Starting llama-server (downloading ${selectedModel.hfFile} on first run)...`,
+        );
+        run(startCmd, { ignoreError: true });
+
+        // Poll until healthy
+        console.log(
+          "  Waiting for llama-server to become ready (model loading may take a few minutes)...",
+        );
+        const detectedModel = waitForLlamaCppReady(runCapture);
+        if (!detectedModel) {
+          console.error("  llama-server did not become ready within 120 seconds.");
+          console.error(
+            "  The model may still be downloading. Try again or start llama-server manually.",
+          );
+          continue selectionLoop;
+        }
+
+        console.log(`  Detected model: ${detectedModel}`);
+        console.log("  ✓ Using llama.cpp on localhost:8081");
+        provider = "llamacpp-local";
+        credentialEnv = "OPENAI_API_KEY";
+        endpointUrl = getLocalProviderBaseUrl(provider);
+        model = detectedModel;
+
+        const llamacppValidation = await validateOpenAiLikeSelection(
+          "Local llama.cpp",
+          getLocalProviderValidationBaseUrl(provider),
+          model,
+          credentialEnv,
+        );
+        if (
+          llamacppValidation.retry === "selection" ||
+          llamacppValidation.retry === "back" ||
+          llamacppValidation.retry === "model"
+        ) {
+          continue selectionLoop;
+        }
+        if (!llamacppValidation.ok) {
+          continue selectionLoop;
+        }
+        preferredInferenceApi = llamacppValidation.api;
+        break;
       } else if (selected.key === "vllm") {
         console.log("  ✓ Using existing vLLM on localhost:8000");
         provider = "vllm-local";
@@ -3189,6 +3297,51 @@ async function setupNim(gpu) {
           );
         }
         preferredInferenceApi = "openai-completions";
+        break;
+      } else if (selected.key === "llamacpp") {
+        console.log("  ✓ Using existing llama.cpp on localhost:8081");
+        provider = "llamacpp-local";
+        credentialEnv = "OPENAI_API_KEY";
+        endpointUrl = getLocalProviderBaseUrl(provider);
+        const modelsRaw = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
+          ignoreError: true,
+        });
+        try {
+          const models = JSON.parse(modelsRaw);
+          if (models.data && models.data.length > 0) {
+            model = models.data[0].id;
+            if (!isSafeModelId(model)) {
+              console.error(`  Detected model ID contains invalid characters: ${model}`);
+              process.exit(1);
+            }
+            console.log(`  Detected model: ${model}`);
+          } else {
+            console.error("  Could not detect model from llama.cpp. Is a model loaded?");
+            process.exit(1);
+          }
+        } catch {
+          console.error(
+            "  Could not query llama.cpp models endpoint. Is llama-server running on localhost:8081?",
+          );
+          process.exit(1);
+        }
+        const llamacppValidation = await validateOpenAiLikeSelection(
+          "Local llama.cpp",
+          getLocalProviderValidationBaseUrl(provider),
+          model,
+          credentialEnv,
+        );
+        if (
+          llamacppValidation.retry === "selection" ||
+          llamacppValidation.retry === "back" ||
+          llamacppValidation.retry === "model"
+        ) {
+          continue selectionLoop;
+        }
+        if (!llamacppValidation.ok) {
+          continue selectionLoop;
+        }
+        preferredInferenceApi = llamacppValidation.api;
         break;
       }
     }
@@ -3333,6 +3486,25 @@ async function setupInference(
       console.error(`  ${probe.message}`);
       process.exit(1);
     }
+  } else if (provider === "llamacpp-local") {
+    const validation = validateLocalProvider(provider, runCapture);
+    if (!validation.ok) {
+      console.error(`  ${validation.message}`);
+      process.exit(1);
+    }
+    const baseUrl = getLocalProviderBaseUrl(provider);
+    upsertProvider("llamacpp-local", "openai", "OPENAI_API_KEY", baseUrl, {
+      OPENAI_API_KEY: "dummy",
+    });
+    runOpenshell([
+      "inference",
+      "set",
+      "--no-verify",
+      "--provider",
+      "llamacpp-local",
+      "--model",
+      model,
+    ]);
   }
 
   verifyInferenceRoute(provider, model);
@@ -3744,6 +3916,7 @@ function printDashboard(sandboxName, model, provider, nimContainer = null) {
   else if (provider === "gemini-api") providerLabel = "Google Gemini";
   else if (provider === "compatible-endpoint") providerLabel = "Other OpenAI-compatible endpoint";
   else if (provider === "vllm-local") providerLabel = "Local vLLM";
+  else if (provider === "llamacpp-local") providerLabel = "Local llama.cpp";
   else if (provider === "ollama-local") providerLabel = "Local Ollama";
 
   const token = fetchGatewayAuthTokenFromSandbox(sandboxName);
