@@ -32,7 +32,7 @@ flowchart TD
     K -->|found| N["Install Ollama"]
     M -->|found| N
     N --> O["Start ollama serve"]
-    O --> P["Pull llama3.1:8b"]
+    O --> P["Pull qwen2.5:0.5b"]
     P --> Q["Create sandbox"]
     Q --> R["bootstrap-complete → Onboarding"]
     
@@ -73,7 +73,7 @@ Config schema:
   "invites": [{ "email": "...", "role": "member" }],
   "sandboxName": "open-coot-default",
   "provider": "ollama",
-  "model": "llama3.1:8b",
+  "model": "qwen2.5:0.5b",
   "configVersion": 1
 }
 ```
@@ -94,8 +94,8 @@ Config schema:
 | 6 | Ollama check | `ollama list` | Install below |
 | 7 | Ollama install | `curl -fsSL https://ollama.com/install.sh \| sh` | Stop |
 | 8 | Start service | `ollama serve` (or `open -a Ollama`) | Stop |
-| 9 | Model check | `ollama list \| grep llama3` | Pull below |
-| 10 | Model pull | `ollama pull llama3.1:8b` | Stop |
+| 9 | Model check | `ollama list \| grep qwen2.5:0.5b` | Pull below |
+| 10 | Model pull | `ollama pull qwen2.5:0.5b` | Stop |
 | 11 | Create sandbox | `nemoclaw onboard --non-interactive --name open-coot-default` | Stop |
 
 Each step emits `bootstrap-progress` events to the renderer with `{ stage, status, message, progress }`.
@@ -251,7 +251,7 @@ Zero conflicts with existing wizard styles.
 
 When you deploy this to a Mac (M1+):
 
-1. **First launch** → should show bootstrap loading screen → silently install NemoClaw → check Docker → install Ollama → pull llama3.1:8b → create sandbox → transition to onboarding
+1. **First launch** → should show bootstrap loading screen → silently install NemoClaw → check Docker → install Ollama → pull qwen2.5:0.5b → create sandbox → transition to onboarding
 2. **Complete onboarding** → select workspace type, tools, team size → skip/add invites → toggle connectors → select microapps → "Launch open-coot"
 3. **Check `config.json`** at `~/Library/Application Support/nemoclaw-installer/config.json`
 4. **Re-launch app** → should skip bootstrap + onboarding, go directly to dashboard

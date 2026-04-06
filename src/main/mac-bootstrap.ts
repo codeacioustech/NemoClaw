@@ -294,7 +294,7 @@ async function writeCredentials(win: BrowserWindow): Promise<boolean> {
 
     const credentials = {
       provider: 'ollama',
-      model: 'llama3.1:8b'
+      model: 'qwen2.5:0.5b'
     }
 
     writeFileSync(credPath, JSON.stringify(credentials, null, 2), 'utf-8')
@@ -309,21 +309,21 @@ async function writeCredentials(win: BrowserWindow): Promise<boolean> {
 
 async function checkModelExists(): Promise<boolean> {
   try {
-    const result = await runShell("ollama list | grep 'llama3.1:8b'")
-    return result.code === 0 && result.stdout.includes('llama3.1:8b')
+    const result = await runShell("ollama list | grep 'qwen2.5:0.5b'")
+    return result.code === 0 && result.stdout.includes('qwen2.5:0.5b')
   } catch {
     return false
   }
 }
 
 async function pullModel(win: BrowserWindow): Promise<boolean> {
-  sendBootstrap(win, 'model-pull', 'running', 'Downloading llama3.1:8b model (this may take a few minutes)...', 65)
+  sendBootstrap(win, 'model-pull', 'running', 'Downloading qwen2.5:0.5b model (this may take a few minutes)...', 65)
 
   try {
-    const code = await runShellLong('ollama pull llama3.1:8b', win, 'model-pull')
+    const code = await runShellLong('ollama pull qwen2.5:0.5b', win, 'model-pull')
 
     if (code === 0) {
-      sendBootstrap(win, 'model-pull', 'done', 'Model llama3.1:8b ready ✓', 80)
+      sendBootstrap(win, 'model-pull', 'done', 'Model qwen2.5:0.5b ready ✓', 80)
       return true
     } else {
       sendBootstrap(win, 'model-pull', 'error', `Model pull failed (exit ${code})`, 80)
@@ -352,7 +352,7 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
         NEMOCLAW_NON_INTERACTIVE: '1',
         NEMOCLAW_SANDBOX_NAME: 'open-coot-default',
         NEMOCLAW_PROVIDER: 'ollama',
-        NEMOCLAW_MODEL: 'llama3.1:8b'
+        NEMOCLAW_MODEL: 'qwen2.5:0.5b'
       }
     )
 
@@ -475,15 +475,15 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
     }
 
     // Now check/pull model
-    sendBootstrap(win, 'model-check', 'running', 'Checking for llama3.1:8b model...', 64)
+    sendBootstrap(win, 'model-check', 'running', 'Checking for qwen2.5:0.5b model...', 64)
     const hasModel = await checkModelExists()
 
     if (hasModel) {
-      sendBootstrap(win, 'model-check', 'done', 'Model llama3.1:8b already available ✓', 65)
+      sendBootstrap(win, 'model-check', 'done', 'Model qwen2.5:0.5b already available ✓', 65)
     } else {
       const modelPulled = await pullModel(win)
       if (!modelPulled) {
-        sendBootstrap(win, 'error', 'error', 'Failed to pull llama3.1:8b model.', 80)
+        sendBootstrap(win, 'error', 'error', 'Failed to pull qwen2.5:0.5b model.', 80)
         win.webContents.send('bootstrap-complete', false)
         return
       }
