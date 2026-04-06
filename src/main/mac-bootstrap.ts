@@ -128,11 +128,30 @@ async function checkNemoclawInstalled(): Promise<boolean> {
   }
 }
 
-function setupSudoAskpass(message: string): string {
-  const askPassPath = '/tmp/opencoot_askpass.sh'
-  const askPassScript = `#!/bin/bash\nosascript -e 'tell application "SystemUIServer" to activate' -e 'tell application "SystemUIServer" to display dialog "${message}" default answer "" with hidden answer with title "Authentication Required"' -e 'text returned of result'\n`
-  writeFileSync(askPassPath, askPassScript, { mode: 0o755, encoding: 'utf-8' })
-  return askPassPath
+function acquireSudo(message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    // Use osascript to get the password, then pipe it to sudo -S
+    // This avoids the fragile SUDO_ASKPASS approach that can hang
+    const script = `osascript -e 'tell application "System Events" to activate' -e 'text returned of (display dialog "${message}" default answer "" with hidden answer with title "Authentication Required")' 2>/dev/null`
+    const proc = spawn('bash', ['-c', `password=$(${script}) && echo "$password" | sudo -S -v 2>/dev/null`], { shell: false })
+    proc.stdin?.end()
+
+    const timeout = setTimeout(() => {
+      proc.kill()
+      console.error('[bootstrap] sudo prompt timed out after 120s')
+      resolve(false)
+    }, 120000)
+
+    proc.on('exit', (code) => {
+      clearTimeout(timeout)
+      resolve(code === 0)
+    })
+
+    proc.on('error', () => {
+      clearTimeout(timeout)
+      resolve(false)
+    })
+  })
 }
 
 async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
@@ -140,10 +159,15 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
   console.log('[bootstrap] Installing NemoClaw...')
 
   try {
-    const askPassPath = setupSudoAskpass("Open-Coot requires administrator privileges to install NemoClaw.")
-    console.log('[bootstrap] Running NemoClaw installation script with sudo... (A prompt may appear)')
+    console.log('[bootstrap] Requesting sudo for NemoClaw installation...')
+    const sudoOk = await acquireSudo("Open-Coot requires administrator privileges to install NemoClaw.")
+    if (!sudoOk) {
+      sendBootstrap(win, 'nemoclaw-install', 'error', 'Administrator privileges required. Please try again.', 25)
+      return false
+    }
+
     const code = await runShellLong(
-      `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v && curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`,
+      'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash',
       win,
       'nemoclaw-install',
       {
@@ -368,21 +392,24 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
   console.log('[bootstrap] Creating sandbox...')
 
   try {
-    // Generate a secure macOS native graphical password prompt for sudo
-    const askPassPath = setupSudoAskpass("Open-Coot requires administrator privileges to configure isolated sandbox networking (CoreDNS/Docker).")
+    // Acquire sudo via graphical prompt before running nemoclaw onboard
+    console.log('[bootstrap] Requesting sudo for sandbox creation...')
+    const sudoOk = await acquireSudo("Open-Coot requires administrator privileges to configure isolated sandbox networking (CoreDNS/Docker).")
+    if (!sudoOk) {
+      sendBootstrap(win, 'sandbox-create', 'error', 'Administrator privileges required. Please try again.', 95)
+      return false
+    }
 
-    console.log('[bootstrap] Requesting graphical sudo permission...')
+    console.log('[bootstrap] Sudo acquired, running nemoclaw onboard...')
     const code = await runShellLong(
-      `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v && echo "[bootstrap] Sudo acquired." && export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && echo "[bootstrap] Running nemoclaw onboard..." && nemoclaw onboard --non-interactive`,
+      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive',
       win,
       'sandbox-create',
       {
         NEMOCLAW_NON_INTERACTIVE: '1',
         NEMOCLAW_SANDBOX_NAME: 'open-coot-default',
         NEMOCLAW_PROVIDER: 'ollama',
-        NEMOCLAW_MODEL: 'llama3.2:3b',
-        DEBUG: '1', // Add generic debug flag, commonly used by CLI tools
-        LOG_LEVEL: 'debug'
+        NEMOCLAW_MODEL: 'llama3.2:3b'
       }
     )
 
@@ -447,7 +474,7 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
 
     // Always ensure OpenShell is installed, even if NemoClaw is already installed
     // This is because previous runs might have failed to install it properly
-    const hasOpenShell = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && openshell version')
+    const hasOpenShell = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && command -v openshell')
     if (hasOpenShell.code !== 0) {
       await installOpenShell(win)
     }
