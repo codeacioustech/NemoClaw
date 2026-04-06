@@ -364,22 +364,25 @@ async function pullModel(win: BrowserWindow): Promise<boolean> {
 }
 
 async function createSandbox(win: BrowserWindow): Promise<boolean> {
-  sendBootstrap(win, 'sandbox-create', 'running', 'Creating sandbox...', 85)
+  sendBootstrap(win, 'sandbox-create', 'running', 'Creating sandbox (this may take a while)...', 85)
   console.log('[bootstrap] Creating sandbox...')
 
   try {
     // Generate a secure macOS native graphical password prompt for sudo
     const askPassPath = setupSudoAskpass("Open-Coot requires administrator privileges to configure isolated sandbox networking (CoreDNS/Docker).")
 
+    console.log('[bootstrap] Requesting graphical sudo permission...')
     const code = await runShellLong(
-      `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v && export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive`,
+      `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v && echo "[bootstrap] Sudo acquired." && export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && echo "[bootstrap] Running nemoclaw onboard..." && nemoclaw onboard --non-interactive`,
       win,
       'sandbox-create',
       {
         NEMOCLAW_NON_INTERACTIVE: '1',
         NEMOCLAW_SANDBOX_NAME: 'open-coot-default',
         NEMOCLAW_PROVIDER: 'ollama',
-        NEMOCLAW_MODEL: 'llama3.2:3b'
+        NEMOCLAW_MODEL: 'llama3.2:3b',
+        DEBUG: '1', // Add generic debug flag, commonly used by CLI tools
+        LOG_LEVEL: 'debug'
       }
     )
 
