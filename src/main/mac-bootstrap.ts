@@ -130,25 +130,37 @@ async function checkNemoclawInstalled(): Promise<boolean> {
 
 function acquireSudo(message: string): Promise<boolean> {
   return new Promise((resolve) => {
-    // Use osascript to get the password, then pipe it to sudo -S
-    // This avoids the fragile SUDO_ASKPASS approach that can hang
-    const script = `osascript -e 'tell application "System Events" to activate' -e 'text returned of (display dialog "${message}" default answer "" with hidden answer with title "Authentication Required")' 2>/dev/null`
-    const proc = spawn('bash', ['-c', `password=$(${script}) && echo "$password" | sudo -S -v 2>/dev/null`], { shell: false })
+    // Use SUDO_ASKPASS with osascript, but with a timeout to prevent hanging.
+    // Write askpass script, run sudo -A -v, and kill if it takes too long.
+    const askPassPath = '/tmp/opencoot_askpass.sh'
+    const askPassScript = `#!/bin/bash\nosascript -e 'display dialog "${message}" default answer "" with hidden answer with title "Authentication Required"' -e 'text returned of result'\n`
+    writeFileSync(askPassPath, askPassScript, { mode: 0o755, encoding: 'utf-8' })
+
+    const proc = spawn('bash', ['-c', `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v`], { shell: false })
     proc.stdin?.end()
 
+    let stderr = ''
+    proc.stderr?.on('data', (data: Buffer) => { stderr += data.toString() })
+
     const timeout = setTimeout(() => {
-      proc.kill()
+      proc.kill('SIGKILL')
       console.error('[bootstrap] sudo prompt timed out after 120s')
       resolve(false)
     }, 120000)
 
     proc.on('exit', (code) => {
       clearTimeout(timeout)
+      if (code !== 0) {
+        console.error(`[bootstrap] sudo failed (exit ${code}): ${stderr.trim()}`)
+      } else {
+        console.log('[bootstrap] sudo credentials cached successfully')
+      }
       resolve(code === 0)
     })
 
-    proc.on('error', () => {
+    proc.on('error', (err) => {
       clearTimeout(timeout)
+      console.error(`[bootstrap] sudo spawn error: ${err.message}`)
       resolve(false)
     })
   })
