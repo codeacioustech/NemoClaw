@@ -39,7 +39,7 @@ function seedOpenclawConfig() {
       mode: "merge",
       providers: {
         ollama: {
-          baseUrl: "http://127.0.0.1:11434",
+          baseUrl: "http://127.0.0.1:11435",
           apiKey: "OLLAMA_API_KEY",
           api: "ollama",
           models: [
@@ -76,7 +76,7 @@ function seedNemoclawConfig() {
   const configPath = path.join(NEMOCLAW_DIR, "config.json");
   writeSecure(configPath, {
       endpointType: "ollama",
-      endpointUrl: "http://localhost:11434/v1",
+      endpointUrl: "http://localhost:11435/v1",
       ncpPartner: null,
       model: MODEL,
       profile: "inference-local",
@@ -106,7 +106,7 @@ function seedNemoclawConfig() {
       sandboxName: null,
       provider: "ollama-local",
       model: MODEL,
-      endpointUrl: "http://localhost:11434/v1",
+      endpointUrl: "http://localhost:11435/v1",
       credentialEnv: "OPENAI_API_KEY",
       preferredInferenceApi: null,
       nimContainer: null,

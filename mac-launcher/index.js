@@ -11,7 +11,8 @@ const os = require("os");
 const paths = require("./lib/paths");
 const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-seeder");
 const { startGateway, waitForGateway } = require("./lib/gateway");
-const { trackProcess, hookElectronLifecycle } = require("./lib/cleanup");
+const { startProxy, waitForProxy } = require("./lib/ollama-proxy");
+const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -19,6 +20,7 @@ const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
 
 let splashWindow = null;
 let mainWindow = null;
+let proxyServer = null;
 
 // ---------------------------------------------------------------------------
 // Launcher config persistence
@@ -227,7 +229,19 @@ async function bootstrap() {
     });
   }
 
-  // 5. Start gateway
+  // 5. Start inference proxy
+  sendStatus("Starting inference proxy...");
+  proxyServer = startProxy();
+  trackServer(proxyServer);
+
+  try {
+    await waitForProxy();
+  } catch (err) {
+    sendError(`Inference proxy failed to start: ${err.message}`);
+    return;
+  }
+
+  // 6. Start gateway
   sendStatus("Starting gateway...");
   const gatewayChild = startGateway(
     (out) => {
