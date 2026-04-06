@@ -203,3 +203,78 @@ describe("uninstall helpers", () => {
     expect(fs.existsSync(stateDir)).toBe(false);
   });
 });
+
+describe("llama.cpp cleanup", () => {
+  it("stop_llamacpp_server exits cleanly when no llama-server process exists", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-uninstall-llamacpp-"));
+    const fakeBin = path.join(tmp, "bin");
+    fs.mkdirSync(fakeBin);
+    // pgrep that always returns nothing
+    fs.writeFileSync(path.join(fakeBin, "pgrep"), "#!/usr/bin/env bash\nexit 1\n", { mode: 0o755 });
+
+    try {
+      const result = spawnSync(
+        "bash",
+        ["-c", `source "${UNINSTALL_SCRIPT}"; stop_llamacpp_server`],
+        {
+          cwd: path.join(import.meta.dirname, ".."),
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            HOME: tmp,
+            PATH: `${fakeBin}:/usr/bin:/bin`,
+          },
+        },
+      );
+      expect(result.status).toBe(0);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("remove_optional_llamacpp_cache removes cache dir when --delete-models is set", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-uninstall-llamacpp-cache-"));
+    const cacheDir = path.join(tmp, ".cache", "llama.cpp");
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(path.join(cacheDir, "model.gguf"), "fake");
+
+    try {
+      const result = spawnSync(
+        "bash",
+        ["-c", `source "${UNINSTALL_SCRIPT}"; DELETE_MODELS=true; remove_optional_llamacpp_cache`],
+        {
+          cwd: path.join(import.meta.dirname, ".."),
+          encoding: "utf-8",
+          env: { ...process.env, HOME: tmp },
+        },
+      );
+      expect(result.status).toBe(0);
+      expect(fs.existsSync(cacheDir)).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("remove_optional_llamacpp_cache is a no-op when DELETE_MODELS is not set", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-uninstall-llamacpp-noop-"));
+    const cacheDir = path.join(tmp, ".cache", "llama.cpp");
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(path.join(cacheDir, "model.gguf"), "fake");
+
+    try {
+      const result = spawnSync(
+        "bash",
+        ["-c", `source "${UNINSTALL_SCRIPT}"; DELETE_MODELS=false; remove_optional_llamacpp_cache`],
+        {
+          cwd: path.join(import.meta.dirname, ".."),
+          encoding: "utf-8",
+          env: { ...process.env, HOME: tmp },
+        },
+      );
+      expect(result.status).toBe(0);
+      expect(fs.existsSync(cacheDir)).toBe(true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

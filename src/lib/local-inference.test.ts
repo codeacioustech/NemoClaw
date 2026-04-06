@@ -8,6 +8,9 @@ import {
   CONTAINER_REACHABILITY_IMAGE,
   DEFAULT_OLLAMA_MODEL,
   LARGE_OLLAMA_MIN_MEMORY_MB,
+  LLAMACPP_SMALL_MODEL,
+  LLAMACPP_LARGE_MODEL,
+  LLAMACPP_LARGE_MIN_MEMORY_MB,
   getDefaultOllamaModel,
   getBootstrapOllamaModelOptions,
   getLocalProviderBaseUrl,
@@ -21,6 +24,11 @@ import {
   parseOllamaTags,
   validateOllamaModel,
   validateLocalProvider,
+  getBootstrapLlamaCppModelOptions,
+  getLlamaCppStartCommand,
+  waitForLlamaCppReady,
+  parseLlamaCppModels,
+  getLlamaCppModelId,
 } from "../../dist/lib/local-inference";
 
 describe("local inference helpers", () => {
@@ -29,9 +37,7 @@ describe("local inference helpers", () => {
   });
 
   it("returns the expected base URL for ollama-local", () => {
-    expect(getLocalProviderBaseUrl("ollama-local")).toBe(
-      "http://host.openshell.internal:11434/v1",
-    );
+    expect(getLocalProviderBaseUrl("ollama-local")).toBe("http://host.openshell.internal:11434/v1");
   });
 
   it("returns null for unknown local provider URLs", () => {
@@ -202,9 +208,10 @@ describe("local inference helpers", () => {
     expect(
       getBootstrapOllamaModelOptions({ totalMemoryMB: LARGE_OLLAMA_MIN_MEMORY_MB - 1 }),
     ).toEqual(["qwen2.5:7b"]);
-    expect(
-      getBootstrapOllamaModelOptions({ totalMemoryMB: LARGE_OLLAMA_MIN_MEMORY_MB }),
-    ).toEqual(["qwen2.5:7b", DEFAULT_OLLAMA_MODEL]);
+    expect(getBootstrapOllamaModelOptions({ totalMemoryMB: LARGE_OLLAMA_MIN_MEMORY_MB })).toEqual([
+      "qwen2.5:7b",
+      DEFAULT_OLLAMA_MODEL,
+    ]);
     expect(getDefaultOllamaModel(() => "", { totalMemoryMB: 16384 })).toBe("qwen2.5:7b");
   });
 
@@ -250,5 +257,146 @@ describe("local inference helpers", () => {
 
   it("treats non-JSON probe output as success once the model responds", () => {
     expect(validateOllamaModel("nemotron-3-nano:30b", () => "ok")).toEqual({ ok: true });
+  });
+
+  it("returns the expected base URL for llamacpp-local", () => {
+    expect(getLocalProviderBaseUrl("llamacpp-local")).toBe(
+      "http://host.openshell.internal:8081/v1",
+    );
+  });
+
+  it("returns the expected validation URL for llamacpp-local", () => {
+    expect(getLocalProviderValidationBaseUrl("llamacpp-local")).toBe("http://localhost:8081/v1");
+  });
+
+  it("returns the expected health check command for llamacpp-local", () => {
+    expect(getLocalProviderHealthCheck("llamacpp-local")).toBe(
+      "curl -sf http://localhost:8081/v1/models 2>/dev/null",
+    );
+  });
+
+  it("returns the expected container reachability command for llamacpp-local", () => {
+    expect(getLocalProviderContainerReachabilityCheck("llamacpp-local")).toBe(
+      `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8081/v1/models 2>/dev/null`,
+    );
+  });
+
+  it("returns a clear error when llamacpp-local is unavailable", () => {
+    const result = validateLocalProvider("llamacpp-local", () => "");
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/http:\/\/localhost:8081/);
+  });
+
+  it("returns a clear error when llamacpp-local is not reachable from containers", () => {
+    let callCount = 0;
+    const result = validateLocalProvider("llamacpp-local", () => {
+      callCount += 1;
+      return callCount === 1 ? '{"data":[]}' : "";
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/host\.openshell\.internal:8081/);
+    expect(result.message).toMatch(/0\.0\.0\.0:8081/);
+  });
+
+  it("validates a reachable llamacpp-local provider", () => {
+    let callCount = 0;
+    const result = validateLocalProvider("llamacpp-local", () => {
+      callCount += 1;
+      return '{"data": []}';
+    });
+    expect(result).toEqual({ ok: true });
+    expect(callCount).toBe(2);
+  });
+
+  it("parses model IDs from llama.cpp /v1/models output", () => {
+    expect(
+      parseLlamaCppModels(JSON.stringify({ data: [{ id: "my-model" }, { id: "other" }] })),
+    ).toEqual(["my-model", "other"]);
+  });
+
+  it("returns empty array for malformed llama.cpp models output", () => {
+    expect(parseLlamaCppModels("{not-json")).toEqual([]);
+    expect(parseLlamaCppModels(JSON.stringify({ data: null }))).toEqual([]);
+    expect(parseLlamaCppModels("")).toEqual([]);
+  });
+
+  it("filters out entries with missing id in llama.cpp models", () => {
+    expect(parseLlamaCppModels(JSON.stringify({ data: [{}, { id: "valid" }, null] }))).toEqual([
+      "valid",
+    ]);
+  });
+
+  it("getLlamaCppModelId returns the first model from a running server", () => {
+    const result = getLlamaCppModelId(() => JSON.stringify({ data: [{ id: "qwen2.5-3b" }] }));
+    expect(result).toBe("qwen2.5-3b");
+  });
+
+  it("getLlamaCppModelId returns null when server is not responding", () => {
+    expect(getLlamaCppModelId(() => "")).toBeNull();
+  });
+});
+
+describe("llama.cpp auto-install helpers", () => {
+  it("returns only the small model when no GPU info is available", () => {
+    expect(getBootstrapLlamaCppModelOptions(null)).toEqual([LLAMACPP_SMALL_MODEL]);
+  });
+
+  it("returns only the small model when GPU memory is below threshold", () => {
+    expect(
+      getBootstrapLlamaCppModelOptions({ totalMemoryMB: LLAMACPP_LARGE_MIN_MEMORY_MB - 1 }),
+    ).toEqual([LLAMACPP_SMALL_MODEL]);
+  });
+
+  it("returns both models when GPU memory meets the threshold", () => {
+    expect(
+      getBootstrapLlamaCppModelOptions({ totalMemoryMB: LLAMACPP_LARGE_MIN_MEMORY_MB }),
+    ).toEqual([LLAMACPP_SMALL_MODEL, LLAMACPP_LARGE_MODEL]);
+  });
+
+  it("builds a start command with default options", () => {
+    const cmd = getLlamaCppStartCommand(LLAMACPP_SMALL_MODEL);
+    expect(cmd).toMatch(/^llama-server /);
+    expect(cmd).toMatch(/--hf-repo/);
+    expect(cmd).toContain(LLAMACPP_SMALL_MODEL.hfRepo);
+    expect(cmd).toContain(LLAMACPP_SMALL_MODEL.hfFile);
+    expect(cmd).toMatch(/--host 0\.0\.0\.0/);
+    expect(cmd).toMatch(/--port 8081/);
+    expect(cmd).toMatch(/-c 16384/);
+  });
+
+  it("applies custom host, port, and context size overrides", () => {
+    const cmd = getLlamaCppStartCommand(LLAMACPP_LARGE_MODEL, {
+      host: "127.0.0.1",
+      port: 9000,
+      contextSize: 8192,
+    });
+    expect(cmd).toMatch(/--host 127\.0\.0\.1/);
+    expect(cmd).toMatch(/--port 9000/);
+    expect(cmd).toMatch(/-c 8192/);
+  });
+
+  it("returns model ID when server becomes ready", () => {
+    let callCount = 0;
+    const result = waitForLlamaCppReady(
+      () => {
+        callCount += 1;
+        // Simulate: first call fails, second call returns models
+        if (callCount >= 2) {
+          return JSON.stringify({ data: [{ id: "test-model" }] });
+        }
+        return "";
+      },
+      { timeoutSeconds: 5, intervalSeconds: 0 },
+    );
+    expect(result).toBe("test-model");
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns null when server does not become ready within timeout", () => {
+    const result = waitForLlamaCppReady(() => "", {
+      timeoutSeconds: 1,
+      intervalSeconds: 0,
+    });
+    expect(result).toBeNull();
   });
 });
