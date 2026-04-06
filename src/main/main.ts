@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc-handlers'
-import { registerConfigHandlers, isFirstLaunch, getConfig, saveConfig } from './config-service'
+import { registerConfigHandlers, getConfig, saveConfig } from './config-service'
 import { runMacBootstrap } from './mac-bootstrap'
 import { getOpenClawUrl, extractTokenFromContainer } from './openclaw-service'
 
@@ -115,21 +115,16 @@ app.whenReady().then(async () => {
 
   createWindow()
 
-  // macOS: run bootstrap if first launch
-  // The renderer will detect platform and show the appropriate UI.
-  // Bootstrap runs in main process and sends events to renderer.
+  // macOS: ALWAYS run bootstrap on every launch.
+  // Bootstrap is idempotent — it checks Docker, Ollama, model, sandbox
+  // and skips anything already installed. This catches cases where
+  // Docker containers were deleted, models changed, etc.
   if (process.platform === 'darwin' && mainWindow) {
-    const firstLaunch = isFirstLaunch()
-    if (firstLaunch) {
-      // Give renderer ~500ms to load before starting bootstrap
-      mainWindow.webContents.on('did-finish-load', () => {
-        setTimeout(() => {
-          if (mainWindow) runMacBootstrap(mainWindow)
-        }, 500)
-      })
-    }
-    // Return launches: the renderer's router.ts will detect setupComplete
-    // and call launchOpenClaw() via IPC
+    mainWindow.webContents.on('did-finish-load', () => {
+      setTimeout(() => {
+        if (mainWindow) runMacBootstrap(mainWindow)
+      }, 500)
+    })
   }
 
   app.on('activate', () => {

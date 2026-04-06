@@ -2,8 +2,9 @@
  * Router — Decides which UI flow to show based on platform and config state.
  *
  * macOS (darwin):
- *   First launch  → Bootstrap loading screen → Onboarding → Launch OpenClaw
- *   Return launch → Launch OpenClaw directly
+ *   Every launch → Bootstrap checks (Docker, Ollama, model, sandbox)
+ *     First launch  → Bootstrap → Onboarding → Launch OpenClaw
+ *     Return launch → Bootstrap (quick checks) → Launch OpenClaw directly
  *
  * Windows / Linux:
  *   First launch  → 6-step wizard installer (app.ts) → Launch OpenClaw
@@ -17,23 +18,26 @@ export async function initRouter(): Promise<void> {
   const platform = window.electronAPI.getPlatform()
   const config = await window.electronAPI.getConfig()
 
-  // If setup is complete on any platform, launch OpenClaw directly
+  // macOS: ALWAYS run bootstrap checks on every launch.
+  // Bootstrap is idempotent — it skips steps that are already done.
+  // After bootstrap, it will either go to onboarding (first launch)
+  // or launch OpenClaw directly (return launch with setupComplete).
+  if (platform === 'darwin') {
+    hideLegacyUI()
+    const { renderBootstrapView } = await import('./bootstrap-view')
+    renderBootstrapView(getOcRoot())
+    return
+  }
+
+  // Windows / Linux: if setup is complete, launch OpenClaw directly
   if (config && config.setupComplete) {
     hideLegacyUI()
     showConnectingScreen(getOcRoot())
     return
   }
 
-  if (platform !== 'darwin') {
-    // Windows / Linux: load existing wizard
-    loadWizardInstaller()
-    return
-  }
-
-  // macOS first launch: show bootstrap screen, main process will send events
-  hideLegacyUI()
-  const { renderBootstrapView } = await import('./bootstrap-view')
-  renderBootstrapView(getOcRoot())
+  // Windows / Linux first launch: load wizard installer
+  loadWizardInstaller()
 }
 
 /**
