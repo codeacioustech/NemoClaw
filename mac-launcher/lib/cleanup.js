@@ -4,6 +4,7 @@
 const KILL_ESCALATION_MS = 5000;
 
 const tracked = new Map();
+const servers = [];
 
 function trackProcess(name, child) {
   if (!child || !child.pid) return;
@@ -11,7 +12,16 @@ function trackProcess(name, child) {
   child.on("exit", () => tracked.delete(name));
 }
 
+function trackServer(server) {
+  servers.push(server);
+}
+
 function killAll() {
+  for (const server of servers) {
+    try { server.close(); } catch { /* ignore */ }
+  }
+  servers.length = 0;
+
   const pids = [...tracked.values()];
   if (pids.length === 0) return Promise.resolve();
 
@@ -51,4 +61,4 @@ function hookElectronLifecycle(app) {
   });
 }
 
-module.exports = { trackProcess, killAll, hookElectronLifecycle };
+module.exports = { trackProcess, trackServer, killAll, hookElectronLifecycle };
