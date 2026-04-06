@@ -699,7 +699,8 @@ nemoclaw ${this.escapeHtml(this.sandboxName)} status     # Check status\n
 nemoclaw ${this.escapeHtml(this.sandboxName)} logs -f    # Follow logs\n
 nemoclaw ${this.escapeHtml(this.sandboxName)} stop       # Stop sandbox
         </div>
-        <div class="btn-row" style="justify-content:center;margin-top:16px">
+        <div class="btn-row" style="justify-content:center;margin-top:16px;gap:12px">
+          <button id="btn-launch-openclaw" class="btn btn-primary">Launch OpenClaw</button>
           <button id="btn-close-installer" class="btn btn-secondary">Close Installer</button>
         </div>
       </div>
@@ -719,6 +720,29 @@ nemoclaw ${this.escapeHtml(this.sandboxName)} stop       # Stop sandbox
     // Docs action opens external
     document.getElementById('action-docs')!.addEventListener('click', () => {
       window.electronAPI.openExternalLink('https://docs.nvidia.com/nemoclaw/latest/')
+    })
+
+    // Launch OpenClaw
+    document.getElementById('btn-launch-openclaw')!.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-launch-openclaw') as HTMLButtonElement
+      btn.disabled = true
+      btn.textContent = 'Connecting...'
+
+      // Save config so return launches skip the wizard
+      await window.electronAPI.saveConfig({
+        setupComplete: true,
+        sandboxName: this.sandboxName,
+        provider: this.selectedProvider.id,
+        model: this.selectedProvider.model,
+        configVersion: 1
+      })
+
+      const result = await window.electronAPI.launchOpenClaw()
+      if (!result.success) {
+        btn.disabled = false
+        btn.textContent = 'Launch OpenClaw'
+        alert(result.error || 'Failed to connect to OpenClaw. Make sure Docker and your sandbox are running.')
+      }
     })
 
     // Close

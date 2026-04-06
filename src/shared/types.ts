@@ -46,6 +46,7 @@ export interface AppConfig {
   sandboxName: string
   provider: string
   model: string
+  openclawUrl?: string
   configVersion: number
 }
 
@@ -106,6 +107,11 @@ export interface ElectronAPI {
   removeBootstrapListeners: () => void
   retryDocker: () => Promise<void>
   openDockerDownload: () => Promise<void>
+
+  // OpenClaw launch
+  launchOpenClaw: () => Promise<{ success: boolean; error?: string }>
+  onOpenclawStatus: (callback: (message: string) => void) => void
+  removeOpenclawListeners: () => void
 }
 
 declare global {

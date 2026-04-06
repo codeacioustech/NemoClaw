@@ -10,7 +10,6 @@
  */
 
 import type { AppConfig, InviteEntry } from '../shared/types'
-import { navigateToDashboard } from './router'
 
 interface OnboardingState {
   workspaceType: string
@@ -511,8 +510,12 @@ async function finishOnboarding(): Promise<void> {
 
   await window.electronAPI.saveConfig(config)
 
-  // Short delay then navigate to dashboard
-  setTimeout(() => {
-    navigateToDashboard(config as AppConfig)
-  }, 600)
+  // Launch OpenClaw in the Electron window
+  btn.innerHTML = '<div class="oc-spinner"></div> Launching OpenClaw...'
+  const result = await window.electronAPI.launchOpenClaw()
+  if (!result.success) {
+    btn.disabled = false
+    btn.innerHTML = '🚀 &nbsp;Launch open-coot'
+    alert(result.error || 'Failed to launch OpenClaw. Please try again.')
+  }
 }

@@ -1,8 +1,9 @@
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc-handlers'
-import { registerConfigHandlers, isFirstLaunch } from './config-service'
+import { registerConfigHandlers, isFirstLaunch, getConfig, saveConfig } from './config-service'
 import { runMacBootstrap } from './mac-bootstrap'
+import { getOpenClawUrl, extractTokenFromContainer } from './openclaw-service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -34,9 +35,75 @@ function createWindow(): void {
   })
 }
 
+/**
+ * Discover the OpenClaw URL and load it in the main window.
+ * Sends status updates via 'openclaw-status' IPC events.
+ * Returns { success, error? }.
+ */
+async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: boolean; error?: string }> {
+  const config = getConfig()
+  const sandboxName = config?.sandboxName || 'open-coot-default'
+  const savedUrl = config?.openclawUrl
+
+  win.webContents.send('openclaw-status', 'Connecting to OpenClaw service...')
+
+  try {
+    const url = await getOpenClawUrl(sandboxName)
+    const finalUrl = url || savedUrl
+
+    if (finalUrl) {
+      saveConfig({ openclawUrl: finalUrl })
+      // Make the window bigger for the full OpenClaw UI
+      win.setMinimumSize(1000, 700)
+      const [w, h] = win.getSize()
+      if (w < 1200 || h < 800) {
+        win.setSize(1400, 900)
+        win.center()
+      }
+      // Remove frameless constraint — load the actual web UI
+      win.loadURL(finalUrl)
+      return { success: true }
+    }
+
+    return { success: false, error: 'OpenClaw service failed to respond. Make sure Docker and your sandbox are running.' }
+  } catch (err) {
+    const message = (err as Error).message
+    console.error('[Main] Error launching OpenClaw:', message)
+
+    // Try saved URL as fallback
+    if (savedUrl) {
+      console.log('[Main] Trying saved URL as fallback...')
+      try {
+        if (!savedUrl.includes('#token=')) {
+          const token = await extractTokenFromContainer(sandboxName)
+          if (token) {
+            const tokenizedUrl = savedUrl.replace(/\/?$/, '/#token=' + token)
+            saveConfig({ openclawUrl: tokenizedUrl })
+            win.loadURL(tokenizedUrl)
+            return { success: true }
+          }
+        }
+        win.loadURL(savedUrl)
+        return { success: true }
+      } catch {
+        // fallback also failed
+      }
+    }
+
+    return { success: false, error: message }
+  }
+}
+
 // Register IPC handlers before window creation
 registerIpcHandlers(() => mainWindow)
 registerConfigHandlers()
+
+// ── launch-openclaw IPC handler ────────────────────────────────────────────
+// Called by the renderer after install/onboarding completes, or on return launches
+ipcMain.handle('launch-openclaw', async () => {
+  if (!mainWindow) return { success: false, error: 'No window available' }
+  return launchOpenClawInWindow(mainWindow)
+})
 
 app.whenReady().then(async () => {
   // Set application menu with Edit role so Cmd+C/V/X/A (mac) and Ctrl+C/V/X/A work
@@ -61,6 +128,8 @@ app.whenReady().then(async () => {
         }, 500)
       })
     }
+    // Return launches: the renderer's router.ts will detect setupComplete
+    // and call launchOpenClaw() via IPC
   }
 
   app.on('activate', () => {

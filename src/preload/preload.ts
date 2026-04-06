@@ -66,7 +66,18 @@ const api: ElectronAPI = {
 
   retryDocker: () => ipcRenderer.invoke('retry-docker'),
 
-  openDockerDownload: () => ipcRenderer.invoke('open-docker-download')
+  openDockerDownload: () => ipcRenderer.invoke('open-docker-download'),
+
+  // OpenClaw launch
+  launchOpenClaw: () => ipcRenderer.invoke('launch-openclaw'),
+
+  onOpenclawStatus: (callback: (message: string) => void) => {
+    ipcRenderer.on('openclaw-status', (_event, message: string) => callback(message))
+  },
+
+  removeOpenclawListeners: () => {
+    ipcRenderer.removeAllListeners('openclaw-status')
+  }
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)
