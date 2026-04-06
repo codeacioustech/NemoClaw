@@ -504,28 +504,6 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       throw new Error("Sandbox creation failed")
     }
 
-    // Step 10: Launch OpenClaw
-    try {
-      const openResult = await runShell(
-        'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw open open-coot-default'
-      )
-      const url = openResult.stdout.trim()
-      if (openResult.code === 0 && url.startsWith('http')) {
-        const clawWin = new BrowserWindow({
-          width: 1400,
-          height: 900,
-          title: 'OpenClaw',
-          autoHideMenuBar: true
-        })
-        clawWin.loadURL(url)
-        console.log(`[bootstrap] Launched OpenClaw at ${url}`)
-      } else {
-        console.error(`[bootstrap] nemoclaw open failed: code=${openResult.code}, stdout="${url}"`)
-      }
-    } catch (err) {
-      console.error('[bootstrap] Failed to launch OpenClaw:', (err as Error).message)
-    }
-
     // Done!
     sendBootstrap(win, 'complete', 'done', 'Bootstrap complete — launching onboarding...', 100)
     win.webContents.send('bootstrap-complete', true)
