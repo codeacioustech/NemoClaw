@@ -25,6 +25,7 @@ function writeSecure(filePath, data) {
 
 function seedOpenclawConfig() {
   ensureDir(OPENCLAW_DIR);
+  ensureDir(path.join(OPENCLAW_DIR, "extensions"));
   const configPath = path.join(OPENCLAW_DIR, "openclaw.json");
 
   writeSecure(configPath, {
