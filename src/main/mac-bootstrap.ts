@@ -116,20 +116,33 @@ async function checkArchitecture(win: BrowserWindow): Promise<boolean> {
 }
 
 async function checkNemoclawInstalled(): Promise<boolean> {
+  console.log('[bootstrap] Checking if NemoClaw is installed...')
   try {
     const result = await runShell('nemoclaw --version')
+    console.log(`[bootstrap] checkNemoclawInstalled result: ${result.code === 0}`)
     return result.code === 0
-  } catch {
+  } catch (err) {
+    console.error(`[bootstrap] checkNemoclawInstalled error:`, err)
     return false
   }
 }
 
+function setupSudoAskpass(message: string): string {
+  const askPassPath = '/tmp/opencoot_askpass.sh'
+  const askPassScript = `#!/bin/bash\nosascript -e 'tell application "SystemUIServer" to activate' -e 'tell application "SystemUIServer" to display dialog "${message}" default answer "" with hidden answer with title "Authentication Required"' -e 'text returned of result'\n`
+  writeFileSync(askPassPath, askPassScript, { mode: 0o755, encoding: 'utf-8' })
+  return askPassPath
+}
+
 async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
   sendBootstrap(win, 'nemoclaw-install', 'running', 'Installing NemoClaw...', 20)
+  console.log('[bootstrap] Installing NemoClaw...')
 
   try {
+    const askPassPath = setupSudoAskpass("Open-Coot requires administrator privileges to install NemoClaw.")
+    console.log('[bootstrap] Running NemoClaw installation script with sudo... (A prompt may appear)')
     const code = await runShellLong(
-      'curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash',
+      `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v && curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`,
       win,
       'nemoclaw-install',
       {
@@ -138,6 +151,7 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
       }
     )
 
+    console.log(`[bootstrap] NemoClaw install exited with code: ${code}`)
     if (code === 0) {
       sendBootstrap(win, 'nemoclaw-install', 'done', 'NemoClaw installed ✓', 25)
       return true
@@ -146,6 +160,7 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
       return false
     }
   } catch (err) {
+    console.error('[bootstrap] NemoClaw install threw exception:', err)
     sendBootstrap(win, 'nemoclaw-install', 'error', `NemoClaw install error: ${(err as Error).message}`, 25)
     return false
   }
@@ -153,6 +168,7 @@ async function installNemoclaw(win: BrowserWindow): Promise<boolean> {
 
 async function installOpenShell(win: BrowserWindow): Promise<boolean> {
   sendBootstrap(win, 'nemoclaw-install', 'running', 'Pre-installing OpenShell...', 23)
+  console.log('[bootstrap] Pre-installing OpenShell...')
 
   try {
     const code = await runShellLong(
@@ -161,6 +177,7 @@ async function installOpenShell(win: BrowserWindow): Promise<boolean> {
       'nemoclaw-install'
     )
 
+    console.log(`[bootstrap] OpenShell install exited with code: ${code}`)
     if (code === 0) {
       return true
     } else {
@@ -347,12 +364,11 @@ async function pullModel(win: BrowserWindow): Promise<boolean> {
 
 async function createSandbox(win: BrowserWindow): Promise<boolean> {
   sendBootstrap(win, 'sandbox-create', 'running', 'Creating sandbox...', 85)
+  console.log('[bootstrap] Creating sandbox...')
 
   try {
     // Generate a secure macOS native graphical password prompt for sudo
-    const askPassPath = '/tmp/opencoot_askpass.sh'
-    const askPassScript = `#!/bin/bash\nosascript -e 'tell application "SystemUIServer" to activate' -e 'tell application "SystemUIServer" to display dialog "Open-Coot requires administrator privileges to configure isolated sandbox networking (CoreDNS/Docker)." default answer "" with hidden answer with title "Authentication Required"' -e 'text returned of result'\n`
-    writeFileSync(askPassPath, askPassScript, { mode: 0o755, encoding: 'utf-8' })
+    const askPassPath = setupSudoAskpass("Open-Coot requires administrator privileges to configure isolated sandbox networking (CoreDNS/Docker).")
 
     const code = await runShellLong(
       `export SUDO_ASKPASS="${askPassPath}" && sudo -A -v && export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive`,
@@ -366,6 +382,7 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
       }
     )
 
+    console.log(`[bootstrap] Sandbox creation exited with code: ${code}`)
     if (code === 0) {
       sendBootstrap(win, 'sandbox-create', 'done', 'Sandbox "open-coot-default" created ✓', 95)
       return true
