@@ -11,6 +11,7 @@ profiles:
   - ncp
   - nim-local
   - vllm
+  - llamacpp
 
 description: |
   NemoClaw blueprint: orchestrates OpenClaw sandbox creation, migration,
@@ -54,6 +55,14 @@ components:
         credential_env: "OPENAI_API_KEY"
         credential_default: "dummy"
 
+      llamacpp:
+        provider_type: "openai"
+        provider_name: "llamacpp-local"
+        endpoint: "http://localhost:8081/v1"
+        model: "llamacpp-model"
+        credential_env: "OPENAI_API_KEY"
+        credential_default: "dummy"
+
   policy:
     base: "sandboxes/openclaw/policy.yaml"
     additions:
@@ -62,4 +71,11 @@ components:
         endpoints:
           - host: "nim-service.local"
             port: 8000
+            protocol: rest
+
+      llamacpp-service:
+        name: llamacpp-service
+        endpoints:
+          - host: "llamacpp-service.local"
+            port: 8081
             protocol: rest

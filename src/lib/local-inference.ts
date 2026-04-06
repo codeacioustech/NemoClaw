@@ -14,6 +14,25 @@ export const CONTAINER_REACHABILITY_IMAGE = "curlimages/curl:8.10.1";
 export const DEFAULT_OLLAMA_MODEL = "nemotron-3-nano:30b";
 export const SMALL_OLLAMA_MODEL = "qwen2.5:7b";
 export const LARGE_OLLAMA_MIN_MEMORY_MB = 32768;
+export const LLAMACPP_LARGE_MIN_MEMORY_MB = 16384;
+
+export interface LlamaCppBootstrapModel {
+  label: string;
+  hfRepo: string;
+  hfFile: string;
+}
+
+export const LLAMACPP_SMALL_MODEL: LlamaCppBootstrapModel = {
+  label: "Qwen2.5-3B-Instruct (Q4_K_M, ~2 GB)",
+  hfRepo: "Qwen/Qwen2.5-3B-Instruct-GGUF",
+  hfFile: "qwen2.5-3b-instruct-q4_k_m.gguf",
+};
+
+export const LLAMACPP_LARGE_MODEL: LlamaCppBootstrapModel = {
+  label: "Qwen2.5-7B-Instruct (Q4_K_M, ~4.7 GB)",
+  hfRepo: "Qwen/Qwen2.5-7B-Instruct-GGUF",
+  hfFile: "qwen2.5-7b-instruct-q4_k_m.gguf",
+};
 
 export type RunCaptureFn = (cmd: string, opts?: { ignoreError?: boolean }) => string;
 
@@ -30,6 +49,8 @@ export function getLocalProviderBaseUrl(provider: string): string | null {
   switch (provider) {
     case "vllm-local":
       return `${HOST_GATEWAY_URL}:8000/v1`;
+    case "llamacpp-local":
+      return `${HOST_GATEWAY_URL}:8081/v1`;
     case "ollama-local":
       return `${HOST_GATEWAY_URL}:11434/v1`;
     default:
@@ -41,6 +62,8 @@ export function getLocalProviderValidationBaseUrl(provider: string): string | nu
   switch (provider) {
     case "vllm-local":
       return "http://localhost:8000/v1";
+    case "llamacpp-local":
+      return "http://localhost:8081/v1";
     case "ollama-local":
       return "http://localhost:11434/v1";
     default:
@@ -52,6 +75,8 @@ export function getLocalProviderHealthCheck(provider: string): string | null {
   switch (provider) {
     case "vllm-local":
       return "curl -sf http://localhost:8000/v1/models 2>/dev/null";
+    case "llamacpp-local":
+      return "curl -sf http://localhost:8081/v1/models 2>/dev/null";
     case "ollama-local":
       return "curl -sf http://localhost:11434/api/tags 2>/dev/null";
     default:
@@ -63,6 +88,8 @@ export function getLocalProviderContainerReachabilityCheck(provider: string): st
   switch (provider) {
     case "vllm-local":
       return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8000/v1/models 2>/dev/null`;
+    case "llamacpp-local":
+      return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:8081/v1/models 2>/dev/null`;
     case "ollama-local":
       return `docker run --rm --add-host host.openshell.internal:host-gateway ${CONTAINER_REACHABILITY_IMAGE} -sf http://host.openshell.internal:11434/api/tags 2>/dev/null`;
     default:
@@ -86,6 +113,12 @@ export function validateLocalProvider(
         return {
           ok: false,
           message: "Local vLLM was selected, but nothing is responding on http://localhost:8000.",
+        };
+      case "llamacpp-local":
+        return {
+          ok: false,
+          message:
+            "Local llama.cpp was selected, but nothing is responding on http://localhost:8081.",
         };
       case "ollama-local":
         return {
@@ -115,6 +148,12 @@ export function validateLocalProvider(
         message:
           "Local vLLM is responding on localhost, but containers cannot reach http://host.openshell.internal:8000. Ensure the server is reachable from containers, not only from the host shell.",
       };
+    case "llamacpp-local":
+      return {
+        ok: false,
+        message:
+          "Local llama.cpp is responding on localhost, but containers cannot reach http://host.openshell.internal:8081. Ensure llama-server listens on 0.0.0.0:8081 instead of 127.0.0.1 so sandboxes can reach it.",
+      };
     case "ollama-local":
       return {
         ok: false,
@@ -127,6 +166,25 @@ export function validateLocalProvider(
         message: "The selected local inference provider is unavailable from containers.",
       };
   }
+}
+
+export function parseLlamaCppModels(output: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(output || ""));
+    return Array.isArray(parsed?.data)
+      ? parsed.data.map((m: { id?: string }) => m && m.id).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getLlamaCppModelId(runCapture: RunCaptureFn): string | null {
+  const output = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
+    ignoreError: true,
+  });
+  const models = parseLlamaCppModels(output);
+  return models.length > 0 ? models[0] : null;
 }
 
 export function parseOllamaList(output: unknown): string[] {
@@ -171,6 +229,14 @@ export function getBootstrapOllamaModelOptions(gpu: GpuInfo | null): string[] {
   return options;
 }
 
+export function getBootstrapLlamaCppModelOptions(gpu: GpuInfo | null): LlamaCppBootstrapModel[] {
+  const options: LlamaCppBootstrapModel[] = [LLAMACPP_SMALL_MODEL];
+  if (gpu && gpu.totalMemoryMB >= LLAMACPP_LARGE_MIN_MEMORY_MB) {
+    options.push(LLAMACPP_LARGE_MODEL);
+  }
+  return options;
+}
+
 export function getDefaultOllamaModel(
   runCapture: RunCaptureFn,
   gpu: GpuInfo | null = null,
@@ -193,6 +259,23 @@ export function getOllamaWarmupCommand(model: string, keepAlive = "15m"): string
   return `nohup curl -s http://localhost:11434/api/generate -H 'Content-Type: application/json' -d ${shellQuote(payload)} >/dev/null 2>&1 &`;
 }
 
+export function getLlamaCppStartCommand(
+  model: LlamaCppBootstrapModel,
+  opts: { port?: number; contextSize?: number; host?: string } = {},
+): string {
+  const port = opts.port ?? 8081;
+  const ctxSize = opts.contextSize ?? 16384;
+  const host = opts.host ?? "0.0.0.0";
+  return (
+    `llama-server` +
+    ` --hf-repo ${shellQuote(model.hfRepo)}` +
+    ` --hf-file ${shellQuote(model.hfFile)}` +
+    ` --host ${host} --port ${port}` +
+    ` -c ${ctxSize}` +
+    ` >/dev/null 2>&1 &`
+  );
+}
+
 export function getOllamaProbeCommand(
   model: string,
   timeoutSeconds = 120,
@@ -207,10 +290,7 @@ export function getOllamaProbeCommand(
   return `curl -sS --max-time ${timeoutSeconds} http://localhost:11434/api/generate -H 'Content-Type: application/json' -d ${shellQuote(payload)} 2>/dev/null`;
 }
 
-export function validateOllamaModel(
-  model: string,
-  runCapture: RunCaptureFn,
-): ValidationResult {
+export function validateOllamaModel(model: string, runCapture: RunCaptureFn): ValidationResult {
   const output = runCapture(getOllamaProbeCommand(model), { ignoreError: true });
   if (!output) {
     return {
@@ -234,4 +314,27 @@ export function validateOllamaModel(
   }
 
   return { ok: true };
+}
+
+export function waitForLlamaCppReady(
+  runCapture: RunCaptureFn,
+  opts: { port?: number; timeoutSeconds?: number; intervalSeconds?: number } = {},
+): string | null {
+  const port = opts.port ?? 8081;
+  const timeout = opts.timeoutSeconds ?? 120;
+  const interval = opts.intervalSeconds ?? 2;
+  const deadline = Date.now() + timeout * 1000;
+
+  while (Date.now() < deadline) {
+    const output = runCapture(`curl -sf http://localhost:${port}/v1/models 2>/dev/null`, {
+      ignoreError: true,
+    });
+    const models = parseLlamaCppModels(output);
+    if (models.length > 0) {
+      return models[0];
+    }
+    // Sleep between polls -> uses the same spawnSync sleep onboard.js
+    require("child_process").spawnSync("sleep", [String(interval)]);
+  }
+  return null;
 }
