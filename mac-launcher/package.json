@@ -9,7 +9,8 @@
     "download-ollama": "bash scripts/download-ollama.sh"
   },
   "dependencies": {
-    "openclaw": "^2026.3.11"
+    "openclaw": "^2026.3.11",
+    "nemoclaw": "file:../nemoclaw"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -24,7 +25,8 @@
       "identity": null
     },
     "asarUnpack": [
-      "node_modules/openclaw/**"
+      "node_modules/openclaw/**",
+      "node_modules/nemoclaw/**"
     ],
     "extraResources": [
       {

@@ -43,4 +43,23 @@ function resolveOllama() {
   throw new Error("Cannot locate Ollama binary — run 'npm run download-ollama' first.");
 }
 
-module.exports = { resolveOpenclawMjs, resolveOpenclawDir, resolveOllama };
+function resolveNemoclawPlugin() {
+  if (isPackaged()) {
+    const packaged = path.join(
+      process.resourcesPath,
+      "app.asar.unpacked",
+      "node_modules",
+      "nemoclaw",
+      "dist",
+      "index.js"
+    );
+    if (fs.existsSync(packaged)) return packaged;
+  }
+
+  const dev = path.join(__dirname, "..", "node_modules", "nemoclaw", "dist", "index.js");
+  if (fs.existsSync(dev)) return dev;
+
+  return null;
+}
+
+module.exports = { resolveOpenclawMjs, resolveOpenclawDir, resolveOllama, resolveNemoclawPlugin };
