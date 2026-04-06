@@ -118,7 +118,8 @@ async function checkArchitecture(win: BrowserWindow): Promise<boolean> {
 async function checkNemoclawInstalled(): Promise<boolean> {
   console.log('[bootstrap] Checking if NemoClaw is installed...')
   try {
-    const result = await runShell('nemoclaw --version')
+    // Use command -v instead of running the binary to avoid hanging if the app blocks
+    const result = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && command -v nemoclaw')
     console.log(`[bootstrap] checkNemoclawInstalled result: ${result.code === 0}`)
     return result.code === 0
   } catch (err) {
@@ -228,7 +229,7 @@ function waitForDockerRetry(win: BrowserWindow): Promise<boolean> {
 
 async function checkOllamaInstalled(): Promise<boolean> {
   try {
-    const result = await runShell('ollama list')
+    const result = await runShell('command -v ollama')
     return result.code === 0
   } catch {
     return false
