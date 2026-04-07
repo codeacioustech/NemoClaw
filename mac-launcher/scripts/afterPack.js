@@ -5,11 +5,22 @@ const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
+function isModuleComplete(dir) {
+  return fs.existsSync(path.join(dir, "package.json"));
+}
+
 function copyModule(srcModules, destModules, name) {
   const destPath = path.join(destModules, name);
   const srcPath = path.join(srcModules, name);
 
-  if (fs.existsSync(destPath) || !fs.existsSync(srcPath)) return false;
+  if (!fs.existsSync(srcPath)) return false;
+  // Check if module is complete (has package.json), not just if directory exists
+  if (isModuleComplete(destPath)) return false;
+
+  // Remove partial/empty directory if present
+  if (fs.existsSync(destPath)) {
+    execSync(`rm -rf "${destPath}"`, { stdio: "pipe" });
+  }
 
   // Ensure parent directory exists (for scoped packages like @buape/carbon)
   const parentDir = path.dirname(destPath);
@@ -22,8 +33,10 @@ function copyModule(srcModules, destModules, name) {
 
   try {
     execSync(`cp -r "${realSrc}" "${destPath}"`, { stdio: "pipe" });
+    console.log(`[afterPack]   + ${name}`);
     return true;
-  } catch {
+  } catch (err) {
+    console.log(`[afterPack]   ! ${name} (copy failed: ${err.message})`);
     return false;
   }
 }
@@ -39,6 +52,9 @@ exports.default = async function (context) {
   );
   const srcModules = path.join(context.packager.projectDir, "node_modules");
   const destModules = path.join(appDir, "node_modules");
+
+  console.log(`[afterPack] Source: ${srcModules}`);
+  console.log(`[afterPack] Dest:   ${destModules}`);
 
   const pkg = JSON.parse(
     fs.readFileSync(path.join(context.packager.projectDir, "package.json"), "utf-8")
@@ -85,6 +101,7 @@ exports.default = async function (context) {
 
   for (const dep of prodDeps) {
     const depDir = path.join(srcModules, dep);
+    if (!fs.existsSync(depDir)) continue;
     if (fs.lstatSync(depDir).isSymbolicLink()) {
       walkDeps(fs.realpathSync(depDir));
     } else {
@@ -92,5 +109,8 @@ exports.default = async function (context) {
     }
   }
 
-  console.log(`[afterPack] Copied ${copied} missing modules into packaged app.`);
+  // Verify critical module
+  const carbonCheck = path.join(destModules, "@buape", "carbon", "package.json");
+  console.log(`[afterPack] @buape/carbon present: ${fs.existsSync(carbonCheck)}`);
+  console.log(`[afterPack] Copied ${copied} missing modules.`);
 };
