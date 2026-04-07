@@ -13,7 +13,7 @@ function resolveOpenclawMjs() {
   if (isPackaged()) {
     const packaged = path.join(
       process.resourcesPath,
-      "app.asar.unpacked",
+      "app",
       "node_modules",
       "openclaw",
       "openclaw.mjs"
@@ -47,7 +47,7 @@ function resolveNemoclawPlugin() {
   if (isPackaged()) {
     const packaged = path.join(
       process.resourcesPath,
-      "app.asar.unpacked",
+      "app",
       "node_modules",
       "nemoclaw",
       "dist",
