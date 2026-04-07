@@ -4,6 +4,7 @@
   "description": "macOS desktop launcher for NemoClaw",
   "main": "index.js",
   "scripts": {
+    "prestart": "bash scripts/download-ollama.sh && (test -f ../nemoclaw/dist/index.js || (cd ../nemoclaw && npm install --ignore-scripts && npx tsc))",
     "start": "electron .",
     "dist": "npm run download-ollama && electron-builder",
     "download-ollama": "bash scripts/download-ollama.sh"

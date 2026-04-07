@@ -24,7 +24,7 @@ function resolveOpenclawMjs() {
   const dev = path.join(__dirname, "..", "node_modules", "openclaw", "openclaw.mjs");
   if (fs.existsSync(dev)) return dev;
 
-  throw new Error("Cannot locate openclaw.mjs — ensure openclaw is installed.");
+  throw new Error("Cannot locate openclaw.mjs — run 'npm install' in the mac-launcher directory.");
 }
 
 function resolveOpenclawDir() {
