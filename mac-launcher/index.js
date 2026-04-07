@@ -213,8 +213,8 @@ async function bootstrap() {
     try {
       await pullModel();
     } catch (err) {
-      sendError(`Model pull failed: ${err.message}`);
-      return;
+      console.error(`Model pull failed: ${err.message}`);
+      sendStatus(`Model pull failed (${err.message}) — continuing startup...`);
     }
 
     // 3. Seed configs

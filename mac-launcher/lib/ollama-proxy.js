@@ -169,7 +169,12 @@ function startProxy(onListening) {
     });
   });
 
+  server.on("error", (err) => {
+    console.error(`[ollama-proxy] Server error: ${err.message}`);
+  });
+
   server.listen(PROXY_PORT, OLLAMA_HOST, () => {
+    console.log(`[ollama-proxy] Listening on ${OLLAMA_HOST}:${PROXY_PORT}`);
     if (onListening) onListening();
   });
 
