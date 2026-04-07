@@ -86,6 +86,7 @@
       "identity": null
     },
     "asar": false,
+    "npmRebuild": false,
     "extraResources": [
       {
         "from": "resources/ollama-mac",
@@ -93,11 +94,9 @@
       }
     ],
     "files": [
-      "index.js",
-      "preload.js",
-      "splash.html",
-      "lib/**",
-      "node_modules/**"
+      "**/*",
+      "!scripts",
+      "!resources"
     ]
   }
 }
