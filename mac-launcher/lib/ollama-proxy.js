@@ -34,7 +34,7 @@ function startProxy(onListening) {
       let body = Buffer.concat(bodyChunks);
       console.log(`[ollama-proxy] Body received: ${body.length} bytes, forwarding to Ollama`);
 
-      // Inject system instruction into chat requests
+      // Inject system instruction and trim tools from chat requests
       if (isChatEndpoint) {
         try {
           const parsed = JSON.parse(body.toString());
@@ -44,7 +44,13 @@ function startProxy(onListening) {
               content: SYSTEM_INSTRUCTION,
             });
           }
+          // Remove tool definitions to reduce prompt size for small local models
+          if (parsed.tools) {
+            console.log(`[ollama-proxy] Stripped ${parsed.tools.length} tool definitions from request`);
+            delete parsed.tools;
+          }
           body = Buffer.from(JSON.stringify(parsed));
+          console.log(`[ollama-proxy] Request body after processing: ${body.length} bytes`);
         } catch {
           // Forward as-is if body isn't valid JSON
         }

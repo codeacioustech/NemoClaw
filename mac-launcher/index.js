@@ -243,11 +243,19 @@ async function bootstrap() {
       dirty = true;
     }
 
-    // Use minimal tool profile to keep prompt small for local models
+    // Increase LLM idle timeout and skip bootstrap for local models
     if (!cfg.agents) cfg.agents = {};
     if (!cfg.agents.defaults) cfg.agents.defaults = {};
-    if (!cfg.agents.defaults.tools || cfg.agents.defaults.tools.profile !== "minimal") {
-      cfg.agents.defaults.tools = { ...cfg.agents.defaults.tools, profile: "minimal" };
+    if (cfg.agents.defaults.tools) {
+      delete cfg.agents.defaults.tools;
+      dirty = true;
+    }
+    if (!cfg.agents.defaults.llm || cfg.agents.defaults.llm.idleTimeoutSeconds < 300) {
+      cfg.agents.defaults.llm = { ...cfg.agents.defaults.llm, idleTimeoutSeconds: 300 };
+      dirty = true;
+    }
+    if (cfg.agents.defaults.skipBootstrap !== true) {
+      cfg.agents.defaults.skipBootstrap = true;
       dirty = true;
     }
 
