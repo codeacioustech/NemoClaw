@@ -232,11 +232,14 @@ describe("llama.cpp cleanup", () => {
     }
   });
 
-  it("remove_optional_llamacpp_cache removes cache dir when --delete-models is set", () => {
+  it("remove_optional_llamacpp_cache removes both cache dirs when --delete-models is set", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-uninstall-llamacpp-cache-"));
-    const cacheDir = path.join(tmp, ".cache", "llama.cpp");
-    fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(path.join(cacheDir, "model.gguf"), "fake");
+    const hfCache = path.join(tmp, ".cache", "huggingface");
+    const llamaCache = path.join(tmp, ".cache", "llama.cpp");
+    fs.mkdirSync(hfCache, { recursive: true });
+    fs.mkdirSync(llamaCache, { recursive: true });
+    fs.writeFileSync(path.join(hfCache, "model.gguf"), "fake");
+    fs.writeFileSync(path.join(llamaCache, "model.gguf"), "fake");
 
     try {
       const result = spawnSync(
@@ -249,7 +252,8 @@ describe("llama.cpp cleanup", () => {
         },
       );
       expect(result.status).toBe(0);
-      expect(fs.existsSync(cacheDir)).toBe(false);
+      expect(fs.existsSync(hfCache)).toBe(false);
+      expect(fs.existsSync(llamaCache)).toBe(false);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -257,9 +261,9 @@ describe("llama.cpp cleanup", () => {
 
   it("remove_optional_llamacpp_cache is a no-op when DELETE_MODELS is not set", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-uninstall-llamacpp-noop-"));
-    const cacheDir = path.join(tmp, ".cache", "llama.cpp");
-    fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(path.join(cacheDir, "model.gguf"), "fake");
+    const hfCache = path.join(tmp, ".cache", "huggingface");
+    fs.mkdirSync(hfCache, { recursive: true });
+    fs.writeFileSync(path.join(hfCache, "model.gguf"), "fake");
 
     try {
       const result = spawnSync(
@@ -272,7 +276,7 @@ describe("llama.cpp cleanup", () => {
         },
       );
       expect(result.status).toBe(0);
-      expect(fs.existsSync(cacheDir)).toBe(true);
+      expect(fs.existsSync(hfCache)).toBe(true);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

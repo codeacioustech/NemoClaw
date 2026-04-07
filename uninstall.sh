@@ -176,7 +176,7 @@ confirm() {
   printf "  ${C_DIM}  · Global nemoclaw npm package${C_RESET}\n"
   if [ "$DELETE_MODELS" = true ]; then
     printf "  ${C_DIM}  · Ollama models: %s${C_RESET}\n" "${OLLAMA_MODELS[*]}"
-    printf "  ${C_DIM}  · llama.cpp model cache (~/.cache/llama.cpp)${C_RESET}\n"
+    printf "  ${C_DIM}  · llama.cpp/HuggingFace model cache (~/.cache/huggingface, ~/.cache/llama.cpp)${C_RESET}\n"
   else
     printf "  ${C_DIM}  · Local models: ${C_RESET}${C_GREEN}kept${C_RESET}${C_DIM} (pass --delete-models to remove)${C_RESET}\n"
   fi
@@ -291,11 +291,11 @@ stop_llamacpp_server() {
     pids+=("$pid")
   done < <(pgrep -f 'llama-server' 2>/dev/null || true)
 
-  if [ "${#pids[@]}" -eq 0]; then
+  if [ "${#pids[@]}" -eq 0 ]; then
     return 0
   fi
 
-  for pid in "{pids[@]}"; do
+  for pid in "${pids[@]}"; do
     if kill "$pid" >/dev/null 2>&1 || kill -9 "$pid" >/dev/null 2>&1; then
       info "Stopped llama-server process $pid"
     else
@@ -579,12 +579,26 @@ remove_optional_llamacpp_cache() {
     return 0
   fi
 
-  local cache_dir="${HOME}/.cache/llama.cpp"
-  if [ -d "$cache_dir" ]; then
-    rm -rf "$cache_dir"
-    info "Removed llama.cpp model cache ($cache_dir)"
-  else
-    info "No llama.cpp model cache found"
+  local removed=false
+
+  # llama-server --hf-repo caches models in the HuggingFace hub directory
+  local hf_cache="${HOME}/.cache/huggingface"
+  if [ -d "$hf_cache" ]; then
+    rm -rf "$hf_cache"
+    info "Removed HuggingFace model cache ($hf_cache)"
+    removed=true
+  fi
+
+  # Older llama.cpp versions or manual downloads may use this path
+  local llama_cache="${HOME}/.cache/llama.cpp"
+  if [ -d "$llama_cache" ]; then
+    rm -rf "$llama_cache"
+    info "Removed llama.cpp model cache ($llama_cache)"
+    removed=true
+  fi
+
+  if [ "$removed" = false ]; then
+    info "No llama.cpp/HuggingFace model cache found"
   fi
 }
 
