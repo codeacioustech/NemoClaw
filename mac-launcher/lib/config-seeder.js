@@ -67,8 +67,9 @@ function seedOpenclawConfig() {
         models: {
           [`ollama/${MODEL}`]: {},
         },
-        tools: {
-          profile: "minimal",
+        skipBootstrap: true,
+        llm: {
+          idleTimeoutSeconds: 300,
         },
       },
     },
