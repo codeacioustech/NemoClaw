@@ -34,6 +34,9 @@ function seedOpenclawConfig() {
       bind: "loopback",
       port: GATEWAY_PORT,
       auth: { mode: "none" },
+      controlUi: {
+        dangerouslyDisableDeviceAuth: true,
+      },
     },
     models: {
       mode: "merge",
