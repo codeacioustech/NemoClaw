@@ -23,6 +23,8 @@ const JSON_WRAPPER_SUFFIX = /"\s*\}\s*\}\s*$/;
  */
 function startProxy(onListening) {
   const server = http.createServer((clientReq, clientRes) => {
+    console.log(`[ollama-proxy] ${clientReq.method} ${clientReq.url} content-length=${clientReq.headers["content-length"] || "none"}`);
+
     const isChatEndpoint =
       clientReq.method === "POST" && clientReq.url === "/api/chat";
 
@@ -30,6 +32,7 @@ function startProxy(onListening) {
     clientReq.on("data", (chunk) => bodyChunks.push(chunk));
     clientReq.on("end", () => {
       let body = Buffer.concat(bodyChunks);
+      console.log(`[ollama-proxy] Body received: ${body.length} bytes, forwarding to Ollama`);
 
       // Inject system instruction into chat requests
       if (isChatEndpoint) {
@@ -160,6 +163,7 @@ function startProxy(onListening) {
       );
 
       proxyReq.on("error", (err) => {
+        console.error(`[ollama-proxy] Proxy error: ${err.message}`);
         clientRes.writeHead(502);
         clientRes.end(`Proxy error: ${err.message}`);
       });
