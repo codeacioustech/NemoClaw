@@ -10,7 +10,7 @@ import { saveConfig } from './config-service'
 let capturedOpenClawUrl: string | null = null
 
 // Pin NemoClaw to a known working version to avoid upstream breaking changes
-const NEMOCLAW_VERSION = 'v0.0.1'
+const NEMOCLAW_VERSION = 'v0.0.4'
 
 function startOllamaDetached(): void {
   const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
@@ -154,7 +154,7 @@ async function checkNemoclawVersion(): Promise<boolean> {
     const result = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw --version 2>/dev/null || echo "unknown"')
     const installedVersion = result.stdout.trim()
     console.log(`[bootstrap] Installed NemoClaw version: ${installedVersion}`)
-    // Check if the installed version contains our pinned version (e.g. "0.0.1" in "v0.0.1" or "nemoclaw 0.0.1")
+    // Check if the installed version contains our pinned version (e.g. "0.0.4" in "v0.0.4" or "nemoclaw 0.0.4")
     const pinned = NEMOCLAW_VERSION.replace(/^v/, '')
     return installedVersion.includes(pinned)
   } catch {
