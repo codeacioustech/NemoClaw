@@ -17,6 +17,7 @@ const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/clea
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
 const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
+const OPENCLAW_CONFIG = path.join(os.homedir(), ".openclaw", "openclaw.json");
 
 let splashWindow = null;
 let mainWindow = null;
@@ -227,6 +228,19 @@ async function bootstrap() {
       gateway_port: GATEWAY_PORT,
       setupCompletedAt: new Date().toISOString(),
     });
+  }
+
+  // Ensure gateway config has controlUi.dangerouslyDisableDeviceAuth
+  try {
+    const raw = fs.readFileSync(OPENCLAW_CONFIG, "utf-8");
+    const cfg = JSON.parse(raw);
+    if (!cfg.gateway) cfg.gateway = {};
+    if (!cfg.gateway.controlUi || !cfg.gateway.controlUi.dangerouslyDisableDeviceAuth) {
+      cfg.gateway.controlUi = { ...cfg.gateway.controlUi, dangerouslyDisableDeviceAuth: true };
+      fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+    }
+  } catch {
+    // Config will be created by seedAll on first run
   }
 
   // 5. Start inference proxy

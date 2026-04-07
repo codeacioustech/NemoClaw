@@ -10,7 +10,7 @@
     "download-ollama": "bash scripts/download-ollama.sh"
   },
   "dependencies": {
-    "openclaw": "^2026.3.11",
+    "openclaw": "2026.3.11",
     "nemoclaw": "file:../nemoclaw"
   },
   "devDependencies": {
