@@ -96,7 +96,8 @@
       "index.js",
       "preload.js",
       "splash.html",
-      "lib/**"
+      "lib/**",
+      "node_modules/**"
     ]
   }
 }
