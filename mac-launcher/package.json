@@ -87,6 +87,7 @@
     },
     "asar": false,
     "npmRebuild": false,
+    "afterPack": "./scripts/afterPack.js",
     "extraResources": [
       {
         "from": "resources/ollama-mac",
