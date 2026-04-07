@@ -318,12 +318,19 @@ export function validateOllamaModel(model: string, runCapture: RunCaptureFn): Va
 
 export function waitForLlamaCppReady(
   runCapture: RunCaptureFn,
-  opts: { port?: number; timeoutSeconds?: number; intervalSeconds?: number } = {},
+  opts: {
+    port?: number;
+    timeoutSeconds?: number;
+    intervalSeconds?: number;
+    onProgress?: (elapsedSeconds: number, timeoutSeconds: number) => void;
+  } = {},
 ): string | null {
   const port = opts.port ?? 8081;
-  const timeout = opts.timeoutSeconds ?? 120;
+  const timeout = opts.timeoutSeconds ?? 420;
   const interval = opts.intervalSeconds ?? 2;
   const deadline = Date.now() + timeout * 1000;
+  const start = Date.now();
+  let lastProgressAt = 0;
 
   while (Date.now() < deadline) {
     const output = runCapture(`curl -sf http://localhost:${port}/v1/models 2>/dev/null`, {
@@ -333,7 +340,12 @@ export function waitForLlamaCppReady(
     if (models.length > 0) {
       return models[0];
     }
-    // Sleep between polls -> uses the same spawnSync sleep onboard.js
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    if (opts.onProgress && elapsed - lastProgressAt >= 15) {
+      opts.onProgress(elapsed, timeout);
+      lastProgressAt = elapsed;
+    }
+    // Sleep between polls — uses the same spawnSync sleep as onboard.js
     require("child_process").spawnSync("sleep", [String(interval)]);
   }
   return null;
