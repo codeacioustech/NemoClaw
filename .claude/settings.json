@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -L \"https://raw.githubusercontent.com/NVIDIA/NemoClaw/main/install.sh\")",
+      "Bash(curl -s -L \"https://api.github.com/repos/NVIDIA/NemoClaw/contents/nemoclaw/src/onboard\")"
+    ]
+  }
+}

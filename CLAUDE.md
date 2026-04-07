@@ -107,7 +107,7 @@ electron-vite compiles to `out/` (main, preload, renderer subdirs). electron-bui
 ### Process Spawning
 - Always use `child_process.spawn` (NOT `exec`) for installation commands — `exec` buffers output and breaks real-time terminal streaming
 - Set `NEMOCLAW_NON_INTERACTIVE=1` env var when spawning install processes
-- Run `nemoclaw onboard --non-interactive --name <sandboxName>`
+- Run `nemoclaw onboard --non-interactive` (sandbox name is set via `NEMOCLAW_SANDBOX_NAME` env var, not a CLI flag)
 
 ### API Key Validation
 - 5-second timeout per request, retry once before failing

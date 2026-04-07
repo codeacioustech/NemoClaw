@@ -10,7 +10,7 @@ import { saveConfig } from './config-service'
 let capturedOpenClawUrl: string | null = null
 
 // Pin NemoClaw to a known working version to avoid upstream breaking changes
-const NEMOCLAW_VERSION = 'v0.0.4'
+const NEMOCLAW_VERSION = 'v0.0.7'
 
 function startOllamaDetached(): void {
   const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
@@ -451,7 +451,7 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
 
     console.log('[bootstrap] Sudo acquired, running nemoclaw onboard...')
     const code = await runShellLong(
-      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive --name open-coot-default',
+      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw onboard --non-interactive',
       win,
       'sandbox-create',
       {
@@ -611,7 +611,36 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       }
     }
 
-    // Step 8: Create sandbox
+    // Step 8: Ensure Ollama is still running before sandbox creation
+    sendBootstrap(win, 'ollama-serve', 'running', 'Verifying Ollama is running...', 82)
+    const ollamaAlive = await runShell('curl -sf http://localhost:11434 > /dev/null 2>&1 && echo "ok"')
+    if (!ollamaAlive.stdout.includes('ok')) {
+      console.log('[bootstrap] Ollama not responding before sandbox creation, restarting...')
+      startOllamaDetached()
+      let ollamaBack = false
+      for (let i = 0; i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 1000))
+        const ping = await runShell('curl -sf http://localhost:11434 > /dev/null 2>&1 && echo "ok"')
+        if (ping.stdout.includes('ok')) { ollamaBack = true; break }
+      }
+      if (!ollamaBack) {
+        // Last resort: try GUI app
+        await runShell('open -a Ollama 2>/dev/null')
+        for (let i = 0; i < 10; i++) {
+          await new Promise((r) => setTimeout(r, 1000))
+          const ping = await runShell('curl -sf http://localhost:11434 > /dev/null 2>&1 && echo "ok"')
+          if (ping.stdout.includes('ok')) { ollamaBack = true; break }
+        }
+      }
+      if (!ollamaBack) {
+        sendBootstrap(win, 'ollama-serve', 'error', 'Ollama is not running. Please start Ollama and try again.', 82)
+        win.webContents.send('bootstrap-complete', false)
+        return
+      }
+    }
+    sendBootstrap(win, 'ollama-serve', 'done', 'Ollama running ✓', 83)
+
+    // Step 9: Create sandbox
     const sandboxCreated = await createSandbox(win)
     if (!sandboxCreated) {
       sendBootstrap(win, 'error', 'error', 'Failed to create sandbox.', 95)
