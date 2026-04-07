@@ -558,6 +558,19 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
       }
     }
 
+    // Post-install safety: verify the installed version matches our pin.
+    // If NVIDIA deletes the tag, curl|bash may install a different version.
+    const postInstallVersionOk = await checkNemoclawVersion()
+    if (!postInstallVersionOk) {
+      const actual = await runShell('export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw --version 2>/dev/null')
+      const actualVer = actual.stdout.trim() || 'unknown'
+      console.error(`[bootstrap] Version mismatch after install! Expected ${NEMOCLAW_VERSION}, got: ${actualVer}`)
+      sendBootstrap(win, 'nemoclaw-install', 'error',
+        `Version mismatch: expected ${NEMOCLAW_VERSION} but got ${actualVer}. This version of Open-Coot may not be compatible. Please check for an app update.`, 35)
+      win.webContents.send('bootstrap-complete', false)
+      return
+    }
+
     // Step 5: Ollama
     sendBootstrap(win, 'ollama-check', 'running', 'Checking for Ollama...', 45)
     const hasOllama = await checkOllamaInstalled()
