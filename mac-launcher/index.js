@@ -230,13 +230,28 @@ async function bootstrap() {
     });
   }
 
-  // Ensure gateway config has controlUi.dangerouslyDisableDeviceAuth
+  // Ensure gateway config has required settings
   try {
     const raw = fs.readFileSync(OPENCLAW_CONFIG, "utf-8");
     const cfg = JSON.parse(raw);
+    let dirty = false;
+
+    // Disable device auth for local Control UI
     if (!cfg.gateway) cfg.gateway = {};
     if (!cfg.gateway.controlUi || !cfg.gateway.controlUi.dangerouslyDisableDeviceAuth) {
       cfg.gateway.controlUi = { ...cfg.gateway.controlUi, dangerouslyDisableDeviceAuth: true };
+      dirty = true;
+    }
+
+    // Use minimal tool profile to keep prompt small for local models
+    if (!cfg.agents) cfg.agents = {};
+    if (!cfg.agents.defaults) cfg.agents.defaults = {};
+    if (!cfg.agents.defaults.tools || cfg.agents.defaults.tools.profile !== "minimal") {
+      cfg.agents.defaults.tools = { ...cfg.agents.defaults.tools, profile: "minimal" };
+      dirty = true;
+    }
+
+    if (dirty) {
       fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
     }
   } catch {
