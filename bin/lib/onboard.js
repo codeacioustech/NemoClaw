@@ -2693,8 +2693,12 @@ async function setupNim(gpu) {
         (ollamaRunning ? " (suggested)" : ""),
     });
   }
-  if (llamacppRunning) {
-    options.push({ key: "llamacpp", label: "Local llama.cpp model" });
+  if (hasLlamaServer || llamacppRunning) {
+    options.push({
+      key: "llamacpp",
+      label:
+        `Local llama.cpp (localhost:8081)${llamacppRunning ? " — running" : ""}`,
+    });
   }
   // Offer to install llama.cpp when Homebrew is available but llama-server isn't
   if (!llamacppRunning && !hasLlamaServer && hasBrew) {
@@ -3197,8 +3201,11 @@ async function setupNim(gpu) {
           selectedModel = await promptLlamaCppModel(gpu);
         }
 
-        // Start llama-server with HuggingFace auto-download
-        const llamaHost = isWsl() ? "127.0.0.1" : "0.0.0.0";
+        // Start llama-server with HuggingFace auto-download.
+        // Always bind to 0.0.0.0 so Docker containers can reach it via
+        // host.openshell.internal. (Ollama uses 127.0.0.1 on WSL2 because its
+        // default binding triggers a dual-stack issue; llama-server does not.)
+        const llamaHost = "0.0.0.0";
         const startCmd = getLlamaCppStartCommand(selectedModel, { host: llamaHost });
         console.log(
           `  Starting llama-server (downloading ${selectedModel.hfFile} on first run)...`,
@@ -3207,11 +3214,17 @@ async function setupNim(gpu) {
 
         // Poll until healthy
         console.log(
-          "  Waiting for llama-server to become ready (model loading may take a few minutes)...",
+          "  Waiting for llama-server to become ready (first run downloads the model from HuggingFace)...",
         );
-        const detectedModel = waitForLlamaCppReady(runCapture);
+        const detectedModel = waitForLlamaCppReady(runCapture, {
+          onProgress: (elapsed, timeout) => {
+            console.log(
+              `  Still waiting... ${elapsed}s elapsed (timeout: ${timeout}s). Model download/load in progress.`,
+            );
+          },
+        });
         if (!detectedModel) {
-          console.error("  llama-server did not become ready within 120 seconds.");
+          console.error("  llama-server did not become ready within 7 minutes.");
           console.error(
             "  The model may still be downloading. Try again or start llama-server manually.",
           );
@@ -3299,32 +3312,68 @@ async function setupNim(gpu) {
         preferredInferenceApi = "openai-completions";
         break;
       } else if (selected.key === "llamacpp") {
-        console.log("  ✓ Using existing llama.cpp on localhost:8081");
         provider = "llamacpp-local";
         credentialEnv = "OPENAI_API_KEY";
         endpointUrl = getLocalProviderBaseUrl(provider);
-        const modelsRaw = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
-          ignoreError: true,
-        });
-        try {
-          const models = JSON.parse(modelsRaw);
-          if (models.data && models.data.length > 0) {
-            model = models.data[0].id;
-            if (!isSafeModelId(model)) {
-              console.error(`  Detected model ID contains invalid characters: ${model}`);
+
+        if (!llamacppRunning) {
+          // Binary is installed but server isn't running — pick a model and start it
+          let selectedModel;
+          if (isNonInteractive()) {
+            selectedModel = getBootstrapLlamaCppModelOptions(gpu)[0];
+          } else {
+            selectedModel = await promptLlamaCppModel(gpu);
+          }
+          const startCmd = getLlamaCppStartCommand(selectedModel, { host: "0.0.0.0" });
+          console.log(
+            `  Starting llama-server (downloading ${selectedModel.hfFile} on first run)...`,
+          );
+          run(startCmd, { ignoreError: true });
+          console.log(
+            "  Waiting for llama-server to become ready (first run downloads the model from HuggingFace)...",
+          );
+          const detectedModel = waitForLlamaCppReady(runCapture, {
+            onProgress: (elapsed, timeout) => {
+              console.log(
+                `  Still waiting... ${elapsed}s elapsed (timeout: ${timeout}s). Model download/load in progress.`,
+              );
+            },
+          });
+          if (!detectedModel) {
+            console.error("  llama-server did not become ready within 7 minutes.");
+            console.error(
+              "  The model may still be downloading. Try again or start llama-server manually.",
+            );
+            continue selectionLoop;
+          }
+          model = detectedModel;
+        } else {
+          // Server is already running — detect the loaded model
+          const modelsRaw = runCapture("curl -sf http://localhost:8081/v1/models 2>/dev/null", {
+            ignoreError: true,
+          });
+          try {
+            const models = JSON.parse(modelsRaw);
+            if (models.data && models.data.length > 0) {
+              model = models.data[0].id;
+              if (!isSafeModelId(model)) {
+                console.error(`  Detected model ID contains invalid characters: ${model}`);
+                process.exit(1);
+              }
+            } else {
+              console.error("  Could not detect model from llama.cpp. Is a model loaded?");
               process.exit(1);
             }
-            console.log(`  Detected model: ${model}`);
-          } else {
-            console.error("  Could not detect model from llama.cpp. Is a model loaded?");
+          } catch {
+            console.error(
+              "  Could not query llama.cpp models endpoint. Is llama-server running on localhost:8081?",
+            );
             process.exit(1);
           }
-        } catch {
-          console.error(
-            "  Could not query llama.cpp models endpoint. Is llama-server running on localhost:8081?",
-          );
-          process.exit(1);
         }
+
+        console.log(`  Detected model: ${model}`);
+        console.log("  ✓ Using llama.cpp on localhost:8081");
         const llamacppValidation = await validateOpenAiLikeSelection(
           "Local llama.cpp",
           getLocalProviderValidationBaseUrl(provider),
