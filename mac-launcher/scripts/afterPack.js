@@ -5,6 +5,29 @@ const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
+function copyModule(srcModules, destModules, name) {
+  const destPath = path.join(destModules, name);
+  const srcPath = path.join(srcModules, name);
+
+  if (fs.existsSync(destPath) || !fs.existsSync(srcPath)) return false;
+
+  // Ensure parent directory exists (for scoped packages like @buape/carbon)
+  const parentDir = path.dirname(destPath);
+  if (!fs.existsSync(parentDir)) {
+    fs.mkdirSync(parentDir, { recursive: true });
+  }
+
+  const stat = fs.lstatSync(srcPath);
+  const realSrc = stat.isSymbolicLink() ? fs.realpathSync(srcPath) : srcPath;
+
+  try {
+    execSync(`cp -r "${realSrc}" "${destPath}"`, { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 exports.default = async function (context) {
   const appName = context.packager.appInfo.productFilename;
   const appDir = path.join(
@@ -17,33 +40,21 @@ exports.default = async function (context) {
   const srcModules = path.join(context.packager.projectDir, "node_modules");
   const destModules = path.join(appDir, "node_modules");
 
-  // Get production dependency names (not devDependencies)
   const pkg = JSON.parse(
     fs.readFileSync(path.join(context.packager.projectDir, "package.json"), "utf-8")
   );
   const prodDeps = Object.keys(pkg.dependencies || {});
 
   let copied = 0;
-  for (const dep of prodDeps) {
-    const destPath = path.join(destModules, dep);
-    const srcPath = path.join(srcModules, dep);
 
-    if (!fs.existsSync(destPath) && fs.existsSync(srcPath)) {
-      const stat = fs.lstatSync(srcPath);
-      if (stat.isSymbolicLink()) {
-        // Resolve symlink and copy the real directory (e.g., nemoclaw -> ../nemoclaw)
-        const realPath = fs.realpathSync(srcPath);
-        execSync(`cp -r "${realPath}" "${destPath}"`, { stdio: "inherit" });
-      } else {
-        execSync(`cp -r "${srcPath}" "${destPath}"`, { stdio: "inherit" });
-      }
-      copied++;
-    }
+  // Copy direct production deps
+  for (const dep of prodDeps) {
+    if (copyModule(srcModules, destModules, dep)) copied++;
   }
 
-  // Also copy transitive deps: walk each production dep's own dependencies
+  // Walk transitive deps
   const visited = new Set();
-  function copyTransitiveDeps(pkgDir) {
+  function walkDeps(pkgDir) {
     if (visited.has(pkgDir)) return;
     visited.add(pkgDir);
 
@@ -57,43 +68,28 @@ exports.default = async function (context) {
       return;
     }
 
-    const allDeps = {
+    const allDeps = Object.keys({
       ...depPkg.dependencies,
       ...depPkg.optionalDependencies,
-    };
+    });
 
-    for (const name of Object.keys(allDeps || {})) {
-      const destPath = path.join(destModules, name);
-      const srcPath = path.join(srcModules, name);
+    for (const name of allDeps) {
+      if (copyModule(srcModules, destModules, name)) copied++;
 
-      if (!fs.existsSync(destPath) && fs.existsSync(srcPath)) {
-        const stat = fs.lstatSync(srcPath);
-        if (stat.isSymbolicLink()) {
-          const realPath = fs.realpathSync(srcPath);
-          try {
-            execSync(`cp -r "${realPath}" "${destPath}"`, { stdio: "pipe" });
-            copied++;
-          } catch { /* optional dep may fail */ }
-        } else {
-          try {
-            execSync(`cp -r "${srcPath}" "${destPath}"`, { stdio: "pipe" });
-            copied++;
-          } catch { /* optional dep may fail */ }
-        }
+      const nested = path.join(srcModules, name);
+      if (fs.existsSync(path.join(nested, "package.json"))) {
+        walkDeps(nested);
       }
-
-      // Recurse into this dep
-      const installed = fs.existsSync(path.join(srcPath, "package.json"))
-        ? srcPath
-        : null;
-      if (installed) copyTransitiveDeps(installed);
     }
   }
 
-  // Walk transitive deps of each production dependency
   for (const dep of prodDeps) {
-    const srcPath = path.join(srcModules, dep);
-    copyTransitiveDeps(srcPath);
+    const depDir = path.join(srcModules, dep);
+    if (fs.lstatSync(depDir).isSymbolicLink()) {
+      walkDeps(fs.realpathSync(depDir));
+    } else {
+      walkDeps(depDir);
+    }
   }
 
   console.log(`[afterPack] Copied ${copied} missing modules into packaged app.`);
