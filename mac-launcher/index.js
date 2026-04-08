@@ -258,6 +258,10 @@ async function bootstrap() {
       cfg.agents.defaults.skipBootstrap = true;
       dirty = true;
     }
+    if (cfg.agents.defaults.heartbeat?.every) {
+      delete cfg.agents.defaults.heartbeat.every;
+      dirty = true;
+    }
 
     if (dirty) {
       fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });

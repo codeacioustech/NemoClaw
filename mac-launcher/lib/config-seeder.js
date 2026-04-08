@@ -71,6 +71,7 @@ function seedOpenclawConfig() {
         llm: {
           idleTimeoutSeconds: 300,
         },
+        heartbeat: {},
       },
     },
   });
