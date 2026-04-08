@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -172,14 +172,14 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "NemoClaw",
+    title: "open-coot",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
-  mainWindow.loadURL(`http://127.0.0.1:${GATEWAY_PORT}`);
+  mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   return mainWindow;
 }
 
@@ -318,6 +318,31 @@ async function bootstrap() {
 
   createMainWindow();
 }
+
+// ---------------------------------------------------------------------------
+// IPC handlers for renderer
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("get-gateway-port", () => GATEWAY_PORT);
+
+ipcMain.handle("get-config", () => readLauncherConfig());
+
+ipcMain.handle("is-first-run", () => {
+  const config = readLauncherConfig();
+  return !config.launcher_setup_complete;
+});
+
+ipcMain.handle("mark-onboarding-complete", (_event, data) => {
+  const existing = readLauncherConfig();
+  writeLauncherConfig({
+    ...existing,
+    launcher_setup_complete: true,
+    onboarding: data || {},
+    gateway_port: GATEWAY_PORT,
+    setupCompletedAt: new Date().toISOString(),
+  });
+  return true;
+});
 
 // ---------------------------------------------------------------------------
 // App lifecycle

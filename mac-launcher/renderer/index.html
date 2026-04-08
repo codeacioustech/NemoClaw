@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com;">
+  <title>open-coot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 1 · ONBOARDING — STEP 1: Setup
+════════════════════════════════════════════════════ -->
+<div id="screen-1" class="screen">
+  <div class="window-chrome">
+    <div class="traffic-lights"><div class="tl tl-red"></div><div class="tl tl-yellow"></div><div class="tl tl-green"></div></div>
+    <div class="window-title">open-coot — First Launch Setup</div>
+    <div style="width:52px;"></div>
+  </div>
+
+  <div class="ob-body">
+    <div class="ob-card">
+      <div class="ob-progress">
+        <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:25%"></div></div>
+        <span class="ob-step">Step 1 of 4</span>
+      </div>
+
+      <h2 class="ob-heading">Tell us about your workspace</h2>
+      <p class="ob-sub">We'll tailor open-coot so it feels right from day one. You can always change this later.</p>
+
+      <!-- Purpose -->
+      <div class="ob-section-label">What's the main purpose?</div>
+      <div class="purpose-grid">
+        <div class="purpose-card" onclick="single(this,'.purpose-card')">
+          <div class="purpose-top"><span class="purpose-icon">🧑‍💻</span><span class="purpose-label">Personal productivity</span></div>
+          <div class="purpose-desc">Just you. Automate your own tools, notes, and workflows.</div>
+        </div>
+        <div class="purpose-card" onclick="single(this,'.purpose-card')">
+          <div class="purpose-top"><span class="purpose-icon">🏠</span><span class="purpose-label">Family coordination</span></div>
+          <div class="purpose-desc">Shared tasks, calendars, budgets — for the household.</div>
+        </div>
+        <div class="purpose-card" onclick="single(this,'.purpose-card')">
+          <div class="purpose-top"><span class="purpose-icon">👥</span><span class="purpose-label">Team collaboration</span></div>
+          <div class="purpose-desc">A workspace for your startup, agency, or department.</div>
+        </div>
+        <div class="purpose-card" onclick="single(this,'.purpose-card')">
+          <div class="purpose-top"><span class="purpose-icon">🔧</span><span class="purpose-label">Custom / developer</span></div>
+          <div class="purpose-desc">I know what I'm doing — give me full control.</div>
+        </div>
+      </div>
+
+      <!-- Tech familiarity -->
+      <div class="ob-section-label">Have you used any of these before?</div>
+      <div class="tech-pills" style="margin-bottom:28px;">
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>n8n</div>
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>Zapier</div>
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>Notion</div>
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>Make (Integromat)</div>
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>Local AI / Ollama</div>
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>Google Drive</div>
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>Slack</div>
+        <div class="tech-pill" onclick="toggle(this)"><div class="tech-pill-dot"></div>None of these</div>
+      </div>
+
+      <!-- Workspace size -->
+      <div class="ob-section-label">How many people in your workspace?</div>
+      <div class="size-grid">
+        <div class="size-card" onclick="single(this,'.size-card')">
+          <div class="size-num">1</div><div class="size-label">Just me</div>
+        </div>
+        <div class="size-card" onclick="single(this,'.size-card')">
+          <div class="size-num">2–5</div><div class="size-label">Family / small team</div>
+        </div>
+        <div class="size-card" onclick="single(this,'.size-card')">
+          <div class="size-num">6–20</div><div class="size-label">Team</div>
+        </div>
+        <div class="size-card" onclick="single(this,'.size-card')">
+          <div class="size-num">20+</div><div class="size-label">Organization</div>
+        </div>
+      </div>
+
+      <div class="ob-actions">
+        <div></div>
+        <button class="btn-primary" onclick="go(2)">Continue →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 2 · ONBOARDING — STEP 2: Invite
+════════════════════════════════════════════════════ -->
+<div id="screen-2" class="screen">
+  <div class="window-chrome">
+    <div class="traffic-lights"><div class="tl tl-red"></div><div class="tl tl-yellow"></div><div class="tl tl-green"></div></div>
+    <div class="window-title">open-coot — Setup</div>
+    <div style="width:52px;"></div>
+  </div>
+
+  <div class="ob-body">
+    <div class="ob-card">
+      <div class="ob-progress">
+        <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:50%"></div></div>
+        <span class="ob-step">Step 2 of 4</span>
+      </div>
+
+      <h2 class="ob-heading">Invite your people</h2>
+      <p class="ob-sub">Add team or family members now, or skip and do it later from Settings.</p>
+
+      <!-- Invite inputs -->
+      <div class="ob-section-label">Send invitations</div>
+      <div class="invite-row">
+        <input class="input" type="email" placeholder="colleague@email.com" style="flex:1;">
+        <select class="role-select">
+          <option>Admin</option>
+          <option selected>Member</option>
+          <option>Viewer</option>
+        </select>
+        <button class="btn-secondary">+ Add</button>
+      </div>
+      <div class="invite-row">
+        <input class="input" type="email" placeholder="another@email.com" style="flex:1;">
+        <select class="role-select">
+          <option>Admin</option>
+          <option>Member</option>
+          <option selected>Viewer</option>
+        </select>
+        <button class="btn-secondary">+ Add</button>
+      </div>
+
+      <!-- Role legend -->
+      <div class="role-legend" style="margin-top:24px;">
+        <div class="role-legend-item"><span class="badge badge-danger">Admin</span> Full access, can manage members &amp; settings</div>
+        <div class="role-legend-item"><span class="badge badge-primary">Member</span> Can create &amp; edit workflows and connectors</div>
+        <div class="role-legend-item"><span class="badge badge-muted">Viewer</span> Read-only access across the workspace</div>
+      </div>
+
+      <div class="ob-actions">
+        <button class="btn-ghost" onclick="go(1)">← Back</button>
+        <div class="ob-actions-right">
+          <button class="btn-ghost" onclick="go(3)">Skip for now</button>
+          <button class="btn-primary" onclick="go(3)">Continue →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 3 · ONBOARDING — STEP 3: Connectors
+════════════════════════════════════════════════════ -->
+<div id="screen-3" class="screen">
+  <div class="window-chrome">
+    <div class="traffic-lights"><div class="tl tl-red"></div><div class="tl tl-yellow"></div><div class="tl tl-green"></div></div>
+    <div class="window-title">open-coot — Setup</div>
+    <div style="width:52px;"></div>
+  </div>
+
+  <div class="ob-body" style="align-items:flex-start; padding-top:32px;">
+    <div class="ob-card ob-card-wide">
+      <div class="ob-progress">
+        <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:75%"></div></div>
+        <span class="ob-step">Step 3 of 4</span>
+      </div>
+
+      <h2 class="ob-heading">Connect your knowledge sources</h2>
+      <p class="ob-sub">Choose where your data lives. open-coot reads, syncs, and learns from your connected sources. Connect what you need now — more can be added anytime.</p>
+
+      <!-- Connectors -->
+      <div class="ob-section-label">Available connectors</div>
+      <div class="connectors-grid">
+
+        <div class="conn-card connected">
+          <div class="conn-card-top">
+            <div class="conn-logo">📁</div>
+            <div class="conn-status" style="color:var(--success);">
+              <span class="status-dot running"></span> Connected
+            </div>
+          </div>
+          <div class="conn-name">Local Files</div>
+          <div class="conn-desc">Access folders &amp; files on this machine directly. No auth needed.</div>
+          <button class="conn-btn active">✓ Connected — Configure</button>
+        </div>
+
+        <div class="conn-card">
+          <div class="conn-card-top">
+            <div class="conn-logo">🔵</div>
+            <div class="conn-status" style="color:var(--text-muted);">
+              <span class="status-dot inactive"></span> Not connected
+            </div>
+          </div>
+          <div class="conn-name">Google Drive</div>
+          <div class="conn-desc">Docs, Sheets, and Slides from your Google Workspace account.</div>
+          <button class="conn-btn idle">Connect Google Drive</button>
+        </div>
+
+        <div class="conn-card">
+          <div class="conn-card-top">
+            <div class="conn-logo">💬</div>
+            <div class="conn-status" style="color:var(--text-muted);">
+              <span class="status-dot inactive"></span> Not connected
+            </div>
+          </div>
+          <div class="conn-name">Slack</div>
+          <div class="conn-desc">Read channels, send messages, and trigger workflows from Slack events.</div>
+          <button class="conn-btn idle">Connect Slack</button>
+        </div>
+
+        <div class="conn-card">
+          <div class="conn-card-top">
+            <div class="conn-logo">📓</div>
+            <div class="conn-status" style="color:var(--text-muted);">
+              <span class="status-dot inactive"></span> Not connected
+            </div>
+          </div>
+          <div class="conn-name">Notion</div>
+          <div class="conn-desc">Sync pages, databases, and knowledge bases from your Notion workspace.</div>
+          <button class="conn-btn idle">Connect Notion</button>
+        </div>
+
+        <div class="conn-card">
+          <div class="conn-card-top">
+            <div class="conn-logo">🐙</div>
+            <div class="conn-status" style="color:var(--text-muted);">
+              <span class="status-dot inactive"></span> Not connected
+            </div>
+          </div>
+          <div class="conn-name">GitHub</div>
+          <div class="conn-desc">Repos, issues, and PRs — trigger actions from code events automatically.</div>
+          <button class="conn-btn idle">Connect GitHub</button>
+        </div>
+
+        <div class="conn-card">
+          <div class="conn-card-top">
+            <div class="conn-logo">☁️</div>
+            <div class="conn-status" style="color:var(--text-muted);">
+              <span class="status-dot inactive"></span> Not connected
+            </div>
+          </div>
+          <div class="conn-name">OneDrive</div>
+          <div class="conn-desc">Microsoft 365 files, SharePoint documents, and Teams content.</div>
+          <button class="conn-btn idle">Connect OneDrive</button>
+        </div>
+
+      </div>
+
+      <div class="ob-actions">
+        <button class="btn-ghost" onclick="go(2)">← Back</button>
+        <button class="btn-primary" onclick="go(4)">Continue →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 4 · ONBOARDING — STEP 4: Microapps
+════════════════════════════════════════════════════ -->
+<div id="screen-4" class="screen">
+  <div class="window-chrome">
+    <div class="traffic-lights"><div class="tl tl-red"></div><div class="tl tl-yellow"></div><div class="tl tl-green"></div></div>
+    <div class="window-title">open-coot — Setup</div>
+    <div style="width:52px;"></div>
+  </div>
+
+  <div class="ob-body" style="align-items:flex-start; padding-top:32px;">
+    <div class="ob-card ob-card-wide">
+      <div class="ob-progress">
+        <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:100%"></div></div>
+        <span class="ob-step">Step 4 of 4</span>
+      </div>
+
+      <h2 class="ob-heading">Initialize your microapps</h2>
+      <p class="ob-sub">Microapps are purpose-built modules that live inside your workspace. Select the ones that fit — you can add, remove, or build custom ones anytime.</p>
+
+      <div class="ob-section-label">Choose your microapps · click to toggle</div>
+      <div class="microapps-grid">
+
+        <div class="ma-card sel" onclick="toggle(this)">
+          <div class="ma-recommended">Recommended</div>
+          <div class="ma-icon" style="background:var(--warning-muted);">💰</div>
+          <div class="ma-name">Finance Tracker</div>
+          <div class="ma-desc">Budgets, expenses, and reports connected to your bank feeds and spreadsheets.</div>
+          <div class="ma-check">✓</div>
+        </div>
+
+        <div class="ma-card sel" onclick="toggle(this)">
+          <div class="ma-recommended">Recommended</div>
+          <div class="ma-icon" style="background:var(--primary-muted);">🧠</div>
+          <div class="ma-name">Knowledge Base</div>
+          <div class="ma-desc">AI-powered search and Q&amp;A across all your connected docs, notes, and files.</div>
+          <div class="ma-check">✓</div>
+        </div>
+
+        <div class="ma-card" onclick="toggle(this)">
+          <div class="ma-icon" style="background:var(--success-muted);">📋</div>
+          <div class="ma-name">Project Manager</div>
+          <div class="ma-desc">Tasks, milestones, and timelines with automated workflow triggers on status changes.</div>
+          <div class="ma-check">✓</div>
+        </div>
+
+        <div class="ma-card" onclick="toggle(this)">
+          <div class="ma-icon" style="background:rgba(79,70,229,0.15);">👥</div>
+          <div class="ma-name">HR Assistant</div>
+          <div class="ma-desc">Onboarding checklists, leave requests, and team directory — built for small teams.</div>
+          <div class="ma-check">✓</div>
+        </div>
+
+        <div class="ma-card" onclick="toggle(this)">
+          <div class="ma-icon" style="background:rgba(20,184,166,0.12);">💬</div>
+          <div class="ma-name">Customer Support</div>
+          <div class="ma-desc">AI-assisted ticket routing, canned responses, and escalation workflows for your team.</div>
+          <div class="ma-check">✓</div>
+        </div>
+
+        <div class="ma-card dashed" onclick="toggle(this)">
+          <div class="ma-icon" style="background:var(--surface-2);">⚙️</div>
+          <div class="ma-name">Custom Microapp</div>
+          <div class="ma-desc">Build your own microapp from a template or from scratch using the open-coot SDK.</div>
+          <div class="ma-check">✓</div>
+        </div>
+
+      </div>
+
+      <div class="ob-actions" style="margin-top:32px;">
+        <button class="btn-ghost" onclick="go(3)">← Back</button>
+        <button class="btn-primary" onclick="appLaunch()" style="background:var(--success); font-size:15px; padding:13px 32px;">
+          🚀 &nbsp;Launch open-coot
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN 5 · DASHBOARD
+════════════════════════════════════════════════════ -->
+<div id="screen-5" class="screen">
+  <div class="window-chrome">
+    <div class="traffic-lights"><div class="tl tl-red"></div><div class="tl tl-yellow"></div><div class="tl tl-green"></div></div>
+    <div class="window-title">open-coot</div>
+    <div style="width:52px;"></div>
+  </div>
+
+  <div class="dash-wrap">
+
+    <!-- Sidebar -->
+    <aside class="dash-sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-mark">OC</div>
+        <div class="sidebar-logo-text">
+          <h3>open-coot</h3>
+          <p>powered by nemoclaw</p>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-group">
+          <div class="nav-group-label">Workspace</div>
+          <div class="nav-item active"><span class="nav-icon">⊞</span> Dashboard</div>
+          <div class="nav-item"><span class="nav-icon">⟳</span> Workflows <span class="nav-badge">12</span></div>
+          <div class="nav-item"><span class="nav-icon">⚡</span> Runs</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Sources</div>
+          <div class="nav-item"><span class="nav-icon">🔌</span> Connectors</div>
+          <div class="nav-item"><span class="nav-icon">🧠</span> Knowledge</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">Microapps</div>
+          <div class="nav-item"><span class="nav-icon">💰</span> Finance</div>
+          <div class="nav-item"><span class="nav-icon">📋</span> Projects</div>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">People</div>
+          <div class="nav-item"><span class="nav-icon">👥</span> Team</div>
+          <div class="nav-item"><span class="nav-icon">⚙</span> Settings</div>
+        </div>
+      </nav>
+
+      <div class="sidebar-llm">
+        <div class="llm-dot"></div>
+        <div class="llm-info">
+          <h4>Checking model...</h4>
+          <p>Local inference</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <div class="dash-main">
+      <div class="dash-topbar">
+        <div class="dash-topbar-title">Dashboard</div>
+        <div class="dash-topbar-actions">
+          <button class="topbar-btn" onclick="openChat()" style="background:var(--surface); border:1px solid var(--border); color:var(--text-primary);">💬 Chat with AI</button>
+          <button class="topbar-btn">+ New Workflow</button>
+          <div class="topbar-avatar">U</div>
+        </div>
+      </div>
+
+      <div class="dash-content">
+        <!-- Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-accent" style="background:var(--primary);"></div>
+            <div class="stat-value">0</div>
+            <div class="stat-label">Active Workflows</div>
+            <div class="stat-trend" style="color:var(--primary-light);">Get started below</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-accent" style="background:var(--success);"></div>
+            <div class="stat-value">0</div>
+            <div class="stat-label">Runs Today</div>
+            <div class="stat-trend" style="color:var(--text-muted);">No runs yet</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-accent" style="background:var(--warning);"></div>
+            <div class="stat-value">1</div>
+            <div class="stat-label">Connectors</div>
+            <div class="stat-trend" style="color:var(--success);">Local Files active</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-accent" style="background:var(--purple);"></div>
+            <div class="stat-value">1</div>
+            <div class="stat-label">Team Members</div>
+            <div class="stat-trend" style="color:var(--purple);">You</div>
+          </div>
+        </div>
+
+        <!-- Two-column grid -->
+        <div class="dash-grid">
+
+          <!-- Workflows panel -->
+          <div class="dash-panel">
+            <div class="panel-header">
+              <span class="panel-title">Recent Workflows</span>
+              <span class="panel-link">View all →</span>
+            </div>
+            <div style="padding:40px 18px; text-align:center; color:var(--text-muted); font-size:13px;">
+              No workflows yet. Click <strong>+ New Workflow</strong> to get started.
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div style="display:flex; flex-direction:column; gap:16px;">
+
+            <!-- Connectors -->
+            <div class="dash-panel">
+              <div class="panel-header">
+                <span class="panel-title">Connectors</span>
+                <span class="panel-link">Manage →</span>
+              </div>
+              <div class="cp-row">
+                <span class="cp-icon">📁</span>
+                <div class="cp-info">
+                  <div class="cp-name">Local Files</div>
+                  <div class="cp-meta">Ready to configure folders</div>
+                </div>
+                <span class="cp-badge" style="color:var(--success);">● Active</span>
+              </div>
+            </div>
+
+            <!-- Active microapps -->
+            <div class="dash-panel">
+              <div class="panel-header">
+                <span class="panel-title">Active Microapps</span>
+                <span class="panel-link">Browse all →</span>
+              </div>
+              <div class="cp-row">
+                <span class="cp-icon">🧠</span>
+                <div class="cp-info">
+                  <div class="cp-name">Knowledge Base</div>
+                  <div class="cp-meta">AI search across your docs</div>
+                </div>
+                <span class="badge badge-success">Active</span>
+              </div>
+              <div class="cp-row">
+                <span class="cp-icon">💰</span>
+                <div class="cp-info">
+                  <div class="cp-name">Finance Tracker</div>
+                  <div class="cp-meta">Budgets &amp; expenses</div>
+                </div>
+                <span class="badge badge-success">Active</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     CHAT PANEL (slide-out overlay)
+════════════════════════════════════════════════════ -->
+<div class="chat-overlay">
+  <div class="chat-backdrop"></div>
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="chat-header-title">Chat with AI</div>
+      <button class="chat-header-btn chat-new-btn">+ New Chat</button>
+      <div class="chat-close">✕</div>
+    </div>
+    <div class="chat-messages">
+      <div class="chat-empty">
+        <div class="chat-empty-icon">💬</div>
+        <div class="chat-empty-text">
+          Send a message to start chatting<br>with your local AI.
+        </div>
+      </div>
+    </div>
+    <div class="chat-typing">
+      <div class="chat-typing-dot"></div>
+      <div class="chat-typing-dot"></div>
+      <div class="chat-typing-dot"></div>
+    </div>
+    <div class="chat-input-wrap">
+      <textarea class="chat-input" placeholder="Type a message..." rows="1"></textarea>
+      <button class="chat-send">→</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Scripts -->
+<script src="gateway-client.js"></script>
+<script src="chat.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
