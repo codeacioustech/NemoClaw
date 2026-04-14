@@ -10,7 +10,7 @@
     "download-ollama": "bash scripts/download-ollama.sh"
   },
   "dependencies": {
-    "openclaw": "2026.3.11",
+    "openclaw": "2026.4.2",
     "nemoclaw": "file:../nemoclaw",
     "@agentclientprotocol/sdk": "0.17.1",
     "@anthropic-ai/vertex-sdk": "^0.14.4",
