@@ -99,6 +99,12 @@ class GatewayClient {
         return;
       }
 
+      // Tool invocation from gateway
+      if (frame.type === "event" && frame.event === "tool.invoke") {
+        this._emit("tool.invoke", frame.payload);
+        return;
+      }
+
       // Streaming event
       if (frame.type === "event") {
         this._emit("event", frame);
@@ -149,8 +155,8 @@ class GatewayClient {
         },
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
-        caps: [],
-        commands: [],
+        caps: ["tool-use"],
+        commands: ["create_file", "read_file", "list_directory"],
         permissions: {},
         auth: {},
         locale: "en-US",
@@ -249,6 +255,14 @@ class GatewayClient {
       sessionKey,
       message,
       idempotencyKey,
+    });
+  }
+
+  async sendToolResult(sessionKey, toolCallId, result) {
+    return this.request("chat.toolResult", {
+      sessionKey,
+      toolCallId,
+      result,
     });
   }
 }

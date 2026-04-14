@@ -13,4 +13,13 @@ contextBridge.exposeInMainWorld("launcher", {
   getConfig: () => ipcRenderer.invoke("get-config"),
   isFirstRun: () => ipcRenderer.invoke("is-first-run"),
   markOnboardingComplete: (data) => ipcRenderer.invoke("mark-onboarding-complete", data),
+
+  // File system channels
+  selectFolder: () => ipcRenderer.invoke("select-folder"),
+  readFile: (filePath) => ipcRenderer.invoke("fs-read-file", filePath),
+  writeFile: (filePath, content) => ipcRenderer.invoke("fs-write-file", filePath, content),
+  listDir: (dirPath) => ipcRenderer.invoke("fs-list-dir", dirPath),
+  getMountedFolders: () => ipcRenderer.invoke("get-mounted-folders"),
+  mountFolder: (data) => ipcRenderer.invoke("mount-folder", data),
+  unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
 });

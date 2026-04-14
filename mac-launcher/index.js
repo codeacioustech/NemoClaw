@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -246,10 +246,6 @@ async function bootstrap() {
     // Increase LLM idle timeout and skip bootstrap for local models
     if (!cfg.agents) cfg.agents = {};
     if (!cfg.agents.defaults) cfg.agents.defaults = {};
-    if (cfg.agents.defaults.tools) {
-      delete cfg.agents.defaults.tools;
-      dirty = true;
-    }
     if (!cfg.agents.defaults.llm || cfg.agents.defaults.llm.idleTimeoutSeconds < 300) {
       cfg.agents.defaults.llm = { ...cfg.agents.defaults.llm, idleTimeoutSeconds: 300 };
       dirty = true;
@@ -342,6 +338,105 @@ ipcMain.handle("mark-onboarding-complete", (_event, data) => {
     setupCompletedAt: new Date().toISOString(),
   });
   return true;
+});
+
+// ---------------------------------------------------------------------------
+// File system IPC — folder mounting & sandboxed file access
+// ---------------------------------------------------------------------------
+
+function getMountedFolderForPath(filePath) {
+  const folders = readLauncherConfig().mountedFolders || [];
+  const resolved = path.resolve(filePath);
+  for (const folder of folders) {
+    const root = path.resolve(folder.path);
+    if (resolved === root || resolved.startsWith(root + path.sep)) {
+      return folder;
+    }
+  }
+  return null;
+}
+
+function validatePathInMountedFolders(filePath) {
+  const resolved = path.resolve(filePath);
+  // Block path traversal attempts
+  if (filePath.includes("..")) {
+    throw new Error("Path traversal not allowed");
+  }
+  const folder = getMountedFolderForPath(resolved);
+  if (!folder) {
+    throw new Error("Path is not within a mounted folder");
+  }
+  return folder;
+}
+
+async function withBookmarkAccess(filePath, fn) {
+  const folder = validatePathInMountedFolders(filePath);
+  let stopAccess = null;
+  if (folder.bookmark) {
+    stopAccess = app.startAccessingSecurityScopedResource(folder.bookmark);
+  }
+  try {
+    return await fn();
+  } finally {
+    if (stopAccess) stopAccess();
+  }
+}
+
+ipcMain.handle("select-folder", async () => {
+  if (!mainWindow) return null;
+  const { canceled, filePaths, bookmarks } = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+    securityScopedBookmarks: true,
+  });
+  if (canceled || filePaths.length === 0) return null;
+  return { path: filePaths[0], bookmark: (bookmarks && bookmarks[0]) || null };
+});
+
+ipcMain.handle("fs-read-file", async (_, filePath) => {
+  return withBookmarkAccess(filePath, () => fs.promises.readFile(filePath, "utf-8"));
+});
+
+ipcMain.handle("fs-write-file", async (_, filePath, content) => {
+  return withBookmarkAccess(filePath, async () => {
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(filePath, content, "utf-8");
+    return { ok: true };
+  });
+});
+
+ipcMain.handle("fs-list-dir", async (_, dirPath) => {
+  return withBookmarkAccess(dirPath, async () => {
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    return entries.map((e) => ({ name: e.name, isDir: e.isDirectory() }));
+  });
+});
+
+ipcMain.handle("get-mounted-folders", () => {
+  return readLauncherConfig().mountedFolders || [];
+});
+
+ipcMain.handle("mount-folder", (_, folderData) => {
+  const cfg = readLauncherConfig();
+  cfg.mountedFolders = cfg.mountedFolders || [];
+  // Avoid duplicates
+  if (cfg.mountedFolders.some((f) => f.path === folderData.path)) {
+    return { ok: true, duplicate: true };
+  }
+  cfg.mountedFolders.push({
+    path: folderData.path,
+    bookmark: folderData.bookmark,
+    addedAt: Date.now(),
+  });
+  writeLauncherConfig(cfg);
+  return { ok: true };
+});
+
+ipcMain.handle("unmount-folder", (_, folderPath) => {
+  const cfg = readLauncherConfig();
+  cfg.mountedFolders = (cfg.mountedFolders || []).filter((f) => f.path !== folderPath);
+  writeLauncherConfig(cfg);
+  return { ok: true };
 });
 
 // ---------------------------------------------------------------------------

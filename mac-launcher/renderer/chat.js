@@ -77,7 +77,7 @@ const chat = (() => {
     if (!container) return;
     container.innerHTML = `
       <div class="chat-empty">
-        <div class="chat-empty-icon">💬</div>
+        <div class="chat-empty-icon icon" style="width:48px;height:48px;"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
         <div class="chat-empty-text">
           Send a message to start chatting<br>with your local AI.
         </div>
@@ -201,6 +201,64 @@ const chat = (() => {
     }
   }
 
+  // --- Tool invocation handler ---
+
+  function appendToolMessage(icon, text, status) {
+    const container = $(".chat-messages");
+    if (!container) return null;
+    const el = document.createElement("div");
+    el.className = `chat-msg tool-call ${status || ""}`;
+    el.innerHTML = `<span class="tool-icon">${icon}</span> <span class="tool-text">${text}</span>`;
+    container.appendChild(el);
+    scrollToBottom();
+    return el;
+  }
+
+  async function handleToolInvoke(payload) {
+    if (!payload || payload.sessionKey !== _sessionKey) return;
+
+    const { toolCallId, name, arguments: args } = payload;
+    let result;
+
+    try {
+      switch (name) {
+        case "create_file": {
+          appendToolMessage("📄", `Creating file: ${args.path}`, "pending");
+          await window.launcher.writeFile(args.path, args.content);
+          result = { success: true, message: `Created ${args.path}` };
+          appendToolMessage("✅", `File created: ${args.path}`, "success");
+          break;
+        }
+        case "read_file": {
+          appendToolMessage("📖", `Reading file: ${args.path}`, "pending");
+          const content = await window.launcher.readFile(args.path);
+          result = { success: true, content };
+          appendToolMessage("✅", `Read ${args.path} (${content.length} chars)`, "success");
+          break;
+        }
+        case "list_directory": {
+          appendToolMessage("📂", `Listing directory: ${args.path}`, "pending");
+          const entries = await window.launcher.listDir(args.path);
+          result = { success: true, entries };
+          appendToolMessage("✅", `Listed ${entries.length} items in ${args.path}`, "success");
+          break;
+        }
+        default:
+          result = { success: false, error: `Unknown tool: ${name}` };
+          appendToolMessage("❌", `Unknown tool: ${name}`, "error");
+      }
+    } catch (e) {
+      result = { success: false, error: e.message };
+      appendToolMessage("❌", `Tool error: ${e.message}`, "error");
+    }
+
+    try {
+      await gateway.sendToolResult(_sessionKey, toolCallId, result);
+    } catch (e) {
+      appendSystemMessage("Failed to send tool result: " + e.message);
+    }
+  }
+
   function updateSendButton() {
     const btn = $(".chat-send");
     if (btn) btn.disabled = _streaming;
@@ -245,6 +303,9 @@ const chat = (() => {
 
     // Listen for gateway chat events
     gateway.on("chat", handleChatEvent);
+
+    // Listen for tool invocations from the AI
+    gateway.on("tool.invoke", handleToolInvoke);
 
     // Listen for connection state
     gateway.on("connected", () => {
