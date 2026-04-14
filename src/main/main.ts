@@ -136,7 +136,17 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && mainWindow) {
     mainWindow.webContents.on('did-finish-load', () => {
       setTimeout(() => {
-        if (mainWindow) runMacBootstrap(mainWindow)
+        if (mainWindow) {
+          runMacBootstrap(mainWindow).catch((err) => {
+            console.error('[Main] Bootstrap failed:', err)
+            mainWindow?.webContents.send('bootstrap-progress', {
+              stage: 'error',
+              status: 'error',
+              message: `Bootstrap failed: ${err.message}`,
+              progress: 0
+            })
+          })
+        }
       }, 500)
     })
   }

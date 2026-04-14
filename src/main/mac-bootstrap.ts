@@ -13,7 +13,13 @@ let capturedOpenClawUrl: string | null = null
 const NEMOCLAW_VERSION = 'v0.0.7'
 
 function startOllamaDetached(): void {
-  const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
+  const PATH_SETUP = 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
+  const cmd = `${PATH_SETUP} && ollama serve`
+  const proc = spawn('bash', ['-l', '-c', cmd], {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, OLLAMA_KEEP_ALIVE: '-1', OLLAMA_MAX_LOADED_MODELS: '1' }
+  })
   proc.unref()
 }
 

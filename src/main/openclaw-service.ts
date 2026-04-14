@@ -98,7 +98,13 @@ async function ensureServicesRunning(_sandboxName: string): Promise<void> {
     console.log('[OpenClaw Preflight] Starting Ollama...')
     try {
       if (process.platform === 'darwin') {
-        const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
+        const PATH_SETUP = 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
+        const cmd = `${PATH_SETUP} && ollama serve`
+        const proc = spawn('bash', ['-l', '-c', cmd], {
+          detached: true,
+          stdio: 'ignore',
+          env: { ...process.env, OLLAMA_KEEP_ALIVE: '-1', OLLAMA_MAX_LOADED_MODELS: '1' }
+        })
         proc.unref()
       } else {
         // On Windows, start ollama inside WSL
