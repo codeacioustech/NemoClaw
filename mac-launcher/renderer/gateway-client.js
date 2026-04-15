@@ -137,7 +137,7 @@ class GatewayClient {
     };
   }
 
-  _sendConnectRequest(nonce) {
+  _sendConnectRequest(_nonce) {
     const req = {
       type: "req",
       id: crypto.randomUUID(),
@@ -160,9 +160,10 @@ class GatewayClient {
         auth: {},
         locale: "en-US",
         userAgent: "nemoclaw-mac-launcher/0.1.0",
-        device: {
-          nonce: nonce || "",
-        },
+        // device omitted: gateway runs with dangerouslyDisableDeviceAuth=true,
+        // and the device subschema requires a full signed bundle (id, publicKey,
+        // signature, signedAt, nonce) if present at all. Sending a partial
+        // device triggers schema rejection.
       },
     };
     this._ws.send(JSON.stringify(req));
