@@ -268,6 +268,43 @@ async function bootstrap() {
       dirty = true;
     }
 
+    // Force the agent to route through the local ollama proxy. Without
+    // this, openclaw rewrites the config to a minimal version that drops
+    // our agents.defaults block and falls back to its built-in default
+    // (openai/gpt-5.4), which has no API key here and fails immediately
+    // with "No API key found for provider 'openai'".
+    const ollamaModelId = `ollama/${MODEL}`;
+    if (!cfg.agents.defaults.model) cfg.agents.defaults.model = {};
+    if (cfg.agents.defaults.model.primary !== ollamaModelId) {
+      cfg.agents.defaults.model.primary = ollamaModelId;
+      dirty = true;
+    }
+    if (!cfg.agents.defaults.models || !cfg.agents.defaults.models[ollamaModelId]) {
+      cfg.agents.defaults.models = { ...cfg.agents.defaults.models, [ollamaModelId]: {} };
+      dirty = true;
+    }
+
+    // Restore the ollama provider entry if openclaw stripped it.
+    if (!cfg.models) cfg.models = { mode: "merge", providers: {} };
+    if (!cfg.models.providers) cfg.models.providers = {};
+    if (!cfg.models.providers.ollama) {
+      cfg.models.providers.ollama = {
+        baseUrl: "http://127.0.0.1:11435",
+        apiKey: "OLLAMA_API_KEY",
+        api: "ollama",
+        models: [{
+          id: MODEL,
+          name: "Qwen 2.5 3B",
+          reasoning: false,
+          input: ["text"],
+          cost: { input: 0, output: 0 },
+          contextWindow: 32768,
+          maxTokens: 8192,
+        }],
+      };
+      dirty = true;
+    }
+
     if (dirty) {
       fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
     }
