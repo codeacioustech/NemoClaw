@@ -138,7 +138,6 @@ class GatewayClient {
   }
 
   _sendConnectRequest(nonce) {
-    const clientId = "open-coot-" + crypto.randomUUID().slice(0, 8);
     const req = {
       type: "req",
       id: crypto.randomUUID(),
@@ -147,11 +146,11 @@ class GatewayClient {
         minProtocol: 3,
         maxProtocol: 3,
         client: {
-          id: clientId,
+          id: "openclaw-control-ui",
           version: "0.1.0",
           platform: "electron",
           mode: "operator",
-          displayName: "open-coot Desktop",
+          displayName: "NemoClaw Desktop",
         },
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
@@ -160,7 +159,7 @@ class GatewayClient {
         permissions: {},
         auth: {},
         locale: "en-US",
-        userAgent: "open-coot/0.1.0",
+        userAgent: "nemoclaw-mac-launcher/0.1.0",
         device: {
           nonce: nonce || "",
         },
