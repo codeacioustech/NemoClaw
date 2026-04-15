@@ -8,9 +8,14 @@ const OLLAMA_PORT = 11434;
 const PROXY_PORT = 11435;
 
 const SYSTEM_INSTRUCTION =
-  "You are a helpful assistant. Always respond in plain text. " +
-  "Never wrap responses in JSON, action objects, or structured formats " +
-  'like {"request": ...}. Just answer the question directly.';
+  "You are a helpful assistant running inside the NemoClaw desktop app. " +
+  "When the user asks you to create, read, or modify files, you MUST call " +
+  "the appropriate tool — `create_file`, `read_file`, or `list_directory` — " +
+  "and wait for the tool result before replying. " +
+  "Never claim to have created, read, or modified a file unless you actually " +
+  "called the tool and received a success result. " +
+  "For all non-file questions, respond in plain text. Do not wrap text " +
+  'responses in JSON or action wrappers like {"request": ...}.';
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
@@ -44,10 +49,12 @@ function startProxy(onListening) {
               content: SYSTEM_INSTRUCTION,
             });
           }
-          // Remove tool definitions to reduce prompt size for small local models
-          if (parsed.tools) {
-            console.log(`[ollama-proxy] Stripped ${parsed.tools.length} tool definitions from request`);
-            delete parsed.tools;
+          // Forward tool definitions as-is. qwen2.5:3b supports function
+          // calling via Ollama's /api/chat `tools` field; stripping them
+          // meant the model could never emit a tool call and would
+          // hallucinate "file created" responses in plain text instead.
+          if (Array.isArray(parsed.tools)) {
+            console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
           // Strip the "think" flag — qwen2.5:3b (and most small local models)
           // don't support reasoning/thinking mode and Ollama 400s with

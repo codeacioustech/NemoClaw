@@ -135,6 +135,24 @@ const chat = (() => {
 
     appendMessage("user", text);
 
+    // Defensive: if the user's message looks file-related but no folder
+    // is mounted, the file tools will fail validation. Surface that up
+    // front so the model's claim to have "created" a file isn't
+    // contradicted only by a silent tool error bubble.
+    if (/\b(create|save|write|read|open|edit|file|folder|directory)\b/i.test(text)) {
+      try {
+        const folders = await window.launcher.getMountedFolders();
+        if (!folders || folders.length === 0) {
+          appendSystemMessage(
+            "No folders are mounted yet. File tools (create_file, read_file, list_directory) " +
+            "can only touch paths inside mounted folders. Mount one via Connectors → Local Files."
+          );
+        }
+      } catch {
+        // Non-fatal — continue.
+      }
+    }
+
     const key = await ensureSession();
     if (!key) return;
 

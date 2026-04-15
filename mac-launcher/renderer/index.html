@@ -380,24 +380,24 @@
       <nav class="sidebar-nav" aria-label="Main navigation">
         <div class="nav-group">
           <div class="nav-group-label">Workspace</div>
-          <div class="nav-item active" tabindex="0" aria-current="page"><span class="icon icon-md"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span> Dashboard</div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span> Workflows <span class="nav-badge">12</span></div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Runs</div>
+          <div class="nav-item active" tabindex="0" role="button" aria-current="page" data-action="navigate" data-target="Dashboard"><span class="icon icon-md"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span> Dashboard</div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Workflows"><span class="icon icon-md"><svg viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span> Workflows <span class="nav-badge">12</span></div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Runs"><span class="icon icon-md"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Runs</div>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Sources</div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M12 2v6m0 12v2m4.93-14.93l1.41-1.41M4.93 19.07l1.41-1.41M22 12h-2M4 12H2m14.93 7.07l1.41 1.41M4.93 4.93l1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg></span> Connectors</div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"/></svg></span> Knowledge</div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Connectors"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M12 2v6m0 12v2m4.93-14.93l1.41-1.41M4.93 19.07l1.41-1.41M22 12h-2M4 12H2m14.93 7.07l1.41 1.41M4.93 4.93l1.41 1.41"/><circle cx="12" cy="12" r="4"/></svg></span> Connectors</div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Knowledge"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"/></svg></span> Knowledge</div>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">Microapps</div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></span> Finance</div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M9 14l2 2 4-4"/></svg></span> Projects</div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Finance"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></span> Finance</div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Projects"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M9 14l2 2 4-4"/></svg></span> Projects</div>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">People</div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> Team</div>
-          <div class="nav-item" tabindex="0"><span class="icon icon-md"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Settings</div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Team"><span class="icon icon-md"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> Team</div>
+          <div class="nav-item" tabindex="0" role="button" data-action="navigate" data-target="Settings"><span class="icon icon-md"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Settings</div>
         </div>
       </nav>
 
@@ -424,7 +424,7 @@
         </div>
       </div>
 
-      <div class="dash-content">
+      <div class="dash-content dash-section" data-section="Dashboard">
         <!-- Stats -->
         <div class="stats-grid">
           <div class="stat-card">
@@ -521,6 +521,92 @@
           </div>
         </div>
       </div>
+
+      <!-- ───────── Additional dashboard sections ───────── -->
+      <div class="dash-content dash-section" data-section="Workflows" hidden>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Workflows</span></div>
+          <div class="section-empty">
+            No workflows yet. Click <strong>+ New Workflow</strong> in the topbar to describe one in chat and get help building it.
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-content dash-section" data-section="Runs" hidden>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Runs</span></div>
+          <div class="section-empty">No runs recorded yet. Workflow executions will appear here.</div>
+        </div>
+      </div>
+
+      <div class="dash-content dash-section" data-section="Connectors" hidden>
+        <div class="dash-panel">
+          <div class="panel-header">
+            <span class="panel-title">Local Files</span>
+            <button class="btn-secondary" data-action="mount-local-folder">Mount a Folder</button>
+          </div>
+          <div class="section-desc">
+            Mounted folders are the only locations where AI tools (<code>create_file</code>, <code>read_file</code>, <code>list_directory</code>) are allowed to read or write.
+          </div>
+          <div class="connectors-mounted-list mounted-folders-list"></div>
+        </div>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Third-party Integrations</span></div>
+          <div class="section-empty">
+            Google Drive, Slack, Notion, GitHub, and OneDrive integrations are not yet available. For now, use Local Files.
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-content dash-section" data-section="Knowledge" hidden>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Knowledge Base</span></div>
+          <div class="section-empty">
+            Your AI can answer questions about files in mounted folders. Mount a folder under <strong>Connectors</strong> to get started.
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-content dash-section" data-section="Finance" hidden>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Finance Tracker</span></div>
+          <div class="section-empty">No finance data yet. Microapp coming soon.</div>
+        </div>
+      </div>
+
+      <div class="dash-content dash-section" data-section="Projects" hidden>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Projects</span></div>
+          <div class="section-empty">No projects yet. Microapp coming soon.</div>
+        </div>
+      </div>
+
+      <div class="dash-content dash-section" data-section="Team" hidden>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Team</span></div>
+          <div class="section-empty">You are the only member. Team collaboration is not yet available in the local build.</div>
+        </div>
+      </div>
+
+      <div class="dash-content dash-section" data-section="Settings" hidden>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Configuration</span></div>
+          <dl class="settings-list">
+            <dt>Local model</dt>           <dd class="settings-model">—</dd>
+            <dt>Ollama endpoint</dt>       <dd>http://127.0.0.1:11434 (via proxy 11435)</dd>
+            <dt>Gateway port</dt>          <dd class="settings-gateway-port">—</dd>
+            <dt>Mounted folders</dt>       <dd class="settings-folder-count">—</dd>
+          </dl>
+        </div>
+        <div class="dash-panel">
+          <div class="panel-header"><span class="panel-title">Reset</span></div>
+          <div class="section-desc">
+            Clear your onboarding answers and return to Screen 1 on next launch. Mounted folders and chat history are kept.
+          </div>
+          <button class="btn-secondary" data-action="reset-onboarding">Reset Onboarding</button>
+        </div>
+      </div>
+
     </div>
 
   </div>

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("launcher", {
   getConfig: () => ipcRenderer.invoke("get-config"),
   isFirstRun: () => ipcRenderer.invoke("is-first-run"),
   markOnboardingComplete: (data) => ipcRenderer.invoke("mark-onboarding-complete", data),
+  resetOnboarding: () => ipcRenderer.invoke("reset-onboarding"),
 
   // File system channels
   selectFolder: () => ipcRenderer.invoke("select-folder"),

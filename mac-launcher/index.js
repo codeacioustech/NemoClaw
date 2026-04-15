@@ -374,6 +374,16 @@ ipcMain.handle("is-first-run", () => {
   return !config.launcher_setup_complete;
 });
 
+ipcMain.handle("reset-onboarding", () => {
+  const existing = readLauncherConfig();
+  writeLauncherConfig({
+    ...existing,
+    launcher_setup_complete: false,
+    onboarding: {},
+  });
+  return { ok: true };
+});
+
 ipcMain.handle("mark-onboarding-complete", (_event, data) => {
   const existing = readLauncherConfig();
   writeLauncherConfig({
@@ -443,12 +453,20 @@ ipcMain.handle("fs-read-file", async (_, filePath) => {
 });
 
 ipcMain.handle("fs-write-file", async (_, filePath, content) => {
-  return withBookmarkAccess(filePath, async () => {
-    const dir = path.dirname(filePath);
-    await fs.promises.mkdir(dir, { recursive: true });
-    await fs.promises.writeFile(filePath, content, "utf-8");
-    return { ok: true };
-  });
+  console.log(`[fs-write-file] request path=${filePath} bytes=${content ? Buffer.byteLength(content) : 0}`);
+  try {
+    const result = await withBookmarkAccess(filePath, async () => {
+      const dir = path.dirname(filePath);
+      await fs.promises.mkdir(dir, { recursive: true });
+      await fs.promises.writeFile(filePath, content, "utf-8");
+      return { ok: true };
+    });
+    console.log(`[fs-write-file] wrote ${filePath}`);
+    return result;
+  } catch (err) {
+    console.error(`[fs-write-file] failed ${filePath}: ${err.message}`);
+    throw err;
+  }
 });
 
 ipcMain.handle("fs-list-dir", async (_, dirPath) => {

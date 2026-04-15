@@ -113,33 +113,46 @@ const app = (() => {
 
   // --- Sidebar navigation ---
 
-  function navigateTo(label) {
-    const items = $$(".nav-item");
-    let target = null;
-    items.forEach((item) => {
-      const text = item.textContent.trim().replace(/\d+$/, "").trim();
-      if (text === label) target = item;
+  function showSection(label) {
+    const sections = $$(".dash-section");
+    let matched = false;
+    sections.forEach((s) => {
+      if (s.dataset.section === label) {
+        s.hidden = false;
+        matched = true;
+      } else {
+        s.hidden = true;
+      }
     });
-    if (target) {
-      items.forEach((i) => { i.classList.remove("active"); i.removeAttribute("aria-current"); });
-      target.classList.add("active");
-      target.setAttribute("aria-current", "page");
-      const topTitle = $(".dash-topbar-title");
-      if (topTitle) topTitle.textContent = label;
+    // Fallback: if no section matches, show Dashboard.
+    if (!matched) {
+      const fallback = document.querySelector('.dash-section[data-section="Dashboard"]');
+      if (fallback) fallback.hidden = false;
     }
   }
 
-  function initSidebar() {
-    $$(".nav-item").forEach((item) => {
-      item.addEventListener("click", () => {
-        $$(".nav-item").forEach((i) => { i.classList.remove("active"); i.removeAttribute("aria-current"); });
-        item.classList.add("active");
-        item.setAttribute("aria-current", "page");
-        const label = item.textContent.trim().replace(/\d+$/, "").trim();
-        const topTitle = $(".dash-topbar-title");
-        if (topTitle) topTitle.textContent = label;
-      });
+  function navigateTo(label) {
+    // Update active state on nav-item whose data-target matches (fall
+    // back to text-match for robustness if data-target is missing).
+    const items = $$(".nav-item");
+    let target = null;
+    items.forEach((item) => {
+      const dt = item.dataset.target;
+      const text = item.textContent.trim().replace(/\d+$/, "").trim();
+      if ((dt && dt === label) || (!dt && text === label)) target = item;
     });
+    items.forEach((i) => { i.classList.remove("active"); i.removeAttribute("aria-current"); });
+    if (target) {
+      target.classList.add("active");
+      target.setAttribute("aria-current", "page");
+    }
+    const topTitle = $(".dash-topbar-title");
+    if (topTitle) topTitle.textContent = label;
+    showSection(label);
+
+    // Lazy-populate section-specific content.
+    if (label === "Connectors") refreshMountedFolders();
+    else if (label === "Settings") refreshSettings();
   }
 
   // --- Keyboard navigation for role="button" elements ---
@@ -185,27 +198,12 @@ const app = (() => {
   function toggleConnector(btn) {
     const card = btn.closest(".conn-card");
     if (!card) return;
-
-    if (card.classList.contains("connected")) {
-      // Already connected — placeholder configure action
-      const name = card.querySelector(".conn-name")?.textContent || "connector";
-      appendToast(`${name} configuration coming soon.`);
-      return;
-    }
-
-    // Toggle to connected
-    card.classList.add("connected");
-    const dot = card.querySelector(".status-dot");
-    if (dot) { dot.classList.remove("inactive"); dot.classList.add("running"); }
-    const status = card.querySelector(".conn-status");
-    if (status) status.style.color = "var(--success)";
-    const statusText = card.querySelector(".conn-status");
-    if (statusText) {
-      const span = statusText.childNodes[statusText.childNodes.length - 1];
-      if (span && span.nodeType === Node.TEXT_NODE) span.textContent = " Connected";
-    }
-    btn.className = "conn-btn active";
-    btn.textContent = "✓ Connected — Configure";
+    const name = card.querySelector(".conn-name")?.textContent?.trim() || "This connector";
+    // OAuth integrations (Google Drive, Slack, Notion, GitHub, OneDrive)
+    // aren't wired to any real provider yet. Don't paint a fake
+    // "Connected" state — be honest so users aren't surprised when
+    // their assistant can't actually reach these services.
+    appendToast(`${name} integration is not yet available. For local file access, use Mount a Folder.`);
   }
 
   // --- Toast helper ---
@@ -253,9 +251,81 @@ const app = (() => {
     }
   }
 
+  function renderMountedFolderList(listEl, folders) {
+    if (!listEl) return;
+    listEl.replaceChildren(...folders.map((f) => {
+      const name = f.path.split("/").pop() || f.path;
+      const item = document.createElement("div");
+      item.className = "mounted-folder-item";
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "mounted-folder-name";
+      nameEl.title = f.path;
+      nameEl.textContent = name;
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "mounted-folder-remove";
+      removeBtn.dataset.action = "unmount-local-folder";
+      removeBtn.dataset.path = f.path;
+      removeBtn.textContent = "✕";
+
+      item.append(nameEl, removeBtn);
+      return item;
+    }));
+  }
+
+  async function refreshSettings() {
+    // Model
+    const modelEl = $(".settings-model");
+    if (modelEl) {
+      try {
+        const res = await fetch("http://127.0.0.1:11434/api/tags");
+        if (res.ok) {
+          const data = await res.json();
+          modelEl.textContent = data.models?.[0]?.name || "No models loaded";
+        } else {
+          modelEl.textContent = "Ollama offline";
+        }
+      } catch {
+        modelEl.textContent = "Ollama offline";
+      }
+    }
+    // Gateway port
+    const portEl = $(".settings-gateway-port");
+    if (portEl) portEl.textContent = String(_gatewayPort ?? "unknown");
+    // Folder count
+    const countEl = $(".settings-folder-count");
+    if (countEl) {
+      try {
+        const folders = await window.launcher.getMountedFolders();
+        countEl.textContent = `${folders.length} mounted`;
+      } catch {
+        countEl.textContent = "unavailable";
+      }
+    }
+  }
+
+  async function resetOnboarding() {
+    try {
+      await window.launcher.resetOnboarding();
+      localStorage.removeItem("opencoot_onboarded");
+      localStorage.removeItem("opencoot_onboarding");
+      appendToast("Onboarding reset. Restart the app to see the setup flow.");
+    } catch (e) {
+      appendToast("Reset failed: " + e.message);
+    }
+  }
+
   async function refreshMountedFolders() {
     try {
       const folders = await window.launcher.getMountedFolders();
+
+      // Populate the Connectors section list (in dash-section, not in the
+      // onboarding connector card). Safe to call even when the section
+      // isn't currently visible.
+      const sectionList = document.querySelector(".connectors-mounted-list");
+      if (sectionList) renderMountedFolderList(sectionList, folders);
+
       const card = document.getElementById("local-files-connector");
       if (!card) return;
 
@@ -329,8 +399,18 @@ const app = (() => {
   // --- New Workflow (Dashboard) ---
 
   function newWorkflow() {
-    navigateTo("Workflows");
-    appendToast("Workflow builder coming soon.");
+    // No visual workflow editor yet — the useful thing we can do is
+    // open chat with a prefilled prompt so the local AI can help the
+    // user describe and scaffold a workflow.
+    chat.open();
+    const input = document.querySelector(".chat-input");
+    if (input) {
+      input.value = "Help me build a new workflow that ";
+      input.focus();
+      // Move caret to end.
+      input.setSelectionRange(input.value.length, input.value.length);
+      input.dispatchEvent(new Event("input"));
+    }
   }
 
   // --- Avatar menu (Dashboard) ---
@@ -447,12 +527,12 @@ const app = (() => {
         case "navigate":             navigateTo(el.dataset.target); break;
         case "avatar-settings":      navigateTo("Settings"); closeAvatarMenu(); break;
         case "logout":               logout(); break;
+        case "reset-onboarding":     resetOnboarding(); break;
       }
     });
 
     // Init sub-modules
     chat.init();
-    initSidebar();
     initKeyboardNav();
 
     // Check if already onboarded
