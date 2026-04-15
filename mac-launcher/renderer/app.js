@@ -167,7 +167,7 @@ const app = (() => {
         <option selected>Member</option>
         <option>Viewer</option>
       </select>
-      <button class="btn-secondary" onclick="removeInviteRow(this)">✕</button>
+      <button class="btn-secondary" data-action="remove-invite-row">✕</button>
     `;
     // Insert before the role-legend
     const legend = container.querySelector(".role-legend");
@@ -276,13 +276,29 @@ const app = (() => {
           btn.textContent = "Mount Another Folder";
         }
         if (list) {
-          list.innerHTML = folders.map((f) => {
+          // Build with DOM APIs rather than innerHTML so user-supplied
+          // folder paths (which may contain quotes, backslashes, angle
+          // brackets) can't become markup. The delegated click listener
+          // reads the path from the button's dataset.
+          list.replaceChildren(...folders.map((f) => {
             const name = f.path.split("/").pop() || f.path;
-            return `<div class="mounted-folder-item">
-              <span class="mounted-folder-name" title="${f.path}">${name}</span>
-              <button class="mounted-folder-remove" onclick="unmountLocalFolder('${f.path.replace(/'/g, "\\'")}')">✕</button>
-            </div>`;
-          }).join("");
+            const item = document.createElement("div");
+            item.className = "mounted-folder-item";
+
+            const nameEl = document.createElement("span");
+            nameEl.className = "mounted-folder-name";
+            nameEl.title = f.path;
+            nameEl.textContent = name;
+
+            const btn = document.createElement("button");
+            btn.className = "mounted-folder-remove";
+            btn.dataset.action = "unmount-local-folder";
+            btn.dataset.path = f.path;
+            btn.textContent = "✕";
+
+            item.append(nameEl, btn);
+            return item;
+          }));
         }
       } else {
         card.classList.remove("connected");
@@ -329,10 +345,18 @@ const app = (() => {
     if (!avatar) return;
     menu = document.createElement("div");
     menu.className = "avatar-menu";
-    menu.innerHTML = `
-      <div class="avatar-menu-item" onclick="navigateTo('Settings'); closeAvatarMenu()">Settings</div>
-      <div class="avatar-menu-item danger" onclick="logout()">Log out</div>
-    `;
+
+    const settingsItem = document.createElement("div");
+    settingsItem.className = "avatar-menu-item";
+    settingsItem.dataset.action = "avatar-settings";
+    settingsItem.textContent = "Settings";
+
+    const logoutItem = document.createElement("div");
+    logoutItem.className = "avatar-menu-item danger";
+    logoutItem.dataset.action = "logout";
+    logoutItem.textContent = "Log out";
+
+    menu.append(settingsItem, logoutItem);
     avatar.style.position = "relative";
     avatar.appendChild(menu);
 
@@ -400,22 +424,31 @@ const app = (() => {
   // --- Boot ---
 
   async function init() {
-    // Expose global handlers for inline onclick
-    window.go = go;
-    window.single = single;
-    window.toggle = toggle;
-    window.appLaunch = launch;
-    window.openChat = () => chat.open();
-    window.addInviteRow = addInviteRow;
-    window.removeInviteRow = removeInviteRow;
-    window.toggleConnector = toggleConnector;
-    window.newWorkflow = newWorkflow;
-    window.toggleAvatarMenu = toggleAvatarMenu;
-    window.closeAvatarMenu = closeAvatarMenu;
-    window.navigateTo = navigateTo;
-    window.logout = logout;
-    window.mountLocalFolder = mountLocalFolder;
-    window.unmountLocalFolder = unmountLocalFolder;
+    // Delegated click handling for all [data-action] elements.
+    // CSP (default-src 'self', no script-src 'unsafe-inline') forbids
+    // inline onclick="..." — every interactive element uses data-action
+    // instead, dispatched here.
+    document.addEventListener("click", (e) => {
+      const el = e.target.closest("[data-action]");
+      if (!el) return;
+      switch (el.dataset.action) {
+        case "single":               single(el, "." + el.dataset.group); break;
+        case "toggle":               toggle(el); break;
+        case "go":                   go(Number(el.dataset.step)); break;
+        case "add-invite-row":       addInviteRow(); break;
+        case "remove-invite-row":    removeInviteRow(el); break;
+        case "mount-local-folder":   mountLocalFolder(); break;
+        case "unmount-local-folder": unmountLocalFolder(el.dataset.path); break;
+        case "toggle-connector":     toggleConnector(el); break;
+        case "app-launch":           launch(); break;
+        case "open-chat":            chat.open(); break;
+        case "new-workflow":         newWorkflow(); break;
+        case "toggle-avatar-menu":   toggleAvatarMenu(); break;
+        case "navigate":             navigateTo(el.dataset.target); break;
+        case "avatar-settings":      navigateTo("Settings"); closeAvatarMenu(); break;
+        case "logout":               logout(); break;
+      }
+    });
 
     // Init sub-modules
     chat.init();
