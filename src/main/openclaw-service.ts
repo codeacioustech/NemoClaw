@@ -1,6 +1,7 @@
 import { spawn, ChildProcess, execSync } from 'child_process'
 
 let connectionProcess: ChildProcess | null = null
+let sandboxLogProcess: ChildProcess | null = null
 
 const PATH_PREFIX = 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"'
 
@@ -416,4 +417,83 @@ export async function getOpenClawUrl(sandboxName: string): Promise<string | null
 
   console.error('[OpenClaw] All strategies failed to obtain a URL.')
   return null
+}
+
+// ── Sandbox log streaming ────────────────────────────────────────────────
+// Tails the sandbox container's docker logs into the main-process console
+// (visible in `npm run dev` terminal) so developers can see what OpenClaw
+// is doing in real time when a user interacts with the UI. Invaluable for
+// debugging "UI loads but messages don't respond" situations.
+
+/**
+ * Try to resolve the sandbox container's docker container ID.
+ * Tries several name patterns because the actual container name depends
+ * on how openshell/nemoclaw is versioned.
+ */
+async function resolveSandboxContainerId(sandboxName: string): Promise<string | null> {
+  const patterns = [sandboxName, 'openclaw', 'nemoclaw', 'open-coot']
+  for (const pattern of patterns) {
+    try {
+      const { stdout } = await runShellAsync(
+        `docker ps --filter "name=${pattern}" --format "{{.ID}}" | head -n 1`,
+        5000
+      )
+      const id = stdout.trim().split('\n')[0]
+      if (id) {
+        console.log(`[sandbox-logs] Resolved container "${pattern}" → ${id}`)
+        return id
+      }
+    } catch { /* try next pattern */ }
+  }
+  return null
+}
+
+/**
+ * Start streaming `docker logs -f` of the sandbox container into the main
+ * process console. Every line is prefixed with `[sandbox]` so it is easy
+ * to grep. Safe to call multiple times — prior stream is stopped first.
+ */
+export async function startSandboxLogStream(sandboxName: string): Promise<void> {
+  stopSandboxLogStream()
+
+  const containerId = await resolveSandboxContainerId(sandboxName)
+  if (!containerId) {
+    console.warn(`[sandbox-logs] No container found for "${sandboxName}" — skipping log stream`)
+    return
+  }
+
+  const { command, args } = shellCmd(`docker logs -f --tail 50 ${containerId} 2>&1`)
+  const proc = spawn(command, args, { env: process.env })
+  proc.stdin?.end()
+
+  const emit = (data: Buffer): void => {
+    const text = data.toString()
+    for (const line of text.split('\n')) {
+      if (line.trim()) console.log(`[sandbox] ${line}`)
+    }
+  }
+  proc.stdout?.on('data', emit)
+  proc.stderr?.on('data', emit)
+
+  proc.on('exit', (code) => {
+    console.log(`[sandbox-logs] Log stream ended (code ${code})`)
+    if (sandboxLogProcess === proc) sandboxLogProcess = null
+  })
+  proc.on('error', (err) => {
+    console.warn(`[sandbox-logs] Stream error: ${err.message}`)
+  })
+
+  sandboxLogProcess = proc
+  console.log(`[sandbox-logs] Streaming container ${containerId} — prefix: [sandbox]`)
+}
+
+/**
+ * Stop the sandbox log stream if one is running. Called on app quit and
+ * before starting a new stream.
+ */
+export function stopSandboxLogStream(): void {
+  if (sandboxLogProcess) {
+    try { sandboxLogProcess.kill() } catch { /* ignore */ }
+    sandboxLogProcess = null
+  }
 }

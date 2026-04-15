@@ -3,7 +3,9 @@ import { join } from 'path'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerConfigHandlers, getConfig, saveConfig } from './config-service'
 import { runMacBootstrap } from './mac-bootstrap'
-import { getOpenClawUrl, extractTokenFromContainer } from './openclaw-service'
+import { getOpenClawUrl, extractTokenFromContainer, stopSandboxLogStream } from './openclaw-service'
+
+const IS_DEV = !!process.env.ELECTRON_RENDERER_URL
 
 let mainWindow: BrowserWindow | null = null
 
@@ -28,6 +30,13 @@ function createWindow(): void {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+
+  // Dev mode: auto-open DevTools in detached window so it survives navigation
+  // to the OpenClaw URL (otherwise the main window's DevTools disconnects
+  // when we loadURL to http://127.0.0.1:18789/).
+  if (IS_DEV) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
   mainWindow.on('closed', () => {
@@ -129,12 +138,13 @@ app.whenReady().then(async () => {
 
   createWindow()
 
-  // macOS: ALWAYS run bootstrap on every launch.
-  // Bootstrap is idempotent — it checks Docker, Ollama, model, sandbox
-  // and skips anything already installed. This catches cases where
-  // Docker containers were deleted, models changed, etc.
+  // macOS: run bootstrap exactly ONCE per app launch, on the initial renderer
+  // load. Using .once() is critical — later navigations (e.g. loadURL to the
+  // tokenized OpenClaw URL) would otherwise re-fire did-finish-load and kick
+  // off a second bootstrap that bounces the port-18789 forward mid-session,
+  // killing the UI's WebSocket to the sandbox.
   if (process.platform === 'darwin' && mainWindow) {
-    mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.once('did-finish-load', () => {
       setTimeout(() => {
         if (mainWindow) {
           runMacBootstrap(mainWindow).catch((err) => {
@@ -159,7 +169,12 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  stopSandboxLogStream()
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  stopSandboxLogStream()
 })
