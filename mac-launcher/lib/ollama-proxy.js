@@ -49,6 +49,16 @@ function startProxy(onListening) {
             console.log(`[ollama-proxy] Stripped ${parsed.tools.length} tool definitions from request`);
             delete parsed.tools;
           }
+          // Strip the "think" flag — qwen2.5:3b (and most small local models)
+          // don't support reasoning/thinking mode and Ollama 400s with
+          // `"<model>" does not support thinking` if the flag is set.
+          if (parsed.think !== undefined) {
+            console.log(`[ollama-proxy] Stripped think=${parsed.think} (model does not support thinking)`);
+            delete parsed.think;
+          }
+          if (parsed.options && parsed.options.think !== undefined) {
+            delete parsed.options.think;
+          }
           body = Buffer.from(JSON.stringify(parsed));
           console.log(`[ollama-proxy] Request body after processing: ${body.length} bytes`);
         } catch {
