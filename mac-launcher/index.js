@@ -243,6 +243,15 @@ async function bootstrap() {
       dirty = true;
     }
 
+    // Allow the Electron renderer's file:// origin for WS handshake
+    const requiredOrigins = ["file://", "null"];
+    const currentOrigins = cfg.gateway.controlUi.allowedOrigins || [];
+    const missingOrigins = requiredOrigins.filter((o) => !currentOrigins.includes(o));
+    if (missingOrigins.length > 0) {
+      cfg.gateway.controlUi.allowedOrigins = [...currentOrigins, ...missingOrigins];
+      dirty = true;
+    }
+
     // Increase LLM idle timeout and skip bootstrap for local models
     if (!cfg.agents) cfg.agents = {};
     if (!cfg.agents.defaults) cfg.agents.defaults = {};
