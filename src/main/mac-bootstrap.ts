@@ -4,7 +4,7 @@ import * as os from 'os'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import type { BootstrapEvent, BootstrapStage } from '../shared/types'
-import { saveConfig, getConfig } from './config-service'
+import { saveConfig } from './config-service'
 import { startSandboxLogStream } from './openclaw-service'
 
 // Captured during sandbox creation — the tokenized OpenClaw URL
@@ -484,53 +484,6 @@ async function createSandbox(win: BrowserWindow): Promise<boolean> {
   }
 }
 
-// ── Fast-path: is the sandbox already healthy? ──────────────────────────────
-// If the sandbox exists, port 18789 is serving HTTP, and we have a tokenized
-// URL saved, there is nothing to do — skip the full onboard. This prevents
-// the port-forward bounce that happens when `nemoclaw onboard` is re-run
-// against an existing sandbox, and makes return launches instant.
-
-async function checkSandboxHealthy(): Promise<{ healthy: boolean; url?: string }> {
-  try {
-    const listResult = await runShell(
-      'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH" && nemoclaw list'
-    )
-    if (listResult.code !== 0 || !listResult.stdout.includes('open-coot-default')) {
-      console.log('[bootstrap:fast-path] Sandbox not listed — full bootstrap needed')
-      return { healthy: false }
-    }
-
-    const portCheck = await runShell(
-      'curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:18789/ 2>/dev/null || echo 000'
-    )
-    const statusCode = portCheck.stdout.trim()
-    if (!statusCode || statusCode === '000') {
-      console.log('[bootstrap:fast-path] Port 18789 not serving — full bootstrap needed')
-      return { healthy: false }
-    }
-
-    const config = getConfig()
-    if (!config?.openclawUrl || !config.openclawUrl.includes('#token=')) {
-      console.log('[bootstrap:fast-path] No saved tokenized URL — full bootstrap needed')
-      return { healthy: false }
-    }
-
-    const ollamaCheck = await runShell(
-      'curl -sf http://localhost:11434 > /dev/null 2>&1 && echo ok'
-    )
-    if (!ollamaCheck.stdout.includes('ok')) {
-      console.log('[bootstrap:fast-path] Ollama not responding — full bootstrap needed')
-      return { healthy: false }
-    }
-
-    console.log('[bootstrap:fast-path] All health checks passed ✓')
-    return { healthy: true, url: config.openclawUrl }
-  } catch (err) {
-    console.log(`[bootstrap:fast-path] Check failed: ${(err as Error).message}`)
-    return { healthy: false }
-  }
-}
-
 // ── Main Bootstrap Runner ───────────────────────────────────────────────────
 
 export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
@@ -540,24 +493,6 @@ export async function runMacBootstrap(win: BrowserWindow): Promise<void> {
     // Step 1: Architecture check (always run — cheap and catches unsupported Macs)
     const archOk = await checkArchitecture(win)
     if (!archOk) return
-
-    // Step 1.5: Fast path — skip full onboard if sandbox is already healthy.
-    // Emits a quick animation through the bootstrap view so the UI transitions
-    // naturally, then starts the log stream and completes.
-    const health = await checkSandboxHealthy()
-    if (health.healthy) {
-      sendBootstrap(win, 'docker-check', 'done', 'Docker Desktop detected ✓', 25)
-      sendBootstrap(win, 'nemoclaw-check', 'done', 'NemoClaw already installed ✓', 45)
-      sendBootstrap(win, 'ollama-check', 'done', 'Ollama running ✓', 65)
-      sendBootstrap(win, 'model-check', 'done', 'Model ready ✓', 80)
-      sendBootstrap(win, 'sandbox-create', 'done', 'Sandbox healthy, reusing ✓', 95)
-      startSandboxLogStream('open-coot-default').catch((err) => {
-        console.warn(`[bootstrap] Could not start log stream: ${err.message}`)
-      })
-      sendBootstrap(win, 'complete', 'done', 'Ready!', 100)
-      win.webContents.send('bootstrap-complete', true)
-      return
-    }
 
     // Step 2: Docker
     sendBootstrap(win, 'docker-check', 'running', 'Checking for Docker...', 15)

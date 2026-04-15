@@ -3,9 +3,27 @@ import { join } from 'path'
 import { registerIpcHandlers } from './ipc-handlers'
 import { registerConfigHandlers, getConfig, saveConfig } from './config-service'
 import { runMacBootstrap } from './mac-bootstrap'
-import { getOpenClawUrl, extractTokenFromContainer, stopSandboxLogStream } from './openclaw-service'
+import { getOpenClawUrl, extractTokenFromContainer, stopSandboxLogStream, ensurePortForward } from './openclaw-service'
 
 const IS_DEV = !!process.env.ELECTRON_RENDERER_URL
+
+// Tracks whether the window is currently trying to load the OpenClaw URL.
+// Used by did-fail-load to know if a load failure means "OpenClaw wouldn't
+// load" (recover by going back to installer) vs. an unrelated sub-resource
+// failure inside the installer itself (ignore).
+let loadingOpenClawUrl = false
+
+/**
+ * Navigate the window back to the installer renderer (dev URL or file).
+ * Used as a recovery path when loadURL to the OpenClaw tokenized URL fails.
+ */
+function loadInstallerUI(win: BrowserWindow): void {
+  if (process.env.ELECTRON_RENDERER_URL) {
+    win.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+}
 
 let mainWindow: BrowserWindow | null = null
 
@@ -39,6 +57,43 @@ function createWindow(): void {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
+  // Guard against stranding the user on a blank Chromium error page. If the
+  // OpenClaw URL fails to load (port forward dead, sandbox restarted, stale
+  // token, etc.) navigate back to the installer and surface the error via
+  // IPC so the renderer can show a Retry button instead of a blank screen.
+  mainWindow.webContents.on('did-fail-load', (
+    _event: unknown,
+    errorCode: number,
+    errorDescription: string,
+    validatedURL: string,
+    isMainFrame: boolean
+  ) => {
+    if (!isMainFrame) return
+    if (errorCode === -3) return // ERR_ABORTED from our own navigation
+    if (!loadingOpenClawUrl) return // not our OpenClaw load — ignore
+
+    console.error(`[Main] did-fail-load: ${errorDescription} (${errorCode}) for ${validatedURL}`)
+    loadingOpenClawUrl = false
+
+    if (!mainWindow) return
+    loadInstallerUI(mainWindow)
+    // Wait for the installer to be ready, then tell it what happened
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow?.webContents.send('openclaw-load-failed', {
+        url: validatedURL,
+        errorCode,
+        errorDescription
+      })
+    })
+  })
+
+  // When OpenClaw actually finishes loading, clear the flag so subsequent
+  // sub-resource failures inside OpenClaw (which fire did-fail-load too)
+  // don't trigger the installer recovery.
+  mainWindow.webContents.on('did-finish-load', () => {
+    loadingOpenClawUrl = false
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -61,9 +116,20 @@ async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: bo
   if (savedUrl && savedUrl.includes('#token=')) {
     console.log('[Main] Using saved tokenized URL from config')
     win.webContents.send('openclaw-status', 'Loading OpenClaw...')
-    resizeForOpenClaw(win)
-    win.loadURL(savedUrl)
-    return { success: true }
+
+    // Forward process dies when the app quits; re-establish it before loadURL
+    // so we don't get ERR_CONNECTION_REFUSED on relaunches.
+    win.webContents.send('openclaw-status', 'Restoring port forward...')
+    const forwardOk = await ensurePortForward(sandboxName)
+    if (!forwardOk) {
+      console.warn('[Main] ensurePortForward failed — falling through to URL discovery')
+      // Fall through to the slow-path discovery below, don't give up yet
+    } else {
+      resizeForOpenClaw(win)
+      loadingOpenClawUrl = true
+      win.loadURL(savedUrl)
+      return { success: true }
+    }
   }
 
   // Slow path: discover URL via nemoclaw CLI strategies
@@ -75,6 +141,7 @@ async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: bo
     if (finalUrl) {
       saveConfig({ openclawUrl: finalUrl })
       resizeForOpenClaw(win)
+      loadingOpenClawUrl = true
       win.loadURL(finalUrl)
       return { success: true }
     }
@@ -93,10 +160,12 @@ async function launchOpenClawInWindow(win: BrowserWindow): Promise<{ success: bo
           if (token) {
             const tokenizedUrl = savedUrl.replace(/\/?$/, '/#token=' + token)
             saveConfig({ openclawUrl: tokenizedUrl })
+            loadingOpenClawUrl = true
             win.loadURL(tokenizedUrl)
             return { success: true }
           }
         }
+        loadingOpenClawUrl = true
         win.loadURL(savedUrl)
         return { success: true }
       } catch {

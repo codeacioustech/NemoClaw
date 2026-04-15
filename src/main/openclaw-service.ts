@@ -420,49 +420,23 @@ export async function getOpenClawUrl(sandboxName: string): Promise<string | null
 }
 
 // ── Sandbox log streaming ────────────────────────────────────────────────
-// Tails the sandbox container's docker logs into the main-process console
-// (visible in `npm run dev` terminal) so developers can see what OpenClaw
-// is doing in real time when a user interacts with the UI. Invaluable for
-// debugging "UI loads but messages don't respond" situations.
+// Streams the OpenClaw agent logs (inside the k3s pod) into the main-process
+// console so `[sandbox]` lines appear in the `npm run dev` terminal. Uses
+// `nemoclaw <name> logs --follow` — the command NemoClaw itself documents
+// as the canonical way to view agent logs. (Earlier versions tried
+// `docker logs` on the gateway container, which surfaced unrelated k3s/kube
+// infrastructure noise instead of the actual agent.)
 
 /**
- * Try to resolve the sandbox container's docker container ID.
- * Tries several name patterns because the actual container name depends
- * on how openshell/nemoclaw is versioned.
- */
-async function resolveSandboxContainerId(sandboxName: string): Promise<string | null> {
-  const patterns = [sandboxName, 'openclaw', 'nemoclaw', 'open-coot']
-  for (const pattern of patterns) {
-    try {
-      const { stdout } = await runShellAsync(
-        `docker ps --filter "name=${pattern}" --format "{{.ID}}" | head -n 1`,
-        5000
-      )
-      const id = stdout.trim().split('\n')[0]
-      if (id) {
-        console.log(`[sandbox-logs] Resolved container "${pattern}" → ${id}`)
-        return id
-      }
-    } catch { /* try next pattern */ }
-  }
-  return null
-}
-
-/**
- * Start streaming `docker logs -f` of the sandbox container into the main
- * process console. Every line is prefixed with `[sandbox]` so it is easy
- * to grep. Safe to call multiple times — prior stream is stopped first.
+ * Start streaming `nemoclaw <name> logs --follow` into the main console,
+ * prefixed with `[sandbox]`. Safe to call multiple times — prior stream
+ * is stopped first.
  */
 export async function startSandboxLogStream(sandboxName: string): Promise<void> {
   stopSandboxLogStream()
 
-  const containerId = await resolveSandboxContainerId(sandboxName)
-  if (!containerId) {
-    console.warn(`[sandbox-logs] No container found for "${sandboxName}" — skipping log stream`)
-    return
-  }
-
-  const { command, args } = shellCmd(`docker logs -f --tail 50 ${containerId} 2>&1`)
+  const cmd = `${PATH_PREFIX} && nemoclaw ${sandboxName} logs --follow`
+  const { command, args } = shellCmd(cmd)
   const proc = spawn(command, args, { env: process.env })
   proc.stdin?.end()
 
@@ -484,7 +458,7 @@ export async function startSandboxLogStream(sandboxName: string): Promise<void> 
   })
 
   sandboxLogProcess = proc
-  console.log(`[sandbox-logs] Streaming container ${containerId} — prefix: [sandbox]`)
+  console.log(`[sandbox-logs] Streaming "nemoclaw ${sandboxName} logs --follow" — prefix: [sandbox]`)
 }
 
 /**
@@ -495,5 +469,50 @@ export function stopSandboxLogStream(): void {
   if (sandboxLogProcess) {
     try { sandboxLogProcess.kill() } catch { /* ignore */ }
     sandboxLogProcess = null
+  }
+}
+
+// ── Port forward helper ──────────────────────────────────────────────────
+// The `openshell forward start <port> <sandbox>` forwarder does not survive
+// app quit — so on relaunches the sandbox pod is alive but port 18789 is
+// dead, causing ERR_CONNECTION_REFUSED when the UI tries to load. Call
+// this right before `win.loadURL(openclawUrl)` to guarantee the port is
+// live. Idempotent — safe if a forward is already running.
+
+export async function ensurePortForward(sandboxName: string, port = 18789): Promise<boolean> {
+  try {
+    // First check if port is already serving — if so, do nothing.
+    const check = await runShellAsync(
+      `curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:${port}/ 2>/dev/null || echo 000`,
+      5000
+    )
+    const code = check.stdout.trim()
+    if (code && code !== '000') {
+      console.log(`[forward] Port ${port} already serving (HTTP ${code})`)
+      return true
+    }
+
+    console.log(`[forward] Port ${port} not serving — starting openshell forward...`)
+    const start = await runShellAsync(
+      `${PATH_PREFIX} && openshell forward start ${port} ${sandboxName}`,
+      30000
+    )
+    if (start.code !== 0) {
+      console.warn(`[forward] openshell forward start failed (exit ${start.code}): ${start.stderr}`)
+    }
+
+    // Give the forward a moment to become ready
+    await new Promise((r) => setTimeout(r, 1500))
+    const recheck = await runShellAsync(
+      `curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:${port}/ 2>/dev/null || echo 000`,
+      5000
+    )
+    const recheckCode = recheck.stdout.trim()
+    const healthy = recheckCode && recheckCode !== '000'
+    console.log(`[forward] Post-start check: HTTP ${recheckCode} (healthy=${healthy})`)
+    return !!healthy
+  } catch (err) {
+    console.warn(`[forward] ensurePortForward error: ${(err as Error).message}`)
+    return false
   }
 }
