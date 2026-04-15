@@ -149,7 +149,7 @@ class GatewayClient {
           id: "openclaw-control-ui",
           version: "0.1.0",
           platform: "electron",
-          mode: "operator",
+          mode: "ui",
           displayName: "NemoClaw Desktop",
         },
         role: "operator",
