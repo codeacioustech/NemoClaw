@@ -36,6 +36,7 @@ function seedOpenclawConfig() {
       auth: { mode: "none" },
       controlUi: {
         dangerouslyDisableDeviceAuth: true,
+        allowedOrigins: ["file://", "null"],
       },
     },
     models: {
