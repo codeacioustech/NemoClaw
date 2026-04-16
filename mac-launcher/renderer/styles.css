@@ -955,19 +955,9 @@ details.chat-reasoning[open] .chat-reasoning-summary::before {
 ==================================================== */
 .perm-overlay {
   position: fixed; inset: 0; z-index: 1500;
-  display: flex; align-items: center; justify-content: center;
-  visibility: hidden; opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-norm) var(--ease-out),
-              visibility 0s linear var(--dur-norm);
+  align-items: center; justify-content: center;
+  /* display, visibility, opacity controlled by permission.js inline styles */
 }
-.perm-overlay.open {
-  visibility: visible; opacity: 1;
-  pointer-events: auto;
-  transition: opacity var(--dur-norm) var(--ease-out),
-              visibility 0s linear 0s;
-}
-.perm-overlay[hidden] { display: none; }
 
 .perm-backdrop {
   position: absolute; inset: 0;
@@ -984,14 +974,11 @@ details.chat-reasoning[open] .chat-reasoning-summary::before {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  transform: translateY(12px) scale(0.97);
-  opacity: 0;
-  transition: transform var(--dur-slow) var(--ease-out),
-              opacity var(--dur-slow) var(--ease-out);
+  animation: perm-enter var(--dur-slow) var(--ease-out);
 }
-.perm-overlay.open .perm-dialog {
-  transform: translateY(0) scale(1);
-  opacity: 1;
+@keyframes perm-enter {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Queue indicator */

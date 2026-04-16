@@ -427,9 +427,14 @@ const chat = (() => {
   }
 
   async function handleToolInvoke(payload) {
-    if (!payload || payload.sessionKey !== _sessionKey) return;
+    console.log("[chat] handleToolInvoke called:", payload?.name || payload);
+    if (!payload || payload.sessionKey !== _sessionKey) {
+      console.log("[chat] handleToolInvoke skipped: session mismatch", payload?.sessionKey, "vs", _sessionKey);
+      return;
+    }
 
     const { toolCallId, name, arguments: args } = payload;
+    console.log("[chat] tool invocation:", name, "id:", toolCallId);
 
     // ── Permission gate: every tool invocation requires explicit user approval ──
     appendToolMessage("🔒", `Permission requested: ${name}`, "pending");

@@ -13,6 +13,8 @@
  */
 
 const permission = (() => {
+  console.log("[permission] module loaded");
+
   const $ = (sel) => document.querySelector(sel);
 
   let _queue = [];
@@ -55,16 +57,21 @@ const permission = (() => {
     colorClass: "perm-icon-muted",
   };
 
-  // --- Modal show/hide ---
+  // --- Modal show/hide (simplified, no hidden attribute) ---
 
   function _showModal() {
     const overlay = $("#perm-modal");
-    if (!overlay) return;
+    if (!overlay) {
+      console.error("[permission] #perm-modal element not found in DOM!");
+      return;
+    }
+    console.log("[permission] showing modal");
     _previousFocus = document.activeElement;
-    overlay.removeAttribute("hidden");
-    // Force reflow before adding .open for transition
-    overlay.offsetHeight; // eslint-disable-line no-unused-expressions
-    overlay.classList.add("open");
+    // Use direct style to guarantee visibility — no hidden attr, no CSS transition race
+    overlay.style.display = "flex";
+    overlay.style.visibility = "visible";
+    overlay.style.opacity = "1";
+    overlay.style.pointerEvents = "auto";
     // Focus the Allow button
     const allowBtn = overlay.querySelector(".perm-btn-allow");
     if (allowBtn) allowBtn.focus();
@@ -73,17 +80,11 @@ const permission = (() => {
   function _hideModal() {
     const overlay = $("#perm-modal");
     if (!overlay) return;
-    overlay.classList.remove("open");
-    // Wait for transition to finish, then hide
-    const onEnd = () => {
-      overlay.setAttribute("hidden", "");
-      overlay.removeEventListener("transitionend", onEnd);
-    };
-    overlay.addEventListener("transitionend", onEnd);
-    // Fallback: hide after duration in case transitionend doesn't fire
-    setTimeout(() => {
-      overlay.setAttribute("hidden", "");
-    }, 350);
+    console.log("[permission] hiding modal");
+    overlay.style.display = "none";
+    overlay.style.visibility = "hidden";
+    overlay.style.opacity = "0";
+    overlay.style.pointerEvents = "none";
     // Restore focus
     if (_previousFocus && typeof _previousFocus.focus === "function") {
       _previousFocus.focus();
@@ -96,6 +97,7 @@ const permission = (() => {
   function _renderRequest(entry) {
     const { name, arguments: args } = entry.payload;
     const meta = TOOL_META[name] || DEFAULT_META;
+    console.log("[permission] rendering request:", name, args);
 
     // Type badge
     const typeEl = $("#perm-type");
@@ -201,20 +203,7 @@ const permission = (() => {
     }
     _current = _queue.shift();
     _renderRequest(_current);
-    if (!$("#perm-modal")?.classList.contains("open")) {
-      _showModal();
-    }
-    // Update queue count after shift
-    const queueEl = $("#perm-queue");
-    const queueCount = $("#perm-queue-count");
-    if (queueEl && queueCount) {
-      if (_queue.length > 0) {
-        queueCount.textContent = _queue.length + " more pending";
-        queueEl.removeAttribute("hidden");
-      } else {
-        queueEl.setAttribute("hidden", "");
-      }
-    }
+    _showModal();
   }
 
   function _resolve(entry, result) {
@@ -229,6 +218,7 @@ const permission = (() => {
   // --- Public methods ---
 
   function request(payload) {
+    console.log("[permission] request() called for tool:", payload.name);
     return new Promise((resolve) => {
       const entry = {
         payload,
@@ -237,6 +227,7 @@ const permission = (() => {
         requestedAt: Date.now(),
       };
       entry.timeoutId = setTimeout(() => {
+        console.log("[permission] auto-deny timeout for:", payload.name);
         // Auto-deny on timeout
         if (_current === entry) {
           _resolve(entry, { allowed: false, reason: "timeout" });
@@ -262,6 +253,7 @@ const permission = (() => {
 
   function allow() {
     if (!_current) return;
+    console.log("[permission] ALLOWED:", _current.payload.name);
     const entry = _current;
     _resolve(entry, { allowed: true });
     _current = null;
@@ -270,6 +262,7 @@ const permission = (() => {
 
   function deny(reason) {
     if (!_current) return;
+    console.log("[permission] DENIED:", _current.payload.name, reason);
     const entry = _current;
     _resolve(entry, { allowed: false, reason: reason || "denied by user" });
     _current = null;
@@ -278,12 +271,11 @@ const permission = (() => {
 
   function denyAll(reason) {
     const r = reason || "cancelled";
-    // Deny current
+    console.log("[permission] denyAll:", r);
     if (_current) {
       _resolve(_current, { allowed: false, reason: r });
       _current = null;
     }
-    // Deny all queued
     while (_queue.length > 0) {
       const entry = _queue.shift();
       _resolve(entry, { allowed: false, reason: r });
@@ -295,7 +287,7 @@ const permission = (() => {
 
   document.addEventListener("keydown", (e) => {
     const overlay = $("#perm-modal");
-    if (!overlay || !overlay.classList.contains("open")) return;
+    if (!overlay || overlay.style.display !== "flex") return;
 
     if (e.key === "Escape") {
       e.preventDefault();
@@ -314,17 +306,22 @@ const permission = (() => {
       const currentIdx = focusables.indexOf(document.activeElement);
 
       if (e.shiftKey) {
-        // Shift+Tab: go backwards
         const nextIdx = currentIdx <= 0 ? focusables.length - 1 : currentIdx - 1;
         focusables[nextIdx].focus();
       } else {
-        // Tab: go forwards
         const nextIdx = currentIdx >= focusables.length - 1 ? 0 : currentIdx + 1;
         focusables[nextIdx].focus();
       }
       e.preventDefault();
     }
   });
+
+  // Hide modal on initial load
+  const _initOverlay = $("#perm-modal");
+  if (_initOverlay) {
+    _initOverlay.style.display = "none";
+    _initOverlay.removeAttribute("hidden");
+  }
 
   return { request, allow, deny, denyAll };
 })();
