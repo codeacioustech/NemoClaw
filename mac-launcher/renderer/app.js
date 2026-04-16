@@ -471,15 +471,25 @@ const app = (() => {
   async function performBackgroundWarmup() {
     const btn = document.querySelector('.topbar-btn[data-action="open-chat"]');
     const originalContent = btn ? btn.innerHTML : '';
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<span class="icon icon-md" style="display:inline-block; animation: spin 1s linear infinite;"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg></span> Warming up AI...`;
-    }
+    
+    const setBusy = (msg) => {
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="icon icon-md" style="display:inline-block; animation: spin 1s linear infinite;"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg></span> ${msg}`;
+      }
+    };
+
+    setBusy("Connecting...");
 
     try {
+      // Small grace period for gateway handshake
+      await new Promise(r => setTimeout(r, 1500));
+      
+      setBusy("Warming up AI...");
       const sess = await gateway.createSession("Warmup");
+      
       await new Promise((resolve) => {
-        const timeout = setTimeout(resolve, 45000); // 45s max safety
+        const timeout = setTimeout(resolve, 60000); // 60s max for slow Ollama loads
         const handler = (payload) => {
           if (payload.sessionKey === sess.key) {
             clearTimeout(timeout);
@@ -488,9 +498,9 @@ const app = (() => {
           }
         };
         gateway.on("chat", handler);
-        gateway.sendMessage(sess.key, "Please reply briefly: OK.");
+        gateway.sendMessage(sess.key, "Ping. Reply 'OK'.");
       });
-      // Cleanup the dummy session natively so it doesn't clutter history
+      
       await gateway.deleteSession(sess.key).catch(() => {});
     } catch (e) {
       console.warn("[app] Background warmup fell through:", e.message);
@@ -512,8 +522,6 @@ const app = (() => {
     try {
       await gateway.connect(_gatewayPort);
       console.log("[app] connected to gateway on port", _gatewayPort);
-      
-      // Fire the warmup in the background
       performBackgroundWarmup();
     } catch (e) {
       console.error("[app] gateway connection failed:", e.message);
