@@ -10,13 +10,9 @@ const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the r
 
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant running inside the NemoClaw desktop app. " +
-  "When the user asks you to create, read, or modify files, you MUST call " +
-  "the appropriate tool — `create_file`, `read_file`, or `list_directory` — " +
-  "and wait for the tool result before replying. " +
-  "Never claim to have created, read, or modified a file unless you actually " +
-  "called the tool and received a success result. " +
-  "For all non-file questions, respond in plain text. Do not wrap text " +
-  'responses in JSON or action wrappers like {"request": ...}.';
+  "Use the provided tools to interact with the file system when the user asks you to. " +
+  "Wait for the tool result before replying. " +
+  "For all non-file questions, respond in plain text.";
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
@@ -110,7 +106,8 @@ function startProxy(onListening) {
               content: SYSTEM_INSTRUCTION,
             });
           }
-          if (Array.isArray(parsed.tools)) {
+          if (Array.isArray(parsed.tools)) { fs.writeFileSync("/home/sanket/Openclaw /NemoClaw/mac-launcher/DEBUG_TOOLS.json", JSON.stringify(parsed.tools, null, 2));
+
             console.log(`[DEBUG TOOLS] available names: ${parsed.tools.map(t => t?.function?.name || t?.name).join(", ")}`);
             console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
@@ -139,49 +136,20 @@ function startProxy(onListening) {
           const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
 
           // ── Tool override: Inject the 3 exact tools the chat.js UI natively supports ──
+          // ── Tool intercept: Capture and filter native OpenClaw tools ──
           if (Array.isArray(parsed.tools)) {
+            // Write the raw schemas to disk so we can inspect them and sync chat.js
+            require('fs').writeFileSync(
+              require('path').join(__dirname, '../DEBUG_TOOLS.json'), 
+              JSON.stringify(parsed.tools, null, 2)
+            );
+
             const before = parsed.tools.length;
-            parsed.tools = [
-              {
-                type: "function",
-                function: {
-                  name: "create_file",
-                  description: "Creates or overwrites a file at path with content",
-                  parameters: {
-                    type: "object",
-                    properties: { 
-                      path: { type: "string", description: "Absolute or relative file path" }, 
-                      content: { type: "string", description: "Text content to write" } 
-                    },
-                    required: ["path", "content"]
-                  }
-                }
-              },
-              {
-                type: "function",
-                function: {
-                  name: "read_file",
-                  description: "Reads the content of a file",
-                  parameters: {
-                    type: "object",
-                    properties: { path: { type: "string", description: "Path to the file" } },
-                    required: ["path"]
-                  }
-                }
-              },
-              {
-                type: "function",
-                function: {
-                  name: "list_directory",
-                  description: "Lists the folders and files in a directory",
-                  parameters: {
-                    type: "object",
-                    properties: { path: { type: "string", description: "Path to the folder" } },
-                    required: ["path"]
-                  }
-                }
-              }
-            ];
+            // Filter to only the core file tools so we don't blow up Ollama's VRAM
+            parsed.tools = parsed.tools.filter(t => {
+              const name = (t?.function?.name || t?.name || "").toLowerCase();
+              return /^(read|edit|write|ls|list|bash)$/.test(name);
+            });
 
             // Freeze: serialise tools once per session so the JSON bytes are
             // identical across turns (same token sequence → cache hit).
