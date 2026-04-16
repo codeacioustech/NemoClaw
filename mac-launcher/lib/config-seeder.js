@@ -73,42 +73,6 @@ function seedOpenclawConfig() {
           idleTimeoutSeconds: 300,
         },
         heartbeat: {},
-        tools: [
-          {
-            name: "create_file",
-            description: "Create or overwrite a file at the given path within the user's mounted folders",
-            parameters: {
-              type: "object",
-              properties: {
-                path: { type: "string", description: "Absolute path within a mounted folder" },
-                content: { type: "string", description: "File content to write" },
-              },
-              required: ["path", "content"],
-            },
-          },
-          {
-            name: "read_file",
-            description: "Read a text file from the user's mounted folders",
-            parameters: {
-              type: "object",
-              properties: {
-                path: { type: "string", description: "Absolute path within a mounted folder" },
-              },
-              required: ["path"],
-            },
-          },
-          {
-            name: "list_directory",
-            description: "List files and subdirectories in a directory",
-            parameters: {
-              type: "object",
-              properties: {
-                path: { type: "string", description: "Absolute path within a mounted folder" },
-              },
-              required: ["path"],
-            },
-          },
-        ],
       },
     },
   });
