@@ -137,15 +137,15 @@ function startProxy(onListening) {
           const sessionId = deriveSessionId(clientReq.headers, parsed);
           const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
 
-          // ── Tool allowlist: canonical frozen JSON for prefix stability ────
-          const TOOL_ALLOWLIST = new Set(["create_file", "read_file", "list_directory"]);
+          // ── Tool allowlist: fuzzy match for OpenClaw prefixed tools ────
           if (Array.isArray(parsed.tools)) {
             const before = parsed.tools.length;
-            parsed.tools = parsed.tools.filter(t =>
-              t?.function?.name ? TOOL_ALLOWLIST.has(t.function.name)
-              : t?.name         ? TOOL_ALLOWLIST.has(t.name)
-              : false
-            );
+            parsed.tools = parsed.tools.filter(t => {
+              const name = (t?.function?.name || t?.name || "").toLowerCase();
+              return name.includes("create_file") || 
+                     name.includes("read_file") || 
+                     name.includes("list_directory");
+            });
 
             // Freeze: serialise tools once per session so the JSON bytes are
             // identical across turns (same token sequence → cache hit).
