@@ -529,6 +529,35 @@ button:focus-visible,
 }
 .topbar-btn:hover { background: var(--primary-hover); }
 .topbar-btn:active { transform: scale(0.97); }
+
+/* Warmup loading state */
+.topbar-btn--warming {
+  background: linear-gradient(90deg, #4338ca, #6366F1, #818CF8, #6366F1, #4338ca);
+  background-size: 300% 100%;
+  animation: btn-shimmer 2s linear infinite;
+  cursor: not-allowed;
+  opacity: 0.85;
+  pointer-events: none;
+  gap: 8px;
+}
+.topbar-btn--warming::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  animation: dot-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes btn-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.65); }
+}
 .topbar-avatar {
   width: 34px; height: 34px; border-radius: 50%;
   background: var(--surface-3); border: 2px solid var(--border);
