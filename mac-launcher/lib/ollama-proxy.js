@@ -137,15 +137,12 @@ function startProxy(onListening) {
           const sessionId = deriveSessionId(clientReq.headers, parsed);
           const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
 
-          // ── Tool allowlist: fuzzy match for OpenClaw prefixed tools ────
+          // ── Tool allowlist: fuzzy match for OpenClaw tools ────
           if (Array.isArray(parsed.tools)) {
-            console.log(`[DEBUG TOOLS RAW STRUC]: `, JSON.stringify(parsed.tools.slice(0,2)));
             const before = parsed.tools.length;
             parsed.tools = parsed.tools.filter(t => {
               const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return name.includes("create_file") || 
-                     name.includes("read_file") || 
-                     name.includes("list_directory");
+              return /^(read|edit|ls|bash|create_file|read_file|list_directory)$/.test(name);
             });
 
             // Freeze: serialise tools once per session so the JSON bytes are
