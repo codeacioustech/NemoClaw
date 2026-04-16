@@ -417,25 +417,63 @@ const chat = (() => {
 
     try {
       switch (name) {
-        case "create_file": {
-          appendToolMessage("📄", `Creating file: ${args.path}`, "pending");
-          await window.launcher.writeFile(args.path, args.content);
-          result = { success: true, message: `Created ${args.path}` };
-          appendToolMessage("✅", `File created: ${args.path}`, "success");
+        case "read": {
+          const targetPath = args.path || '.';
+          appendToolMessage("📖", `Reading/Listing: ${targetPath}`, "pending");
+          try {
+            // Overload read: check if it's a directory first
+            const entries = await window.launcher.listDir(targetPath);
+            if (Array.isArray(entries)) {
+              result = { success: true, type: "directory", entries };
+              appendToolMessage("✅", `Listed directory: ${targetPath} (${entries.length} items)`, "success");
+            } else {
+              throw new Error("Not a directory");
+            }
+          } catch (e) {
+            // Fallback to file reading
+            try {
+              const content = await window.launcher.readFile(targetPath);
+              result = { success: true, type: "file", content };
+              appendToolMessage("✅", `Read file: ${targetPath} (${content.length} chars)`, "success");
+            } catch (fileErr) {
+              result = { success: false, error: fileErr.message };
+              appendToolMessage("❌", `Failed to read: ${targetPath}`, "error");
+            }
+          }
           break;
         }
-        case "read_file": {
-          appendToolMessage("📖", `Reading file: ${args.path}`, "pending");
-          const content = await window.launcher.readFile(args.path);
-          result = { success: true, content };
-          appendToolMessage("✅", `Read ${args.path} (${content.length} chars)`, "success");
+        case "write": {
+          appendToolMessage("📄", `Writing file: ${args.path}`, "pending");
+          try {
+            await window.launcher.writeFile(args.path, args.content);
+            result = { success: true, message: `Written to ${args.path}` };
+            appendToolMessage("✅", `File saved: ${args.path}`, "success");
+          } catch (e) {
+            result = { success: false, error: e.message };
+            appendToolMessage("❌", `Failed to write: ${args.path}`, "error");
+          }
           break;
         }
-        case "list_directory": {
-          appendToolMessage("📂", `Listing directory: ${args.path}`, "pending");
-          const entries = await window.launcher.listDir(args.path);
-          result = { success: true, entries };
-          appendToolMessage("✅", `Listed ${entries.length} items in ${args.path}`, "success");
+        case "edit": {
+          appendToolMessage("✏️", `Editing file: ${args.path}`, "pending");
+          try {
+            let content = await window.launcher.readFile(args.path);
+            if (args.edits && Array.isArray(args.edits)) {
+              for (const edit of args.edits) {
+                if (content.includes(edit.oldText)) {
+                  content = content.replace(edit.oldText, edit.newText);
+                } else {
+                  throw new Error(`Target text block not found in file.`);
+                }
+              }
+            }
+            await window.launcher.writeFile(args.path, content);
+            result = { success: true, message: `Edited ${args.path}` };
+            appendToolMessage("✅", `File edited: ${args.path}`, "success");
+          } catch(e) {
+            result = { success: false, error: e.message };
+            appendToolMessage("❌", `Failed to edit: ${args.path} - ${e.message}`, "error");
+          }
           break;
         }
         default:

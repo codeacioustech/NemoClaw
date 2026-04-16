@@ -10,9 +10,12 @@ const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the r
 
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant running inside the NemoClaw desktop app. " +
-  "Use the provided tools to interact with the file system when the user asks you to. " +
-  "Wait for the tool result before replying. " +
-  "For all non-file questions, respond in plain text.";
+  "You must use the following tools to interact with the filesystem:\n" +
+  "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
+  "- `edit`: to modify existing files.\n" +
+  "- `write`: to create or completely overwrite files.\n" +
+  "ALWAYS wait for the tool result before replying. " +
+  "For non-file questions, answer in plain text.";
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
