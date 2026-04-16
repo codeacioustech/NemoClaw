@@ -311,16 +311,19 @@ function startProxy(onListening) {
 
               const token = obj?.message?.content;
 
-              // Non-content lines or done signal: forward directly
-              if (typeof token !== "string") {
+              // Non-content lines, tool_calls, or end-of-stream signals: forward directly
+              if (typeof token !== "string" || obj?.message?.tool_calls || obj?.done) {
+                if (obj?.done && accumulator && !obj.message) obj.message = { role: "assistant" };
+                if (accumulator) obj.message.content = accumulator;
                 clientRes.write(JSON.stringify(obj) + "\n");
+                accumulator = "";
                 continue;
               }
 
               // Phase 1: buffer tokens to detect JSON wrapper (~60 chars)
               if (!detected) {
                 accumulator += token;
-                if (accumulator.length < 60 && !obj.done) continue;
+                if (accumulator.length < 60) continue;
 
                 detected = true;
                 const trimmed = accumulator.trimStart();
