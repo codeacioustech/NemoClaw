@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+preset:
+  name: config-readonly
+  description: "Read-only access to common configuration directories"
+
+filesystem_policy:
+  read_only:
+    - /sandbox/.config
+    - /sandbox/.ssh
+    - /sandbox/.gnupg
