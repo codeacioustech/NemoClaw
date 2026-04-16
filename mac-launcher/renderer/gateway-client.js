@@ -155,7 +155,7 @@ class GatewayClient {
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
         caps: ["tool-use"],
-        commands: ["create_file", "read_file", "list_directory"],
+        commands: ["read", "write", "edit"],
         permissions: {},
         auth: {},
         locale: "en-US",

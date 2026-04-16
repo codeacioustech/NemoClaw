@@ -24,26 +24,26 @@ const permission = (() => {
   // --- Tool metadata mapping ---
 
   const TOOL_META = {
-    create_file: {
-      type: "File Write",
-      title: "Create File",
-      desc: "The AI wants to create a new file at the specified path.",
-      iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>',
-      colorClass: "perm-icon-warning",
-    },
-    read_file: {
+    read: {
       type: "File Read",
-      title: "Read File",
-      desc: "The AI wants to read the contents of a file.",
+      title: "Read File / Directory",
+      desc: "The AI wants to read a file or list a directory.",
       iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
       colorClass: "perm-icon-primary",
     },
-    list_directory: {
-      type: "Directory List",
-      title: "List Directory",
-      desc: "The AI wants to list the contents of a directory.",
-      iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
-      colorClass: "perm-icon-success",
+    write: {
+      type: "File Write",
+      title: "Write File",
+      desc: "The AI wants to create or overwrite a file.",
+      iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>',
+      colorClass: "perm-icon-warning",
+    },
+    edit: {
+      type: "File Edit",
+      title: "Edit File",
+      desc: "The AI wants to modify an existing file.",
+      iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+      colorClass: "perm-icon-warning",
     },
   };
 
