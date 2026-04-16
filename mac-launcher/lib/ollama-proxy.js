@@ -137,13 +137,49 @@ function startProxy(onListening) {
           const sessionId = deriveSessionId(clientReq.headers, parsed);
           const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
 
-          // ── Tool allowlist: fuzzy match for OpenClaw tools ────
+          // ── Tool override: Inject the 3 exact tools the chat.js UI natively supports ──
           if (Array.isArray(parsed.tools)) {
-            const before = parsed.tools.length;
-            parsed.tools = parsed.tools.filter(t => {
-              const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return /^(read|edit|ls|bash|create_file|read_file|list_directory)$/.test(name);
-            });
+            parsed.tools = [
+              {
+                type: "function",
+                function: {
+                  name: "create_file",
+                  description: "Creates or overwrites a file at path with content",
+                  parameters: {
+                    type: "object",
+                    properties: { 
+                      path: { type: "string", description: "Absolute or relative file path" }, 
+                      content: { type: "string", description: "Text content to write" } 
+                    },
+                    required: ["path", "content"]
+                  }
+                }
+              },
+              {
+                type: "function",
+                function: {
+                  name: "read_file",
+                  description: "Reads the content of a file",
+                  parameters: {
+                    type: "object",
+                    properties: { path: { type: "string", description: "Path to the file" } },
+                    required: ["path"]
+                  }
+                }
+              },
+              {
+                type: "function",
+                function: {
+                  name: "list_directory",
+                  description: "Lists the folders and files in a directory",
+                  parameters: {
+                    type: "object",
+                    properties: { path: { type: "string", description: "Path to the folder" } },
+                    required: ["path"]
+                  }
+                }
+              }
+            ];
 
             // Freeze: serialise tools once per session so the JSON bytes are
             // identical across turns (same token sequence → cache hit).
