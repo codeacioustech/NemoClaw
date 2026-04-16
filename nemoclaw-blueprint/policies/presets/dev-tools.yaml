@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+preset:
+  name: dev-tools
+  description: "Write access for common development tool caches and build directories"
+
+filesystem_policy:
+  read_write:
+    - /sandbox/.npm
+    - /sandbox/.yarn
+    - /sandbox/.cargo
+    - /sandbox/.cache
+    - /sandbox/.local
+    - /sandbox/.python-packages
+    - /sandbox/project/node_modules
+    - /sandbox/project/target
+    - /sandbox/project/dist
+    - /sandbox/project/build
+    - /sandbox/project/.gradle

@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NVIDIA/NemoClaw/schemas/file-access-permission.schema.json",
+  "title": "NemoClaw File Access Permission Store",
+  "description": "Schema for ~/.nemoclaw/file-permissions.json — stores file access permissions and deny rules.",
+  "type": "object",
+  "required": ["version", "permissions", "deny"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version"
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FilePermission"
+      },
+      "description": "Allow rules for file access"
+    },
+    "deny": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FileDenyRule"
+      },
+      "description": "Deny rules (checked first, always win)"
+    }
+  },
+  "$defs": {
+    "FilePermission": {
+      "type": "object",
+      "required": ["id", "pattern", "actions", "scope", "reason", "sandbox", "grantedAt", "grantedBy"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^fp_[0-9a-f]{10}$",
+          "description": "Unique permission ID"
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Path pattern (absolute, supports **, /*)"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["read", "write", "execute"]
+          },
+          "minItems": 1,
+          "description": "Granted actions"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["session", "persistent"],
+          "description": "Session (cleared on restart) or persistent (survives restart)"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable reason for audit trail"
+        },
+        "sandbox": {
+          "type": "string",
+          "description": "Which sandbox this applies to"
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp"
+        },
+        "grantedBy": {
+          "type": "string",
+          "enum": ["operator", "tui-approval"],
+          "description": "Who granted it"
+        }
+      }
+    },
+    "FileDenyRule": {
+      "type": "object",
+      "required": ["id", "pattern", "actions", "reason", "sandbox", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^fd_[0-9a-f]{10}$",
+          "description": "Unique deny rule ID"
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Path pattern to deny"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["read", "write", "execute"]
+          },
+          "minItems": 1,
+          "description": "Actions that are denied"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why this path is denied"
+        },
+        "sandbox": {
+          "type": "string",
+          "description": "Sandbox name or '*' for all sandboxes"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+preset:
+  name: project-readwrite
+  description: "Full read-write access to /sandbox/project directory"
+
+filesystem_policy:
+  read_write:
+    - /sandbox/project
