@@ -154,7 +154,55 @@ const chat = (() => {
     }
   }
 
+  // --- Slash command handler ---
+
+  // Handle a client-side slash command typed into the chat input.
+  // Slash commands are consumed entirely here and never sent to the LLM.
+  //
+  // Supported commands:
+  //   /clear | /reset  - clear the UI and rotate the gateway session
+  //   /help            - list available commands
+  async function handleSlashCommand(raw) {
+    const parts = raw.trim().split(/\s+/);
+    const cmd   = parts[0].toLowerCase();
+
+    switch (cmd) {
+      case "/clear":
+      case "/reset": {
+        // newChat() creates a brand-new gateway session key AND clears the UI.
+        // Rotating the session key forces the gateway to start a fresh context
+        // window so the LLM has no memory of prior messages. The proxy's
+        // _sessionStore sees a new first-user-message hash and starts a
+        // clean KV anchor on the next turn.
+        try {
+          await newChat();
+          appendSystemMessage("Chat history cleared. AI context reset. Start a new conversation.");
+        } catch (e) {
+          appendSystemMessage("Failed to reset session: " + e.message);
+        }
+        break;
+      }
+
+      case "/help": {
+        appendSystemMessage(
+          "Available commands:\n" +
+          "  /clear  or  /reset - wipe chat history and reset AI memory\n" +
+          "  /help              - show this message"
+        );
+        break;
+      }
+
+      default: {
+        appendSystemMessage(
+          "Unknown command: " + parts[0] + "\n" +
+          "Type /help for a list of available commands."
+        );
+      }
+    }
+  }
+
   // --- Sending messages ---
+
 
   async function send() {
     const input = $(".chat-input");
@@ -165,6 +213,15 @@ const chat = (() => {
 
     input.value = "";
     input.style.height = "40px";
+
+    // ── Slash command interceptor ─────────────────────────────────────────
+    // Must run BEFORE appendMessage so the slash text is never rendered
+    // as a user bubble and never forwarded to the gateway or LLM.
+    if (text.startsWith("/")) {
+      handleSlashCommand(text);
+      return;
+    }
+    // ─────────────────────────────────────────────────────────
 
     appendMessage("user", text);
 

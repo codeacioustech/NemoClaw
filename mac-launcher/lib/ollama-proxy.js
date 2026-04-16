@@ -137,16 +137,8 @@ function startProxy(onListening) {
           const sessionId = deriveSessionId(clientReq.headers, parsed);
           const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
 
-          // ── Tool allowlist: canonical frozen JSON for prefix stability ────
-          const TOOL_ALLOWLIST = new Set(["create_file", "read_file", "list_directory"]);
+          // ── Tools: canonical frozen JSON for prefix stability ────
           if (Array.isArray(parsed.tools)) {
-            const before = parsed.tools.length;
-            parsed.tools = parsed.tools.filter(t =>
-              t?.function?.name ? TOOL_ALLOWLIST.has(t.function.name)
-              : t?.name         ? TOOL_ALLOWLIST.has(t.name)
-              : false
-            );
-
             // Freeze: serialise tools once per session so the JSON bytes are
             // identical across turns (same token sequence → cache hit).
             if (!session.toolsJson) {
@@ -155,8 +147,7 @@ function startProxy(onListening) {
             parsed.tools = JSON.parse(session.toolsJson);
 
             console.log(
-              `[ollama-proxy] [${sessionId}] Tools: ${before} → ${parsed.tools.length} ` +
-              `(stripped ${before - parsed.tools.length} unused definitions)`
+              `[ollama-proxy] [${sessionId}] Tools: ${parsed.tools.length} definitions (frozen for KV cache)`
             );
           }
 
