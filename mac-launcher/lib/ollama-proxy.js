@@ -106,9 +106,7 @@ function startProxy(onListening) {
               content: SYSTEM_INSTRUCTION,
             });
           }
-          if (Array.isArray(parsed.tools)) { fs.writeFileSync("/home/sanket/Openclaw /NemoClaw/mac-launcher/DEBUG_TOOLS.json", JSON.stringify(parsed.tools, null, 2));
-
-            console.log(`[DEBUG TOOLS] available names: ${parsed.tools.map(t => t?.function?.name || t?.name).join(", ")}`);
+          if (Array.isArray(parsed.tools)) {
             console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
 
