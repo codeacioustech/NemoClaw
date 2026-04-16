@@ -52,11 +52,47 @@ function startProxy(onListening) {
           if (Array.isArray(parsed.tools)) {
             console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
-          // gemma4:e4b supports native reasoning/thinking mode.
-          // Pass the think flag through to Ollama as-is.
-          if (parsed.think !== undefined) {
-            console.log(`[ollama-proxy] Passing think=${parsed.think} to model`);
+
+          // ── Context Pruning Engine ──────────────────────────────────────────
+          // Aggressively trims the messages array to reduce payload size and
+          // prevent context bloat from slowing down local LLM inference.
+          if (Array.isArray(parsed.messages)) {
+            const MAX_HISTORY = 10;     // Keep only the last 10 messages (5 turns)
+            const MAX_TOOL_OUTPUT = 2000; // Truncate tool reads/outputs over 2000 chars
+
+            // Separate the primary system prompt from the chat history
+            const systemMessages = parsed.messages.filter(m => m.role === 'system');
+            const mainSystem = systemMessages.length > 0 ? systemMessages : null;
+
+            let chatHistory = parsed.messages.filter(m => m.role !== 'system');
+
+            // Truncate massive tool outputs (e.g., reading a huge file)
+            chatHistory = chatHistory.map(msg => {
+              if (msg.role === 'tool' && msg.content && typeof msg.content === 'string') {
+                if (msg.content.length > MAX_TOOL_OUTPUT) {
+                  msg.content = msg.content.substring(0, MAX_TOOL_OUTPUT) + "\n...[TRUNCATED FOR LENGTH TO SAVE CONTEXT]...";
+                }
+              }
+              return msg;
+            });
+
+            // Drop old messages to prevent massive attention calculation slowdowns
+            if (chatHistory.length > MAX_HISTORY) {
+              chatHistory = chatHistory.slice(-MAX_HISTORY);
+            }
+
+            // Reconstruct the array: System prompt first, then pruned history
+            parsed.messages = mainSystem ? [...mainSystem, ...chatHistory] : chatHistory;
+
+            console.log(`[ollama-proxy] Pruned context: history limited to ${chatHistory.length} messages.`);
           }
+          // ───────────────────────────────────────────────────────────────────
+
+          // gemma4:e4b supports native reasoning/thinking mode.
+          // Force think=true regardless of what the client sends — OpenClaw
+          // currently always sends think=false, which would suppress reasoning.
+          parsed.think = true;
+          console.log(`[ollama-proxy] think forced to true (gemma4:e4b supports reasoning)`);
           body = Buffer.from(JSON.stringify(parsed));
           console.log(`[ollama-proxy] Request body after processing: ${body.length} bytes`);
         } catch {
