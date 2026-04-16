@@ -137,11 +137,7 @@ function startProxy(onListening) {
           // ── Tool intercept: Capture and filter native OpenClaw tools ──
           if (Array.isArray(parsed.tools)) {
             // Find tools that look related to files to debug their OpenClaw schema
-            const fileTools = parsed.tools.filter(t => {
-              const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return /(read|edit|write|ls|list|dir)/i.test(name);
-            });
-            console.log("\n[DEBUG] OPENCLAW NATIVE FILE TOOLS SCHEMA:\n", JSON.stringify(fileTools.map(t => t?.function?.name || t?.name), null, 2), "\n");
+            console.log("\n[DEBUG] ALL NATIVE TOOLS:\n", parsed.tools.map(t => t?.function?.name || t?.name).join(", "), "\n");
 
             const before = parsed.tools.length;
             // Filter to only the core file tools so we don't blow up Ollama's VRAM
