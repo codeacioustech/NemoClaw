@@ -49,12 +49,14 @@ function startProxy(onListening) {
               content: SYSTEM_INSTRUCTION,
             });
           }
-          // Forward tool definitions as-is. qwen2.5:3b supports function
-          // calling via Ollama's /api/chat `tools` field; stripping them
-          // meant the model could never emit a tool call and would
-          // hallucinate "file created" responses in plain text instead.
+          // Strict tool allow-list: only forward the 3 local file tools.
+          // Sending all 23 built-in tools (~72KB) overloads small models
+          // and causes the Ollama stream to die prematurely.
+          const ALLOWED_TOOLS = new Set(["create_file", "read_file", "list_directory"]);
           if (Array.isArray(parsed.tools)) {
-            console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
+            const before = parsed.tools.length;
+            parsed.tools = parsed.tools.filter(t => ALLOWED_TOOLS.has(t?.function?.name));
+            console.log(`[ollama-proxy] Filtered tools: ${before} -> ${parsed.tools.length}`);
           }
           // Strip the "think" flag — qwen2.5:3b (and most small local models)
           // don't support reasoning/thinking mode and Ollama 400s with

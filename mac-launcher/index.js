@@ -267,9 +267,11 @@ async function bootstrap() {
       delete cfg.agents.defaults.heartbeat.every;
       dirty = true;
     }
-    // Remove stale tools key — gateway rejects it as unrecognized.
-    if (cfg.agents.defaults.tools) {
-      delete cfg.agents.defaults.tools;
+    // Migrate stale raw-array tools format to OpenClaw policy object.
+    // If it's not an array (e.g. already a policy object), leave it alone;
+    // the gateway accepts the policy form fine.
+    if (Array.isArray(cfg.agents.defaults.tools)) {
+      cfg.agents.defaults.tools = { profile: "minimal", allow: ["create_file", "read_file", "list_directory"] };
       dirty = true;
     }
 
@@ -299,7 +301,7 @@ async function bootstrap() {
         api: "ollama",
         models: [{
           id: MODEL,
-          name: "Qwen 2.5 3B",
+          name: "Gemma 4 E4B",
           reasoning: false,
           input: ["text"],
           cost: { input: 0, output: 0 },

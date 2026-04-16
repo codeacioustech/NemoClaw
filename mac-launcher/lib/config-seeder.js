@@ -8,7 +8,7 @@ const os = require("os");
 const NEMOCLAW_DIR = path.join(os.homedir(), ".nemoclaw");
 const OPENCLAW_DIR = path.join(os.homedir(), ".openclaw");
 const GATEWAY_PORT = 18789;
-const MODEL = "qwen2.5:3b";
+const MODEL = "gemma4:e4b";
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) {
@@ -49,7 +49,7 @@ function seedOpenclawConfig() {
           models: [
             {
               id: MODEL,
-              name: "Qwen 2.5 3B",
+              name: "Gemma 4 E4B",
               reasoning: false,
               input: ["text"],
               cost: { input: 0, output: 0 },
@@ -73,6 +73,10 @@ function seedOpenclawConfig() {
           idleTimeoutSeconds: 300,
         },
         heartbeat: {},
+        tools: {
+          profile: "minimal",
+          allow: ["create_file", "read_file", "list_directory"],
+        },
       },
     },
   });
