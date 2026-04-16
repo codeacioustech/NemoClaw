@@ -139,6 +139,7 @@ function startProxy(onListening) {
 
           // ── Tool allowlist: fuzzy match for OpenClaw prefixed tools ────
           if (Array.isArray(parsed.tools)) {
+            console.log(`[DEBUG TOOLS RAW STRUC]: `, JSON.stringify(parsed.tools.slice(0,2)));
             const before = parsed.tools.length;
             parsed.tools = parsed.tools.filter(t => {
               const name = (t?.function?.name || t?.name || "").toLowerCase();
