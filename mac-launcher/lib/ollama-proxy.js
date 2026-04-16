@@ -111,6 +111,7 @@ function startProxy(onListening) {
             });
           }
           if (Array.isArray(parsed.tools)) {
+            console.log(`[DEBUG TOOLS] available names: ${parsed.tools.map(t => t?.function?.name || t?.name).join(", ")}`);
             console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
 
