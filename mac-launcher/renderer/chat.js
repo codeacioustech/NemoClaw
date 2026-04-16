@@ -79,7 +79,24 @@ const chat = (() => {
 
     const el = document.createElement("div");
     el.className = `chat-msg ${role}`;
-    el.textContent = text;
+
+    if (role === "user") {
+      // User messages are editable: wrap text in span + add edit button
+      const textSpan = document.createElement("span");
+      textSpan.className = "chat-msg-text";
+      textSpan.textContent = text;
+      el.appendChild(textSpan);
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "chat-msg-edit-btn";
+      editBtn.setAttribute("data-action", "msg-edit");
+      editBtn.setAttribute("aria-label", "Edit message");
+      editBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+      el.appendChild(editBtn);
+    } else {
+      el.textContent = text;
+    }
+
     container.appendChild(el);
     scrollToBottom();
     return el;
@@ -413,6 +430,25 @@ const chat = (() => {
     if (!payload || payload.sessionKey !== _sessionKey) return;
 
     const { toolCallId, name, arguments: args } = payload;
+
+    // ── Permission gate: every tool invocation requires explicit user approval ──
+    appendToolMessage("🔒", `Permission requested: ${name}`, "pending");
+
+    const decision = await permission.request({ toolCallId, name, arguments: args });
+
+    if (!decision.allowed) {
+      const reason = decision.reason || "denied by user";
+      appendToolMessage("🚫", `Denied: ${name} (${reason})`, "error");
+      try {
+        await gateway.sendToolResult(_sessionKey, toolCallId,
+          { success: false, error: `Tool execution denied: ${reason}` });
+      } catch (e) {
+        appendSystemMessage("Failed to send denial: " + e.message);
+      }
+      return;
+    }
+
+    // ── Approved: execute the tool ──
     let result;
 
     try {
@@ -492,6 +528,137 @@ const chat = (() => {
     }
   }
 
+  // --- Editable user messages ---
+
+  function startEdit(msgEl) {
+    if (_streaming || !msgEl || msgEl.classList.contains("editing")) return;
+
+    const textSpan = msgEl.querySelector(".chat-msg-text");
+    if (!textSpan) return;
+
+    const originalText = textSpan.textContent;
+    msgEl.classList.add("editing");
+
+    // Hide text and edit button
+    textSpan.style.display = "none";
+    const editBtn = msgEl.querySelector(".chat-msg-edit-btn");
+    if (editBtn) editBtn.style.display = "none";
+
+    // Create inline edit area
+    const editWrap = document.createElement("div");
+    editWrap.className = "chat-msg-edit-wrap";
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "chat-msg-edit-input";
+    textarea.value = originalText;
+    textarea.rows = 1;
+
+    const actions = document.createElement("div");
+    actions.className = "chat-msg-edit-actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "chat-msg-edit-cancel";
+    cancelBtn.setAttribute("data-action", "msg-edit-cancel");
+    cancelBtn.textContent = "Cancel";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "chat-msg-edit-save";
+    saveBtn.setAttribute("data-action", "msg-edit-save");
+    saveBtn.textContent = "Save & Resend";
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    editWrap.appendChild(textarea);
+    editWrap.appendChild(actions);
+    msgEl.appendChild(editWrap);
+
+    // Auto-resize textarea
+    textarea.style.height = "auto";
+    textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px";
+    textarea.addEventListener("input", () => {
+      textarea.style.height = "auto";
+      textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px";
+    });
+
+    // Keyboard: Escape = cancel, Ctrl/Cmd+Enter = save
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEdit(msgEl);
+      }
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        saveEdit(msgEl);
+      }
+    });
+
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
+
+  function cancelEdit(msgEl) {
+    if (!msgEl) return;
+    const editWrap = msgEl.querySelector(".chat-msg-edit-wrap");
+    if (editWrap) editWrap.remove();
+
+    const textSpan = msgEl.querySelector(".chat-msg-text");
+    if (textSpan) textSpan.style.display = "";
+    const editBtn = msgEl.querySelector(".chat-msg-edit-btn");
+    if (editBtn) editBtn.style.display = "";
+
+    msgEl.classList.remove("editing");
+  }
+
+  async function saveEdit(msgEl) {
+    if (!msgEl || _streaming) return;
+
+    const textarea = msgEl.querySelector(".chat-msg-edit-input");
+    if (!textarea) return;
+
+    const newText = textarea.value.trim();
+    if (!newText) {
+      cancelEdit(msgEl);
+      return;
+    }
+
+    // Update the message text
+    const textSpan = msgEl.querySelector(".chat-msg-text");
+    if (textSpan) textSpan.textContent = newText;
+
+    // Clean up editing UI
+    cancelEdit(msgEl);
+
+    // Remove all messages after the edited one
+    const container = $(".chat-messages");
+    if (container) {
+      let sibling = msgEl.nextElementSibling;
+      while (sibling) {
+        const next = sibling.nextElementSibling;
+        sibling.remove();
+        sibling = next;
+      }
+    }
+
+    // Re-send the edited message
+    const key = await ensureSession();
+    if (!key) return;
+
+    _streaming = true;
+    _accumulatedText = "";
+    _currentAssistantEl = null;
+    updateSendButton();
+    showTyping();
+
+    try {
+      await gateway.sendMessage(key, newText);
+    } catch (e) {
+      hideTyping();
+      _streaming = false;
+      updateSendButton();
+      appendSystemMessage("Failed to send: " + e.message);
+    }
+  }
+
   function updateSendButton() {
     const btn = $(".chat-send");
     if (btn) btn.disabled = _streaming;
@@ -550,6 +717,9 @@ const chat = (() => {
     });
 
     gateway.on("disconnected", () => {
+      // Auto-deny all pending permission requests on disconnect
+      permission.denyAll("disconnected");
+
       if (_streaming) {
         _streaming = false;
         _currentAssistantEl = null;
@@ -560,5 +730,5 @@ const chat = (() => {
     });
   }
 
-  return { init, open, close, toggle, isOpen, send, newChat, clearMessages };
+  return { init, open, close, toggle, isOpen, send, newChat, clearMessages, startEdit, saveEdit, cancelEdit };
 })();

@@ -649,8 +649,42 @@
 </div>
 
 
+<!-- ═══════════════════════════════════════════════════
+     PERMISSION MODAL (blocks AI tool execution)
+════════════════════════════════════════════════════ -->
+<div id="perm-modal" class="perm-overlay" role="dialog"
+     aria-labelledby="perm-title" aria-describedby="perm-desc" aria-modal="true" hidden>
+  <div class="perm-backdrop"></div>
+  <div class="perm-dialog">
+    <div class="perm-queue" id="perm-queue" hidden>
+      <span class="perm-queue-badge" id="perm-queue-count"></span>
+    </div>
+    <div class="perm-header">
+      <div class="perm-icon-wrap" id="perm-icon-wrap">
+        <span class="icon" id="perm-icon"></span>
+      </div>
+      <div>
+        <div class="perm-type" id="perm-type"></div>
+        <h2 class="perm-title" id="perm-title"></h2>
+      </div>
+    </div>
+    <p class="perm-desc" id="perm-desc"></p>
+    <div class="perm-payload">
+      <div class="perm-payload-label">Parameters</div>
+      <dl class="perm-payload-list" id="perm-payload-list"></dl>
+    </div>
+    <div class="perm-timer"><div class="perm-timer-bar" id="perm-timer-bar"></div></div>
+    <div class="perm-actions">
+      <button class="perm-btn perm-btn-deny" data-action="perm-deny">Deny</button>
+      <button class="perm-btn perm-btn-allow" data-action="perm-allow">Allow</button>
+    </div>
+  </div>
+</div>
+
+
 <!-- Scripts -->
 <script src="gateway-client.js"></script>
+<script src="permission.js"></script>
 <script src="chat.js"></script>
 <script src="app.js"></script>
 

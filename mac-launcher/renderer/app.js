@@ -565,6 +565,11 @@ const app = (() => {
         case "avatar-settings":      navigateTo("Settings"); closeAvatarMenu(); break;
         case "logout":               logout(); break;
         case "reset-onboarding":     resetOnboarding(); break;
+        case "perm-allow":           permission.allow(); break;
+        case "perm-deny":            permission.deny(); break;
+        case "msg-edit":             chat.startEdit(el.closest(".chat-msg")); break;
+        case "msg-edit-save":        chat.saveEdit(el.closest(".chat-msg")); break;
+        case "msg-edit-cancel":      chat.cancelEdit(el.closest(".chat-msg")); break;
       }
     });
 
