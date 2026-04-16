@@ -6,6 +6,7 @@ const http = require("http");
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
 const PROXY_PORT = 11435;
+const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the renderer
 
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant running inside the NemoClaw desktop app. " +
@@ -20,6 +21,20 @@ const SYSTEM_INSTRUCTION =
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
 const JSON_WRAPPER_SUFFIX = /"\s*\}\s*\}\s*$/;
+
+// Active SSE subscribers for thinking-token broadcasts.
+// Each entry is a { res, sessionId } where res is a Node.js ServerResponse.
+const _thinkSubscribers = new Set();
+
+/**
+ * Broadcast a JSON payload to every connected SSE thinking-stream subscriber.
+ */
+function _broadcastThink(payload) {
+  const data = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const sub of _thinkSubscribers) {
+    try { sub.res.write(data); } catch { _thinkSubscribers.delete(sub); }
+  }
+}
 
 /**
  * Start a lightweight HTTP proxy between OpenClaw and Ollama.
@@ -127,6 +142,9 @@ function startProxy(onListening) {
           let detected = false; // whether we've checked for the JSON pattern
           let isWrapped = false;
 
+          // Signal start of a new reasoning block to all SSE listeners
+          _broadcastThink({ type: "thinking_start" });
+
           proxyRes.on("data", (chunk) => {
             const lines = chunk.toString().split("\n").filter(Boolean);
 
@@ -138,6 +156,16 @@ function startProxy(onListening) {
                 clientRes.write(line + "\n");
                 continue;
               }
+
+              // ── Capture thinking/reasoning tokens from Ollama ──────────────
+              // Ollama emits reasoning tokens in message.thinking (separate from
+              // message.content). The gateway strips this field, so we intercept
+              // it here and broadcast to SSE subscribers before forwarding.
+              const thinkToken = obj?.message?.thinking;
+              if (typeof thinkToken === "string" && thinkToken.length > 0) {
+                _broadcastThink({ type: "thinking_delta", text: thinkToken });
+              }
+              // ──────────────────────────────────────────────────────────────
 
               const token = obj?.message?.content;
 
@@ -187,6 +215,9 @@ function startProxy(onListening) {
           });
 
           proxyRes.on("end", () => {
+            // Signal end of reasoning block
+            _broadcastThink({ type: "thinking_end" });
+
             // Flush remaining buffer, stripping JSON wrapper suffix if detected
             if (isWrapped && accumulator) {
               const cleaned = accumulator.replace(JSON_WRAPPER_SUFFIX, "");
@@ -232,6 +263,61 @@ function startProxy(onListening) {
     if (onListening) onListening();
   });
 
+  // ── Thinking-token SSE server ────────────────────────────────────────────
+  // Runs on THINK_PORT. The Electron renderer connects here via EventSource
+  // to receive reasoning tokens in real-time, completely bypassing the gateway
+  // (which strips the thinking field from Ollama responses).
+  const thinkServer = http.createServer((req, res) => {
+    // CORS: allow the local file:// origin used by the Electron renderer
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.url === "/think" && req.method === "GET") {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      // Send a keepalive comment immediately so the client knows it's connected
+      res.write(": connected\n\n");
+
+      const sub = { res };
+      _thinkSubscribers.add(sub);
+      console.log(`[think-sse] Client connected (total=${_thinkSubscribers.size})`);
+
+      // Heartbeat every 15 s to prevent idle connection teardown
+      const hb = setInterval(() => {
+        try { res.write(": ping\n\n"); } catch { clearInterval(hb); _thinkSubscribers.delete(sub); }
+      }, 15000);
+
+      req.on("close", () => {
+        clearInterval(hb);
+        _thinkSubscribers.delete(sub);
+        console.log(`[think-sse] Client disconnected (total=${_thinkSubscribers.size})`);
+      });
+      return;
+    }
+
+    res.writeHead(404);
+    res.end();
+  });
+
+  thinkServer.on("error", (err) => {
+    console.error(`[think-sse] Server error: ${err.message}`);
+  });
+
+  thinkServer.listen(THINK_PORT, OLLAMA_HOST, () => {
+    console.log(`[think-sse] Listening on ${OLLAMA_HOST}:${THINK_PORT}`);
+  });
+  // ────────────────────────────────────────────────────────────────────────
+
   return server;
 }
 
@@ -260,4 +346,4 @@ function waitForProxy(timeoutMs = 10000, intervalMs = 300) {
   });
 }
 
-module.exports = { startProxy, waitForProxy, PROXY_PORT };
+module.exports = { startProxy, waitForProxy, PROXY_PORT, THINK_PORT };

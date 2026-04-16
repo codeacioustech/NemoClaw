@@ -9,7 +9,10 @@
 const chat = (() => {
   let _sessionKey = null;
   let _streaming = false;
-  let _currentAssistantEl = null;
+  let _currentAssistantEl = null;   // outer .chat-msg.assistant bubble
+  let _currentThinkEl = null;       // <details> reasoning block inside bubble
+  let _currentThinkBody = null;     // <pre> inside the <details>
+  let _thinkingActive = false;      // true while reasoning tokens are flowing
   let _accumulatedText = "";
 
   const $ = (sel) => document.querySelector(sel);
@@ -35,6 +38,37 @@ const chat = (() => {
   }
 
   // --- Message rendering ---
+
+  // Ensure the assistant bubble exists and return it.
+  // On first call it constructs outer bubble + answer div.
+  // If a thinking block has already been appended, the answer
+  // text goes below it inside the same bubble.
+  function ensureAssistantBubble() {
+    if (_currentAssistantEl) return _currentAssistantEl;
+    const container = $(".chat-messages");
+    if (!container) return null;
+    const empty = container.querySelector(".chat-empty");
+    if (empty) empty.remove();
+
+    const el = document.createElement("div");
+    el.className = "chat-msg assistant";
+
+    // If a thinking block arrived before the text (common), attach it now
+    if (_currentThinkEl) {
+      el.appendChild(_currentThinkEl);
+    }
+
+    // The answer text lives in its own div so the reasoning block
+    // can sit above it without being clobbered by textContent writes.
+    const answerDiv = document.createElement("div");
+    answerDiv.className = "chat-answer";
+    el.appendChild(answerDiv);
+
+    container.appendChild(el);
+    scrollToBottom();
+    _currentAssistantEl = el;
+    return el;
+  }
 
   function appendMessage(role, text) {
     const container = $(".chat-messages");
@@ -172,6 +206,71 @@ const chat = (() => {
     }
   }
 
+  // --- Thinking/Reasoning SSE stream handler ---
+
+  function connectThinkStream() {
+    const THINK_URL = "http://127.0.0.1:11436/think";
+    let es;
+
+    function connect() {
+      es = new EventSource(THINK_URL);
+
+      es.onmessage = (evt) => {
+        let payload;
+        try { payload = JSON.parse(evt.data); } catch { return; }
+
+        if (payload.type === "thinking_start") {
+          // Prepare a fresh reasoning block.
+          // We build it now so tokens can stream into it immediately
+          // even before the outer assistant bubble is created.
+          _thinkingActive = true;
+
+          const details = document.createElement("details");
+          details.className = "chat-reasoning";
+          details.open = true; // start expanded so user sees tokens live
+
+          const summary = document.createElement("summary");
+          summary.className = "chat-reasoning-summary";
+          summary.textContent = "💭 Reasoning";
+          details.appendChild(summary);
+
+          const body = document.createElement("pre");
+          body.className = "chat-reasoning-body";
+          details.appendChild(body);
+
+          _currentThinkEl = details;
+          _currentThinkBody = body;
+
+          // If assistant bubble already exists (shouldn't happen on first turn
+          // but guard anyway), prepend the reasoning block into it.
+          if (_currentAssistantEl) {
+            _currentAssistantEl.prepend(details);
+          }
+
+        } else if (payload.type === "thinking_delta" && _currentThinkBody) {
+          _currentThinkBody.textContent += payload.text;
+          scrollToBottom();
+
+        } else if (payload.type === "thinking_end") {
+          _thinkingActive = false;
+          // Collapse the reasoning block once the answer starts — the user
+          // can still re-open it by clicking the summary.
+          if (_currentThinkEl) {
+            _currentThinkEl.open = false;
+          }
+        }
+      };
+
+      es.onerror = () => {
+        // Silently reconnect after 3 s — the proxy may not be up yet
+        es.close();
+        setTimeout(connect, 3000);
+      };
+    }
+
+    connect();
+  }
+
   // --- Streaming handler ---
 
   function handleChatEvent(payload) {
@@ -188,22 +287,23 @@ const chat = (() => {
 
     if (state === "delta") {
       hideTyping();
-      if (!_currentAssistantEl) {
-        _currentAssistantEl = appendMessage("assistant", "");
-      }
+      // Ensure the outer bubble exists (creates it and attaches the pending
+      // thinking block if one was built before the first text delta).
+      ensureAssistantBubble();
       _accumulatedText = text;
-      if (_currentAssistantEl) {
-        _currentAssistantEl.textContent = _accumulatedText;
-      }
+      const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
+      if (answerDiv) answerDiv.textContent = _accumulatedText;
       scrollToBottom();
     }
 
     if (state === "final" || state === "error") {
       hideTyping();
       if (!_currentAssistantEl && text) {
-        _currentAssistantEl = appendMessage("assistant", text);
-      } else if (_currentAssistantEl && text) {
-        _currentAssistantEl.textContent = text;
+        ensureAssistantBubble();
+      }
+      if (_currentAssistantEl && text) {
+        const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
+        if (answerDiv) answerDiv.textContent = text;
       }
 
       if (state === "error") {
@@ -213,6 +313,9 @@ const chat = (() => {
 
       _streaming = false;
       _currentAssistantEl = null;
+      _currentThinkEl = null;
+      _currentThinkBody = null;
+      _thinkingActive = false;
       _accumulatedText = "";
       updateSendButton();
       scrollToBottom();
@@ -318,6 +421,9 @@ const chat = (() => {
     // Wire new chat button
     const newChatBtn = $(".chat-new-btn");
     if (newChatBtn) newChatBtn.addEventListener("click", newChat);
+
+    // Connect to the thinking-token SSE stream from the proxy
+    connectThinkStream();
 
     // Listen for gateway chat events
     gateway.on("chat", handleChatEvent);
