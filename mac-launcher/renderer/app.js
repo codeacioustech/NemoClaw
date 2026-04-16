@@ -471,45 +471,78 @@ const app = (() => {
   async function performBackgroundWarmup() {
     const btn = document.querySelector('.topbar-btn[data-action="open-chat"]');
     const originalContent = btn ? btn.innerHTML : '';
-    
+
+    const SPINNER_SVG = `<svg viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;animation:spin 1s linear infinite"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`;
+
     const setBusy = (msg) => {
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<span class="icon icon-md" style="display:inline-block; animation: spin 1s linear infinite;"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg></span> ${msg}`;
-      }
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = `${SPINNER_SVG} ${msg}`;
+    };
+
+    const setReady = () => {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.innerHTML = originalContent;
     };
 
     setBusy("Connecting...");
 
+    // Wait for the gateway to be in a connected state
+    await new Promise((resolve) => {
+      if (gateway.connected) return resolve();
+      gateway.on("connected", resolve);
+      setTimeout(resolve, 5000); // max 5 s wait for connection
+    });
+
+    setBusy("Warming up AI...");
+
+    let warmupSessionKey = null;
     try {
-      // Small grace period for gateway handshake
-      await new Promise(r => setTimeout(r, 1500));
-      
-      setBusy("Warming up AI...");
-      const sess = await gateway.createSession("Warmup");
-      
-      await new Promise((resolve) => {
-        const timeout = setTimeout(resolve, 60000); // 60s max for slow Ollama loads
-        const handler = (payload) => {
-          if (payload.sessionKey === sess.key) {
-            clearTimeout(timeout);
-            gateway.off("chat", handler);
-            resolve();
-          }
-        };
-        gateway.on("chat", handler);
-        gateway.sendMessage(sess.key, "Ping. Reply 'OK'.");
-      });
-      
-      await gateway.deleteSession(sess.key).catch(() => {});
+      const sess = await gateway.createSession("__warmup__");
+      warmupSessionKey = sess.key;
     } catch (e) {
-      console.warn("[app] Background warmup fell through:", e.message);
+      console.warn("[warmup] Could not create warmup session:", e.message);
+      setReady();
+      return;
     }
 
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = originalContent;
+    await new Promise((resolve) => {
+      // 60s hard ceiling — still unlocks button if Ollama is extremely slow
+      const timeout = setTimeout(() => {
+        console.warn("[warmup] timed out waiting for Ollama response");
+        resolve();
+      }, 60000);
+
+      // Listen on the raw "event" hook — this fires for EVERY WS frame.
+      // gateway.on("chat",...) was never triggered because the server sends
+      // frames whose .event field is e.g. "session.delta", not "chat".
+      const rawHandler = (frame) => {
+        const key = frame.payload?.sessionKey ?? frame.payload?.key;
+        if (key === warmupSessionKey) {
+          clearTimeout(timeout);
+          gateway.off("event", rawHandler);
+          resolve();
+        }
+      };
+      gateway.on("event", rawHandler);
+
+      // Fire the actual warmup message
+      gateway.sendMessage(warmupSessionKey, "Ping. Reply OK.").catch((e) => {
+        console.warn("[warmup] sendMessage failed:", e.message);
+        clearTimeout(timeout);
+        gateway.off("event", rawHandler);
+        resolve();
+      });
+    });
+
+    // Delete the warmup session so it doesn't pollute history
+    if (warmupSessionKey) {
+      gateway.deleteSession(warmupSessionKey).catch(() => {});
     }
+
+    setReady();
+    console.log("[warmup] AI is hot — KV cache anchored.");
   }
 
   async function connectGateway() {
