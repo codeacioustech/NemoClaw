@@ -473,21 +473,23 @@ const app = (() => {
 
     const setBusy = (msg) => {
       if (!btn) return;
+      // Snapshot original HTML the first time so setReady can restore it exactly
+      if (!btn.dataset.originalHtml) {
+        btn.dataset.originalHtml = btn.innerHTML;
+      }
       btn.disabled = true;
       btn.classList.add("topbar-btn--warming");
-      // Update only the text node, keep the icon span intact
-      const textNode = [...btn.childNodes].find(n => n.nodeType === Node.TEXT_NODE);
-      if (textNode) textNode.textContent = ` ${msg}`;
-      else btn.append(` ${msg}`);
+      btn.innerHTML = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#fff;animation:dot-pulse 1.4s ease-in-out infinite;flex-shrink:0;"></span> ${msg}`;
     };
 
     const setReady = () => {
       if (!btn) return;
       btn.disabled = false;
       btn.classList.remove("topbar-btn--warming");
-      // Restore original label
-      const textNode = [...btn.childNodes].find(n => n.nodeType === Node.TEXT_NODE);
-      if (textNode) textNode.textContent = " Chat with AI";
+      if (btn.dataset.originalHtml) {
+        btn.innerHTML = btn.dataset.originalHtml;
+        delete btn.dataset.originalHtml;
+      }
     };
 
     setBusy("Connecting...");
