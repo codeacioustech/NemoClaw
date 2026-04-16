@@ -73,10 +73,6 @@ function seedOpenclawConfig() {
           idleTimeoutSeconds: 300,
         },
         heartbeat: {},
-        tools: {
-          profile: "minimal",
-          allow: ["create_file", "read_file", "list_directory"],
-        },
       },
     },
   });

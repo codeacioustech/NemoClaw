@@ -267,11 +267,11 @@ async function bootstrap() {
       delete cfg.agents.defaults.heartbeat.every;
       dirty = true;
     }
-    // Migrate stale raw-array tools format to OpenClaw policy object.
-    // If it's not an array (e.g. already a policy object), leave it alone;
-    // the gateway accepts the policy form fine.
-    if (Array.isArray(cfg.agents.defaults.tools)) {
-      cfg.agents.defaults.tools = { profile: "minimal", allow: ["create_file", "read_file", "list_directory"] };
+    // Remove tools key entirely — the gateway schema rejects agents.defaults.tools
+    // in any form (array or policy object). Tool filtering is handled exclusively
+    // in ollama-proxy.js via the ALLOWED_TOOLS allow-list.
+    if (cfg.agents.defaults.tools !== undefined) {
+      delete cfg.agents.defaults.tools;
       dirty = true;
     }
 

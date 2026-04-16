@@ -49,24 +49,13 @@ function startProxy(onListening) {
               content: SYSTEM_INSTRUCTION,
             });
           }
-          // Strict tool allow-list: only forward the 3 local file tools.
-          // Sending all 23 built-in tools (~72KB) overloads small models
-          // and causes the Ollama stream to die prematurely.
-          const ALLOWED_TOOLS = new Set(["create_file", "read_file", "list_directory"]);
           if (Array.isArray(parsed.tools)) {
-            const before = parsed.tools.length;
-            parsed.tools = parsed.tools.filter(t => ALLOWED_TOOLS.has(t?.function?.name));
-            console.log(`[ollama-proxy] Filtered tools: ${before} -> ${parsed.tools.length}`);
+            console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
-          // Strip the "think" flag — qwen2.5:3b (and most small local models)
-          // don't support reasoning/thinking mode and Ollama 400s with
-          // `"<model>" does not support thinking` if the flag is set.
+          // gemma4:e4b supports native reasoning/thinking mode.
+          // Pass the think flag through to Ollama as-is.
           if (parsed.think !== undefined) {
-            console.log(`[ollama-proxy] Stripped think=${parsed.think} (model does not support thinking)`);
-            delete parsed.think;
-          }
-          if (parsed.options && parsed.options.think !== undefined) {
-            delete parsed.options.think;
+            console.log(`[ollama-proxy] Passing think=${parsed.think} to model`);
           }
           body = Buffer.from(JSON.stringify(parsed));
           console.log(`[ollama-proxy] Request body after processing: ${body.length} bytes`);
