@@ -139,6 +139,7 @@ function startProxy(onListening) {
 
           // ── Tool override: Inject the 3 exact tools the chat.js UI natively supports ──
           if (Array.isArray(parsed.tools)) {
+            const before = parsed.tools.length;
             parsed.tools = [
               {
                 type: "function",
