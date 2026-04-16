@@ -11,7 +11,7 @@ const os = require("os");
 const paths = require("./lib/paths");
 const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-seeder");
 const { startGateway, waitForGateway } = require("./lib/gateway");
-const { startProxy, waitForProxy } = require("./lib/ollama-proxy");
+const { startProxy, waitForProxy, warmUpModel } = require("./lib/ollama-proxy");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 
 const OLLAMA_HOST = "127.0.0.1";
@@ -252,11 +252,10 @@ async function bootstrap() {
       dirty = true;
     }
 
-    // Increase LLM idle timeout and skip bootstrap for local models
-    if (!cfg.agents) cfg.agents = {};
-    if (!cfg.agents.defaults) cfg.agents.defaults = {};
-    if (!cfg.agents.defaults.llm || cfg.agents.defaults.llm.idleTimeoutSeconds < 300) {
-      cfg.agents.defaults.llm = { ...cfg.agents.defaults.llm, idleTimeoutSeconds: 300 };
+    // Increase LLM idle timeout — gateway watchdog must wait long enough for
+    // gemma4:e4b to finish prompt-eval on a pruned but still sizeable payload.
+    if (!cfg.agents.defaults.llm || cfg.agents.defaults.llm.idleTimeoutSeconds < 600) {
+      cfg.agents.defaults.llm = { ...cfg.agents.defaults.llm, idleTimeoutSeconds: 600 };
       dirty = true;
     }
     if (cfg.agents.defaults.skipBootstrap !== true) {
@@ -330,6 +329,10 @@ async function bootstrap() {
     sendError(`Inference proxy failed to start: ${err.message}`);
     return;
   }
+
+  // Fire silent warm-up request so the model is in VRAM before the user
+  // sends their first message. Non-blocking — we don't await it.
+  warmUpModel(MODEL);
 
   // 6. Start gateway
   sendStatus("Starting gateway...");

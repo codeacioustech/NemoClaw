@@ -36,6 +36,52 @@ function _broadcastThink(payload) {
   }
 }
 
+// ── Proxy-side session store for KV prefix-cache maximisation ──────────────
+//
+// Ollama has no session_id API — it caches KV pairs implicitly based on
+// whether the token prefix of the new request is byte-for-byte identical
+// to the previous one. We maximise cache hits by:
+//   1. Tracking the last message array we sent per logical chat session.
+//   2. Only appending new messages; never re-slicing from a different tail
+//      offset (which shifts the prefix and causes a cache miss).
+//   3. Keeping tool definitions frozen (same JSON string every turn).
+//   4. Injecting keep_alive so the model + KV state stay in VRAM.
+//
+// Session ID is derived from the most stable identifier the OpenClaw gateway
+// sends. In descending preference: x-session-id header, x-request-id header,
+// authorization token suffix, or a hash of the first user message.
+//
+const _sessionStore = new Map();
+// { sessionId -> { messages: [...], toolsJson: string } }
+
+/**
+ * Derive a stable, gateway-provided session key from the request.
+ * Returns a short opaque ASCII string suitable for logging.
+ */
+function deriveSessionId(headers, parsedBody) {
+  // 1. Explicit session header (most reliable)
+  const explicit =
+    headers["x-session-id"] ||
+    headers["x-openclaw-session"] ||
+    headers["x-request-id"];
+  if (explicit) return explicit.slice(0, 40);
+
+  // 2. Stable suffix of the Authorization token (first 32 chars of bearer)
+  const auth = headers["authorization"] || "";
+  const bearer = auth.replace(/^Bearer\s+/i, "");
+  if (bearer.length >= 8) return `auth-${bearer.slice(0, 32)}`;
+
+  // 3. Stable hash of the system prompt + first user message content.
+  // Falls back to a per-process ephemeral session (single session mode).
+  const msgs = Array.isArray(parsedBody?.messages) ? parsedBody.messages : [];
+  const firstUser = msgs.find(m => m.role === "user");
+  const seed = SYSTEM_INSTRUCTION.slice(0, 40) + (firstUser?.content?.slice?.(0, 80) ?? "");
+  // djb2 hash — fast, no crypto module needed
+  let h = 5381;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) + h) ^ seed.charCodeAt(i);
+  return `hash-${(h >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 /**
  * Start a lightweight HTTP proxy between OpenClaw and Ollama.
  * - Injects a system instruction into /api/chat requests (primary fix).
@@ -68,40 +114,123 @@ function startProxy(onListening) {
             console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
 
-          // ── Context Pruning Engine ──────────────────────────────────────────
-          // Aggressively trims the messages array to reduce payload size and
-          // prevent context bloat from slowing down local LLM inference.
+          // ── Session-aware Context Pruning + KV Prefix Cache Engine ───────────
+          //
+          // Goal: send the shortest legal payload AND keep the token prefix
+          // byte-identical to the previous request so Ollama reuses its
+          // KV cache instead of re-evaluating shared history.
+          //
+          // Strategy:
+          //   a) Derive a stable session ID from gateway request headers.
+          //   b) Load the message array we sent last turn (the "anchor").
+          //   c) If the new history is a strict extension of the anchor
+          //      (same messages in same order + N new ones at the end), only
+          //      append the new portion — prefix is unchanged → cache HIT.
+          //   d) If the history diverged (new session, or gateway reordered
+          //      something), fall back to a clean slice of the last MAX_HISTORY
+          //      messages — cache MISS, but prefix is correct for next turn.
+          //   e) Save the resulting message array as the new anchor.
+          //
+          const MAX_HISTORY     = 4;    // messages kept when starting fresh
+          const MAX_TOOL_OUTPUT = 800;  // chars per tool-result before truncation
+
+          const sessionId = deriveSessionId(clientReq.headers, parsed);
+          const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
+
+          // ── Tool allowlist: canonical frozen JSON for prefix stability ────
+          const TOOL_ALLOWLIST = new Set(["create_file", "read_file", "list_directory"]);
+          if (Array.isArray(parsed.tools)) {
+            const before = parsed.tools.length;
+            parsed.tools = parsed.tools.filter(t =>
+              t?.function?.name ? TOOL_ALLOWLIST.has(t.function.name)
+              : t?.name         ? TOOL_ALLOWLIST.has(t.name)
+              : false
+            );
+
+            // Freeze: serialise tools once per session so the JSON bytes are
+            // identical across turns (same token sequence → cache hit).
+            if (!session.toolsJson) {
+              session.toolsJson = JSON.stringify(parsed.tools);
+            }
+            parsed.tools = JSON.parse(session.toolsJson);
+
+            console.log(
+              `[ollama-proxy] [${sessionId}] Tools: ${before} → ${parsed.tools.length} ` +
+              `(stripped ${before - parsed.tools.length} unused definitions)`
+            );
+          }
+
+          // ── Message pruning with prefix-stability check ───────────────────
           if (Array.isArray(parsed.messages)) {
-            const MAX_HISTORY = 10;     // Keep only the last 10 messages (5 turns)
-            const MAX_TOOL_OUTPUT = 2000; // Truncate tool reads/outputs over 2000 chars
-
-            // Separate the primary system prompt from the chat history
-            const systemMessages = parsed.messages.filter(m => m.role === 'system');
-            const mainSystem = systemMessages.length > 0 ? systemMessages : null;
-
+            // Strip system messages injected by gateway (we inject our own below)
+            // NOTE: SYSTEM_INSTRUCTION was already unshifted above; filter dupes.
             let chatHistory = parsed.messages.filter(m => m.role !== 'system');
 
-            // Truncate massive tool outputs (e.g., reading a huge file)
+            // Truncate massive tool results
             chatHistory = chatHistory.map(msg => {
               if (msg.role === 'tool' && msg.content && typeof msg.content === 'string') {
                 if (msg.content.length > MAX_TOOL_OUTPUT) {
-                  msg.content = msg.content.substring(0, MAX_TOOL_OUTPUT) + "\n...[TRUNCATED FOR LENGTH TO SAVE CONTEXT]...";
+                  msg.content =
+                    msg.content.substring(0, MAX_TOOL_OUTPUT) +
+                    "\n...[TRUNCATED FOR CONTEXT]...";
                 }
               }
               return msg;
             });
 
-            // Drop old messages to prevent massive attention calculation slowdowns
-            if (chatHistory.length > MAX_HISTORY) {
-              chatHistory = chatHistory.slice(-MAX_HISTORY);
+            // ── Prefix stability decision ─────────────────────────────────
+            let cacheHit = false;
+            if (session.messages && session.messages.length > 0) {
+              const anchor = session.messages; // what we sent last turn
+              const al = anchor.length;
+
+              // Check if chatHistory starts with exactly the same messages as
+              // anchor (i.e. gateway simply appended new turns at the end).
+              const prefixMatch =
+                chatHistory.length >= al &&
+                anchor.every((m, i) =>
+                  chatHistory[i].role    === m.role &&
+                  chatHistory[i].content === m.content
+                );
+
+              if (prefixMatch) {
+                // Take anchor messages (already in Ollama's KV cache) plus any
+                // new messages the gateway appended this turn.
+                chatHistory = chatHistory.slice(0, al + 2); // anchor + 1 new turn (2 msgs)
+                cacheHit = true;
+              }
             }
 
-            // Reconstruct the array: System prompt first, then pruned history
-            parsed.messages = mainSystem ? [...mainSystem, ...chatHistory] : chatHistory;
+            if (!cacheHit) {
+              // Fresh session or prefix diverged: safe fallback to tail slice.
+              if (chatHistory.length > MAX_HISTORY) {
+                chatHistory = chatHistory.slice(-MAX_HISTORY);
+              }
+            }
 
-            console.log(`[ollama-proxy] Pruned context: history limited to ${chatHistory.length} messages.`);
+            // Always place our canonical system prompt first.
+            parsed.messages = [
+              { role: "system", content: SYSTEM_INSTRUCTION },
+              ...chatHistory,
+            ];
+
+            // Save the non-system portion as the anchor for the next turn.
+            session.messages = chatHistory;
+            _sessionStore.set(sessionId, session);
+
+            console.log(
+              `[ollama-proxy] [${sessionId}] Context: ${chatHistory.length} msgs, ` +
+              `${parsed.tools?.length ?? 0} tools, ` +
+              `prefix-cache=${cacheHit ? "HIT" : "MISS"}`
+            );
           }
-          // ───────────────────────────────────────────────────────────────────
+          // ─────────────────────────────────────────────────────────────────────
+
+          // Keep the model + KV state resident in VRAM between turns.
+          parsed.keep_alive = "10m";
+
+          // Constrain context window for faster prompt eval.
+          parsed.options = { ...(parsed.options || {}), num_ctx: 8192 };
 
           // gemma4:e4b supports native reasoning/thinking mode.
           // Force think=true regardless of what the client sends — OpenClaw
@@ -114,6 +243,12 @@ function startProxy(onListening) {
           // Forward as-is if body isn't valid JSON
         }
       }
+
+      // ── Latency logging ─────────────────────────────────────────────────────
+      const _reqId = `ollama-req-${Date.now()}`;
+      console.time(`[ollama-proxy] ${_reqId} total-round-trip`);
+      let _firstTokenLogged = false;
+      // ────────────────────────────────────────────────────────────────────────
 
       const proxyReq = http.request(
         {
@@ -146,6 +281,11 @@ function startProxy(onListening) {
           _broadcastThink({ type: "thinking_start" });
 
           proxyRes.on("data", (chunk) => {
+            if (!_firstTokenLogged) {
+              _firstTokenLogged = true;
+              console.timeLog(`[ollama-proxy] ${_reqId} total-round-trip`,
+                "← first chunk from Ollama");
+            }
             const lines = chunk.toString().split("\n").filter(Boolean);
 
             for (const line of lines) {
@@ -217,6 +357,8 @@ function startProxy(onListening) {
           proxyRes.on("end", () => {
             // Signal end of reasoning block
             _broadcastThink({ type: "thinking_end" });
+
+            console.timeEnd(`[ollama-proxy] ${_reqId} total-round-trip`);
 
             // Flush remaining buffer, stripping JSON wrapper suffix if detected
             if (isWrapped && accumulator) {
@@ -346,4 +488,60 @@ function waitForProxy(timeoutMs = 10000, intervalMs = 300) {
   });
 }
 
-module.exports = { startProxy, waitForProxy, PROXY_PORT, THINK_PORT };
+/**
+ * Fire a silent /api/generate request to force Ollama to load the model
+ * weights into VRAM before the user sends the first message.
+ *
+ * This eliminates the "cold start" penalty (loading several GB from disk)
+ * that makes the very first reply extremely slow. Called from index.js right
+ * after the proxy is confirmed ready.
+ *
+ * @param {string} model - The model ID to warm up (e.g. "gemma4:e4b")
+ */
+function warmUpModel(model) {
+  // Small delay to avoid racing the proxy listener registration
+  setTimeout(() => {
+    console.log(`[ollama-proxy] Warming up model "${model}" (load into VRAM)...`);
+    const warmStart = Date.now();
+
+    const body = JSON.stringify({
+      model,
+      prompt: "",          // empty prompt — just loads the model
+      stream: false,
+      keep_alive: "10m",   // keep weights in VRAM for 10 minutes
+    });
+
+    const req = http.request(
+      {
+        hostname: OLLAMA_HOST,
+        port: OLLAMA_PORT,
+        path: "/api/generate",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        res.resume(); // drain and discard the response
+        res.on("end", () => {
+          console.log(
+            `[ollama-proxy] Model "${model}" warm-up complete in ${
+              Date.now() - warmStart
+            }ms — now resident in VRAM`
+          );
+        });
+      }
+    );
+
+    req.on("error", (err) => {
+      // Non-fatal: the user will still get a reply, just with the usual cold-start delay.
+      console.warn(`[ollama-proxy] Warm-up request failed (non-fatal): ${err.message}`);
+    });
+
+    req.write(body);
+    req.end();
+  }, 500); // 500 ms after proxy is confirmed up
+}
+
+module.exports = { startProxy, waitForProxy, warmUpModel, PROXY_PORT, THINK_PORT };

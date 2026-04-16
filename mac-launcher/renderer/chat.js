@@ -53,13 +53,12 @@ const chat = (() => {
     const el = document.createElement("div");
     el.className = "chat-msg assistant";
 
-    // If a thinking block arrived before the text (common), attach it now
-    if (_currentThinkEl) {
-      el.appendChild(_currentThinkEl);
-    }
-
-    // The answer text lives in its own div so the reasoning block
-    // can sit above it without being clobbered by textContent writes.
+    // The answer text lives in its own div so any reasoning block that gets
+    // prepended above it is never clobbered by textContent writes.
+    // NOTE: do NOT pre-attach _currentThinkEl here. The thinking_start handler
+    // calls ensureAssistantBubble() BEFORE setting _currentThinkEl, then
+    // explicitly inserts the <details> node before the answer div itself.
+    // Pre-attaching here would cause a double-insertion race.
     const answerDiv = document.createElement("div");
     answerDiv.className = "chat-answer";
     el.appendChild(answerDiv);
@@ -193,6 +192,9 @@ const chat = (() => {
     _streaming = true;
     _accumulatedText = "";
     _currentAssistantEl = null;
+    _currentThinkEl = null;
+    _currentThinkBody = null;
+    _thinkingActive = false;
     updateSendButton();
     showTyping();
 
@@ -220,14 +222,18 @@ const chat = (() => {
         try { payload = JSON.parse(evt.data); } catch { return; }
 
         if (payload.type === "thinking_start") {
-          // Prepare a fresh reasoning block.
-          // We build it now so tokens can stream into it immediately
-          // even before the outer assistant bubble is created.
+          // ── Critical fix: attach the bubble to the live DOM RIGHT NOW. ──
+          // Previously the <details> node was built detached and only wired
+          // into the DOM when the first gateway "delta" event fired. That
+          // meant every thinking_delta token was written to a detached <pre>
+          // that the browser never painted — all tokens appeared to arrive
+          // at once after the final answer. By eagerly creating the bubble
+          // here we guarantee every token renders immediately as it arrives.
           _thinkingActive = true;
 
           const details = document.createElement("details");
           details.className = "chat-reasoning";
-          details.open = true; // start expanded so user sees tokens live
+          details.open = true; // expanded so the user sees tokens stream live
 
           const summary = document.createElement("summary");
           summary.className = "chat-reasoning-summary";
@@ -241,11 +247,22 @@ const chat = (() => {
           _currentThinkEl = details;
           _currentThinkBody = body;
 
-          // If assistant bubble already exists (shouldn't happen on first turn
-          // but guard anyway), prepend the reasoning block into it.
-          if (_currentAssistantEl) {
-            _currentAssistantEl.prepend(details);
+          // Ensure the outer bubble is in the live DOM, then attach the
+          // reasoning block as its first child — answer div follows below.
+          const bubble = ensureAssistantBubble();
+          if (bubble) {
+            // ensureAssistantBubble() already appended _currentThinkEl if it
+            // was set, but here _currentThinkEl was just created after the
+            // call so we need to manually prepend it before the answer div.
+            const answerDiv = bubble.querySelector(".chat-answer");
+            if (answerDiv) {
+              bubble.insertBefore(details, answerDiv);
+            } else {
+              bubble.prepend(details);
+            }
           }
+          // Hide the typing indicator now that we have a live block
+          hideTyping();
 
         } else if (payload.type === "thinking_delta" && _currentThinkBody) {
           _currentThinkBody.textContent += payload.text;

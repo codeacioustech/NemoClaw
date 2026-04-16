@@ -70,7 +70,7 @@ function seedOpenclawConfig() {
         },
         skipBootstrap: true,
         llm: {
-          idleTimeoutSeconds: 300,
+          idleTimeoutSeconds: 600,  // 10 min — give gemma4:e4b time to eval large prompts
         },
         heartbeat: {},
       },
