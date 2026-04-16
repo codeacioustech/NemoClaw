@@ -138,11 +138,12 @@ function startProxy(onListening) {
           // ── Tool override: Inject the 3 exact tools the chat.js UI natively supports ──
           // ── Tool intercept: Capture and filter native OpenClaw tools ──
           if (Array.isArray(parsed.tools)) {
-            // Write the raw schemas to disk so we can inspect them and sync chat.js
-            require('fs').writeFileSync(
-              require('path').join(__dirname, '../DEBUG_TOOLS.json'), 
-              JSON.stringify(parsed.tools, null, 2)
-            );
+            // Find tools that look related to files to debug their OpenClaw schema
+            const fileTools = parsed.tools.filter(t => {
+              const name = (t?.function?.name || t?.name || "").toLowerCase();
+              return /^(read|edit|write|ls|list|bash)$/.test(name);
+            });
+            console.log("\n[DEBUG] OPENCLAW NATIVE FILE TOOLS SCHEMA:\n", JSON.stringify(fileTools, null, 2), "\n");
 
             const before = parsed.tools.length;
             // Filter to only the core file tools so we don't blow up Ollama's VRAM
