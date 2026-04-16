@@ -267,6 +267,11 @@ async function bootstrap() {
       delete cfg.agents.defaults.heartbeat.every;
       dirty = true;
     }
+    // Remove stale tools key — gateway rejects it as unrecognized.
+    if (cfg.agents.defaults.tools) {
+      delete cfg.agents.defaults.tools;
+      dirty = true;
+    }
 
     // Force the agent to route through the local ollama proxy. Without
     // this, openclaw rewrites the config to a minimal version that drops
