@@ -6,6 +6,7 @@
   "scripts": {
     "prestart": "test -f ../nemoclaw/dist/index.js || (cd ../nemoclaw && npm install --ignore-scripts && npx tsc)",
     "start": "electron .",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
     "dist": "electron-builder"
   },
   "dependencies": {
@@ -74,6 +75,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
     "electron": "^37.0.0",
     "electron-builder": "^26.0.0"
   },
