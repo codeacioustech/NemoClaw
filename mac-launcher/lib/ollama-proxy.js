@@ -109,9 +109,70 @@ function startProxy(onListening) {
               content: SYSTEM_INSTRUCTION,
             });
           }
-          if (Array.isArray(parsed.tools)) {
-            console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
+          // Ensure tool definitions are always present for the model.
+          // The gateway may strip tools from the config (agents.defaults.tools
+          // is deleted in index.js), so inject them here if missing.
+          if (!Array.isArray(parsed.tools) || parsed.tools.length === 0) {
+            console.log("[ollama-proxy] No tools from gateway — injecting native tool definitions");
+            parsed.tools = [
+              {
+                type: "function",
+                function: {
+                  name: "read",
+                  description: "Read the contents of a file, or list entries in a directory. Pass a file path to read it, or a directory path (e.g. \".\") to list its contents.",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      path: { type: "string", description: "Absolute or relative path to a file or directory" }
+                    },
+                    required: ["path"]
+                  }
+                }
+              },
+              {
+                type: "function",
+                function: {
+                  name: "write",
+                  description: "Create a new file or completely overwrite an existing file with the given content.",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      path: { type: "string", description: "Path to the file to create or overwrite" },
+                      content: { type: "string", description: "Full content to write to the file" }
+                    },
+                    required: ["path", "content"]
+                  }
+                }
+              },
+              {
+                type: "function",
+                function: {
+                  name: "edit",
+                  description: "Modify an existing file by replacing specific text blocks. Each edit specifies the old text to find and the new text to replace it with.",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      path: { type: "string", description: "Path to the file to edit" },
+                      edits: {
+                        type: "array",
+                        description: "List of text replacements to apply",
+                        items: {
+                          type: "object",
+                          properties: {
+                            oldText: { type: "string", description: "Exact text to find in the file" },
+                            newText: { type: "string", description: "Text to replace it with" }
+                          },
+                          required: ["oldText", "newText"]
+                        }
+                      }
+                    },
+                    required: ["path", "edits"]
+                  }
+                }
+              }
+            ];
           }
+          console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
 
           // ── Session-aware Context Pruning + KV Prefix Cache Engine ───────────
           //
