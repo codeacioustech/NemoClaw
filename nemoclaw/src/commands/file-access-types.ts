@@ -9,7 +9,14 @@
 export type FileAction = "read" | "write" | "execute";
 
 /** How long a permission lasts */
-export type PermissionScope = "session" | "persistent";
+export type PermissionScope = "chat" | "session" | "persistent";
+
+/** Scope labels for display */
+export const SCOPE_LABELS: Record<PermissionScope, string> = {
+  chat: "this chat",
+  session: "session",
+  persistent: "forever",
+};
 
 /** Who granted the permission */
 export type GrantedBy = "operator" | "tui-approval";

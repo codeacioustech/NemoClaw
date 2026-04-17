@@ -20,7 +20,11 @@ import type {
   PermissionScope,
 } from "./file-access-types.js";
 
-const STORE_DIR = path.join(process.env.HOME || "/tmp", ".nemoclaw");
+const HOME = process.env.HOME ?? "/tmp";
+const isSandbox = HOME.startsWith("/sandbox");
+const STORE_DIR =
+  process.env.SANDBOX_PERMISSIONS_DIR ??
+  (isSandbox ? "/sandbox/.nemoclaw" : path.join(HOME, ".nemoclaw"));
 const STORE_FILE = path.join(STORE_DIR, "file-permissions.json");
 
 function generateId(prefix: string): string {
@@ -75,7 +79,9 @@ export function addPermission(opts: {
 
   if (existing) {
     // Merge actions (union of action sets)
-    const mergedActions = Array.from(new Set([...existing.actions, ...opts.actions])) as FileAction[];
+    const mergedActions = Array.from(
+      new Set([...existing.actions, ...opts.actions]),
+    ) as FileAction[];
     existing.actions = mergedActions;
 
     // Upgrade scope: persistent > session
@@ -167,9 +173,7 @@ export function getPermissions(sandbox: string): FilePermission[] {
 /** Get only persistent permissions (for baseline policy merge). */
 export function getPersistentPermissions(sandbox: string): FilePermission[] {
   const store = loadStore();
-  return store.permissions.filter(
-    (p) => p.sandbox === sandbox && p.scope === "persistent",
-  );
+  return store.permissions.filter((p) => p.sandbox === sandbox && p.scope === "persistent");
 }
 
 /** Purge all session-scoped permissions for a sandbox. Called on sandbox stop. */
