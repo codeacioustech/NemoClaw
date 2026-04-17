@@ -474,25 +474,42 @@ ipcMain.handle("mark-onboarding-complete", (_event, data) => {
 // File system IPC — folder mounting & sandboxed file access
 // ---------------------------------------------------------------------------
 
-function getMountedFolderForPath(filePath) {
+async function getMountedFolderForPath(resolvedPath) {
   const folders = readLauncherConfig().mountedFolders || [];
-  const resolved = path.resolve(filePath);
   for (const folder of folders) {
-    const root = path.resolve(folder.path);
-    if (resolved === root || resolved.startsWith(root + path.sep)) {
+    let root;
+    try {
+      root = await fs.promises.realpath(folder.path);
+    } catch {
+      root = path.resolve(folder.path);
+    }
+    if (resolvedPath === root || resolvedPath.startsWith(root + path.sep)) {
       return folder;
     }
   }
   return null;
 }
 
-function validatePathInMountedFolders(filePath) {
-  const resolved = path.resolve(filePath);
+async function validatePathInMountedFolders(filePath) {
   // Block path traversal attempts
   if (filePath.includes("..")) {
     throw new Error("Path traversal not allowed");
   }
-  const folder = getMountedFolderForPath(resolved);
+
+  let resolved;
+  try {
+    resolved = await fs.promises.realpath(filePath);
+  } catch (err) {
+    // If file doesn't exist, validate its real parent directory path
+    try {
+      const parentDir = await fs.promises.realpath(path.dirname(filePath));
+      resolved = path.join(parentDir, path.basename(filePath));
+    } catch (e) {
+      resolved = path.resolve(filePath);
+    }
+  }
+
+  const folder = await getMountedFolderForPath(resolved);
   if (!folder) {
     throw new Error("Path is not within a mounted folder");
   }
@@ -500,7 +517,7 @@ function validatePathInMountedFolders(filePath) {
 }
 
 async function withBookmarkAccess(filePath, fn) {
-  const folder = validatePathInMountedFolders(filePath);
+  const folder = await validatePathInMountedFolders(filePath);
   let stopAccess = null;
   if (folder.bookmark) {
     stopAccess = app.startAccessingSecurityScopedResource(folder.bookmark);

@@ -471,10 +471,13 @@ const chat = (() => {
             let content = await window.launcher.readFile(args.path);
             if (args.edits && Array.isArray(args.edits)) {
               for (const edit of args.edits) {
-                if (content.includes(edit.oldText)) {
-                  content = content.replace(edit.oldText, edit.newText);
+                const occurrences = content.split(edit.oldText).length - 1;
+                if (occurrences === 0) {
+                  throw new Error(`oldText not found in file.`);
+                } else if (occurrences > 1) {
+                  throw new Error(`oldText matches multiple locations. Please provide more context to make oldText unique.`);
                 } else {
-                  throw new Error(`Target text block not found in file.`);
+                  content = content.replace(edit.oldText, edit.newText);
                 }
               }
             }
