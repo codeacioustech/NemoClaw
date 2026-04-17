@@ -6,7 +6,9 @@
   "scripts": {
     "prestart": "test -f ../nemoclaw/dist/index.js || (cd ../nemoclaw && npm install --ignore-scripts && npx tsc)",
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "dist:pkg": "SKIP_OLLAMA=1 bash scripts/build-pkg.sh",
+    "download-ollama": "bash scripts/download-ollama.sh"
   },
   "dependencies": {
     "openclaw": "2026.4.14",
