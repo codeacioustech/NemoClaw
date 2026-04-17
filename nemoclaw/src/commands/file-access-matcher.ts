@@ -131,7 +131,7 @@ function _checkAccessUncached(
  */
 export function resolvePathForSandbox(filePath: string): string {
   if (!filePath || typeof filePath !== "string") {
-    return filePath;
+    return "/sandbox/";
   }
 
   // Already a sandbox path
