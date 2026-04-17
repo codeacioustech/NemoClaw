@@ -14,6 +14,9 @@ const chat = (() => {
   let _currentThinkBody = null;     // <pre> inside the <details>
   let _thinkingActive = false;      // true while reasoning tokens are flowing
   let _accumulatedText = "";
+  let _consecutiveNoToolTurns = 0;  // tracks reasoning-only responses for loop breaking
+  const MAX_NO_TOOL_TURNS = 2;     // force action prompt after this many reasoning-only turns
+  let _earlyToolDetected = null;   // tool call detected during streaming, used as fast-path on final
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -269,6 +272,8 @@ const chat = (() => {
     _currentThinkEl = null;
     _currentThinkBody = null;
     _thinkingActive = false;
+    _consecutiveNoToolTurns = 0;
+    _earlyToolDetected = null;
     updateSendButton();
     showTyping();
 
@@ -445,7 +450,7 @@ const chat = (() => {
 
   // --- Streaming handler ---
 
-  function handleChatEvent(payload) {
+  async function handleChatEvent(payload) {
     if (!payload || payload.sessionKey !== _sessionKey) return;
 
     const state = payload.state;
@@ -462,6 +467,14 @@ const chat = (() => {
       ensureAssistantBubble();
       _accumulatedText = text;
 
+      // ── Early tool call detection during streaming ──
+      // Check if the accumulated text already contains a complete tool call.
+      // Cache it so we can use it as a fast-path when final arrives.
+      const earlyExtracted = _extractToolFromContent(_accumulatedText);
+      if (earlyExtracted) {
+        _earlyToolDetected = earlyExtracted;
+      }
+
       // Display cleaned text (strip tool call syntax while streaming)
       const displayText = _cleanDisplayText(_accumulatedText);
       const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
@@ -476,13 +489,16 @@ const chat = (() => {
       // Detect tool calls from ANY format the model might use:
       // ReAct (Action/Input), <tool_call> tags, raw JSON, natural language,
       // or code blocks. Execute them directly via handleToolInvoke.
+      // Use early-detected tool call as fast-path if available.
       const finalText = text || _accumulatedText || "";
 
       if (state !== "error") {
-        const extracted = _extractToolFromContent(finalText);
+        const extracted = _earlyToolDetected || _extractToolFromContent(finalText);
+        _earlyToolDetected = null;
 
         if (extracted) {
           console.log("[chat] Detected tool call in content:", extracted.name, JSON.stringify(extracted.args));
+          _consecutiveNoToolTurns = 0; // reset — we found a tool call
 
           // Update display to show only the reasoning before the tool call
           if (_currentAssistantEl) {
@@ -513,6 +529,8 @@ const chat = (() => {
       }
       // ─────────────────────────────────────────────────────────────────
 
+      _earlyToolDetected = null;
+
       if (!_currentAssistantEl && finalText) {
         ensureAssistantBubble();
       }
@@ -525,6 +543,47 @@ const chat = (() => {
         const errMsg = payload.error?.message || "Response failed";
         appendSystemMessage("Error: " + errMsg);
       }
+
+      // ── Reasoning loop breaker ─────────────────────────────────────
+      // If the model keeps producing responses without any tool execution,
+      // send a forced-action prompt to break the loop.
+      if (state !== "error") {
+        _consecutiveNoToolTurns++;
+        console.log(`[chat] No tool call in response. Consecutive no-tool turns: ${_consecutiveNoToolTurns}`);
+
+        if (_consecutiveNoToolTurns >= MAX_NO_TOOL_TURNS) {
+          console.log("[chat] Breaking reasoning loop — sending forced action prompt");
+          _consecutiveNoToolTurns = 0;
+
+          _streaming = false;
+          _currentAssistantEl = null;
+          _currentThinkEl = null;
+          _currentThinkBody = null;
+          _thinkingActive = false;
+          _accumulatedText = "";
+          updateSendButton();
+
+          const key = await ensureSession();
+          if (key) {
+            appendSystemMessage("AI appears stuck in reasoning. Requesting direct action...");
+            try {
+              await gateway.sendMessage(key,
+                "SYSTEM OVERRIDE: You have been reasoning without acting for multiple turns. " +
+                "You MUST output a tool call NOW using the Action/Input format. " +
+                "Pick the most relevant action for the user's original request and execute it immediately. " +
+                "Example:\nAction: terminal\nInput: {\"command\": \"git status\"}"
+              );
+              _streaming = true;
+              updateSendButton();
+              showTyping();
+            } catch (e) {
+              appendSystemMessage("Failed to break reasoning loop: " + e.message);
+            }
+          }
+          return;
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────
 
       _streaming = false;
       _currentAssistantEl = null;
@@ -556,6 +615,9 @@ const chat = (() => {
       console.log("[chat] handleToolInvoke skipped: session mismatch", payload?.sessionKey, "vs", _sessionKey);
       return;
     }
+
+    // Reset reasoning loop counter — a tool is being executed
+    _consecutiveNoToolTurns = 0;
 
     const { toolCallId, name, arguments: args } = payload;
     console.log("[chat] tool invocation:", name, "id:", toolCallId);
@@ -690,8 +752,10 @@ const chat = (() => {
       if (typeof toolCallId === "string" && toolCallId.startsWith("content-")) {
         const resultText =
           `[Tool Result: ${name}]\n` +
-          (result.success === false ? `Error: ${result.error || result.stderr || "unknown"}` :
-           result.stdout || result.message || JSON.stringify(result));
+          (result.success === false
+            ? `Error: ${result.error || result.stderr || "unknown"}`
+            : result.stdout || result.message || JSON.stringify(result)) +
+          "\n\nPresent this result to the user. If more actions are needed, output the next Action/Input immediately. Do NOT re-explain what you already did.";
         try {
           await gateway.sendMessage(_sessionKey, resultText);
           _streaming = true;
