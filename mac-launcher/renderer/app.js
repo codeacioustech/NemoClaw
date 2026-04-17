@@ -44,15 +44,45 @@ const app = (() => {
   // --- Onboarding state ---
 
   function getOnboardingData() {
-    // Step 1
-    const purpose = $(".purpose-card.sel .purpose-label")?.textContent || "";
-    const techs = Array.from($$(".tech-pill.sel")).map((p) => p.textContent.trim());
-    const size = $(".size-card.sel .size-num")?.textContent || "";
+    // Step 1 — workspace config
+    const purposeCard = $(".purpose-card.sel");
+    const workspaceType = purposeCard?.dataset.purposeId || "";
+    const experience = Array.from($$(".tech-pill.sel")).map((p) => p.dataset.toolId || p.textContent.trim());
+    const sizeCard = $(".size-card.sel");
+    const teamSize = sizeCard?.dataset.sizeId || "";
 
-    // Step 4
-    const microapps = Array.from($$(".ma-card.sel .ma-name")).map((n) => n.textContent);
+    // Step 2 — invites
+    const invites = [];
+    $$(".invite-row").forEach((row) => {
+      const email = row.querySelector("input[type=email]")?.value?.trim();
+      const role = row.querySelector(".role-select")?.value?.toLowerCase() || "member";
+      if (email && email.includes("@")) {
+        invites.push({ email, role });
+      }
+    });
 
-    return { purpose, techs, size, microapps };
+    // Step 3 — connectors
+    const connectors = {};
+    $$(".conn-card").forEach((card) => {
+      const id = card.dataset.connectorId;
+      if (id) {
+        connectors[id] = card.classList.contains("connected");
+      }
+    });
+
+    // Step 4 — microapps
+    const microapps = Array.from($$(".ma-card.sel")).map(
+      (card) => card.dataset.microappId || card.querySelector(".ma-name")?.textContent || ""
+    ).filter(Boolean);
+
+    return {
+      completedAt: new Date().toISOString(),
+      workspace: { type: workspaceType, teamSize },
+      experience,
+      invites,
+      connectors,
+      microapps,
+    };
   }
 
   function saveOnboarding() {
@@ -521,6 +551,87 @@ const app = (() => {
     }
   }
 
+  // --- Apply onboarding config to dashboard ---
+
+  const MICROAPP_LABELS = {
+    "finance": "Finance Tracker",
+    "knowledge-base": "Knowledge Base",
+    "projects": "Project Manager",
+    "hr": "HR Assistant",
+    "support": "Customer Support",
+    "custom": "Custom Microapp",
+  };
+
+  async function applyOnboardingConfig() {
+    let config;
+    try {
+      config = await window.launcher.getConfig();
+    } catch {
+      return;
+    }
+
+    const ob = config?.onboarding;
+    if (!ob) return;
+
+    // Update stat cards with real counts
+    const statValues = $$(".stat-value");
+    const statTrends = $$(".stat-trend");
+
+    // Connectors count
+    if (statValues[2] && ob.connectors) {
+      const activeCount = Object.values(ob.connectors).filter(Boolean).length;
+      statValues[2].textContent = String(activeCount);
+      if (statTrends[2]) {
+        statTrends[2].textContent = activeCount > 0 ? `${activeCount} source${activeCount > 1 ? "s" : ""} connected` : "No sources connected";
+      }
+    }
+
+    // Team members count
+    if (statValues[3] && ob.invites) {
+      const memberCount = 1 + (ob.invites.length || 0); // +1 for the user
+      statValues[3].textContent = String(memberCount);
+      if (statTrends[3]) {
+        statTrends[3].textContent = memberCount > 1 ? `You + ${memberCount - 1} invited` : "You";
+      }
+    }
+
+    // Populate active microapps panel
+    const microappsPanel = document.querySelector('.dash-section[data-section="Dashboard"] .panel-header .panel-title');
+    const microappsPanelParent = microappsPanel?.closest(".dash-panel");
+    if (microappsPanelParent && ob.microapps && ob.microapps.length > 0) {
+      const container = microappsPanelParent.querySelector(".cp-row")?.parentElement;
+      if (container) {
+        // Clear existing static rows after the panel-header
+        const existingRows = container.querySelectorAll(".cp-row");
+        // Keep only microapps the user selected
+        const selectedSet = new Set(ob.microapps);
+        existingRows.forEach((row) => {
+          const name = row.querySelector(".cp-name")?.textContent || "";
+          // Find matching ID by label
+          const matchId = Object.entries(MICROAPP_LABELS).find(([, label]) => label === name)?.[0];
+          if (matchId && !selectedSet.has(matchId)) {
+            row.style.display = "none";
+          }
+        });
+      }
+    }
+
+    // Show workspace type in settings
+    const workspaceLabel = ob.workspace?.type;
+    if (workspaceLabel) {
+      const settingsList = document.querySelector(".settings-list");
+      if (settingsList && !settingsList.querySelector(".settings-workspace")) {
+        const dt = document.createElement("dt");
+        dt.textContent = "Workspace type";
+        const dd = document.createElement("dd");
+        dd.className = "settings-workspace";
+        dd.textContent = workspaceLabel;
+        settingsList.prepend(dd);
+        settingsList.prepend(dt);
+      }
+    }
+  }
+
   // --- Launch (after onboarding step 4) ---
 
   async function launch() {
@@ -533,6 +644,7 @@ const app = (() => {
     }
 
     go(5); // dashboard
+    applyOnboardingConfig();
     startLlmPolling();
     connectGateway();
     refreshMountedFolders();
@@ -584,6 +696,7 @@ const app = (() => {
       go(1); // onboarding step 1
     } else {
       go(5); // dashboard
+      applyOnboardingConfig();
       startLlmPolling();
       connectGateway();
       refreshMountedFolders();

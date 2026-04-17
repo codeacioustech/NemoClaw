@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /c/Users/rrahu/Desktop/Nemoclaw2/NemoClaw/nemoclaw/src/**/*.ts)",
+      "Bash(grep -l \"describe\\\\|test\\\\|it\\(\" /c/Users/rrahu/Desktop/Nemoclaw2/NemoClaw/test/*.test.ts)",
+      "Bash(wc -l /c/Users/rrahu/Desktop/Nemoclaw2/NemoClaw/test/*.test.ts)"
+    ]
+  }
+}

@@ -27,17 +27,61 @@ let proxyServer = null;
 // Launcher config persistence
 // ---------------------------------------------------------------------------
 
+const CONFIG_VERSION = 2;
+
+function migrateConfig(config) {
+  const v = config.configVersion || 0;
+
+  if (v < 1) {
+    // v0 → v1: restructure onboarding data with stable IDs
+    if (config.onboarding && !config.onboarding.workspace) {
+      const old = config.onboarding;
+      config.onboarding = {
+        completedAt: config.setupCompletedAt || null,
+        workspace: { type: old.purpose || "", teamSize: old.size || "" },
+        experience: old.techs || [],
+        invites: old.invites || [],
+        connectors: old.connectors || { "local-files": true },
+        microapps: old.microapps || [],
+      };
+    }
+    config.configVersion = 1;
+  }
+
+  if (v < 2) {
+    // v1 → v2: separate onboarding_complete from launcher_setup_complete
+    // If the old config had launcher_setup_complete but no onboarding_complete,
+    // check whether onboarding data exists to infer whether the user actually
+    // went through the wizard or bootstrap just set the flag.
+    if (config.onboarding_complete === undefined) {
+      const hasOnboardingData = config.onboarding &&
+        (config.onboarding.workspace?.type || config.onboarding.purpose);
+      config.onboarding_complete = !!hasOnboardingData;
+    }
+    config.configVersion = 2;
+  }
+
+  return config;
+}
+
 function readLauncherConfig() {
   try {
-    return JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
+    const config = JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
+    if ((config.configVersion || 0) < CONFIG_VERSION) {
+      const migrated = migrateConfig(config);
+      writeLauncherConfig(migrated);
+      return migrated;
+    }
+    return config;
   } catch {
-    return {};
+    return { configVersion: CONFIG_VERSION };
   }
 }
 
 function writeLauncherConfig(data) {
   const dir = path.dirname(LAUNCHER_CONFIG);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  data.configVersion = CONFIG_VERSION;
   fs.writeFileSync(LAUNCHER_CONFIG, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
@@ -381,14 +425,14 @@ ipcMain.handle("get-config", () => readLauncherConfig());
 
 ipcMain.handle("is-first-run", () => {
   const config = readLauncherConfig();
-  return !config.launcher_setup_complete;
+  return !config.onboarding_complete;
 });
 
 ipcMain.handle("reset-onboarding", () => {
   const existing = readLauncherConfig();
   writeLauncherConfig({
     ...existing,
-    launcher_setup_complete: false,
+    onboarding_complete: false,
     onboarding: {},
   });
   return { ok: true };
@@ -398,10 +442,9 @@ ipcMain.handle("mark-onboarding-complete", (_event, data) => {
   const existing = readLauncherConfig();
   writeLauncherConfig({
     ...existing,
-    launcher_setup_complete: true,
+    onboarding_complete: true,
     onboarding: data || {},
     gateway_port: GATEWAY_PORT,
-    setupCompletedAt: new Date().toISOString(),
   });
   return true;
 });
