@@ -129,8 +129,52 @@ function sendProgress(data) {
 // Ollama management
 // ---------------------------------------------------------------------------
 
+const OLLAMA_URL = "https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz";
+const OLLAMA_DEST = path.join(os.homedir(), ".nemoclaw", "ollama-mac");
+
+function downloadOllama() {
+  fs.mkdirSync(OLLAMA_DEST, { recursive: true });
+  const tgzPath = path.join(OLLAMA_DEST, "ollama-darwin.tgz");
+
+  return new Promise((resolve, reject) => {
+    const dl = spawn("curl", ["-L", OLLAMA_URL, "-o", tgzPath]);
+    dl.on("exit", (code) => {
+      if (code !== 0) return reject(new Error(`curl exited with code ${code}`));
+      const ext = spawn("tar", ["-xzf", tgzPath, "-C", OLLAMA_DEST]);
+      ext.on("exit", (code2) => {
+        if (code2 !== 0) return reject(new Error(`tar exited with code ${code2}`));
+        try {
+          fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
+          fs.unlinkSync(tgzPath);
+        } catch (e) {
+          return reject(e);
+        }
+        resolve();
+      });
+    });
+  });
+}
+
+function checkModelExists(model) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          const { models = [] } = JSON.parse(data);
+          resolve(models.some((m) => m.name === model || m.name === `${model}:latest`));
+        } catch { resolve(false); }
+      });
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(5000, () => { req.destroy(); resolve(false); });
+  });
+}
+
 function spawnOllama() {
   const ollamaPath = paths.resolveOllama();
+  if (!ollamaPath) throw new Error("Ollama binary not found");
   const child = spawn(ollamaPath, ["serve"], {
     env: {
       ...process.env,
@@ -231,16 +275,33 @@ function createMainWindow() {
 // Bootstrap flow
 // ---------------------------------------------------------------------------
 
+async function ensureSplash() {
+  if (!splashWindow || splashWindow.isDestroyed()) {
+    createSplashWindow();
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
 async function bootstrap() {
   const config = readLauncherConfig();
   const isFirstRun = !config.launcher_setup_complete;
 
-  if (isFirstRun) {
-    createSplashWindow();
-    await new Promise((r) => setTimeout(r, 500)); // let splash render
+  // Step 1 — Ensure Ollama binary exists
+  let ollamaPath = paths.resolveOllama();
+  if (!ollamaPath) {
+    await ensureSplash();
+    sendStatus("Installing Ollama...");
+    try {
+      await downloadOllama();
+      ollamaPath = paths.resolveOllama();
+      if (!ollamaPath) throw new Error("Binary not found after download");
+    } catch (err) {
+      sendError(`Ollama install failed: ${err.message}`);
+      return;
+    }
   }
 
-  // 1. Start Ollama
+  // Step 2 — Start & wait for Ollama
   sendStatus("Starting Ollama...");
   spawnOllama();
 
@@ -251,8 +312,10 @@ async function bootstrap() {
     return;
   }
 
-  // 2. Pull model on first run
-  if (isFirstRun) {
+  // Step 3 + 4 — Check model, download if missing
+  const modelPresent = await checkModelExists(MODEL);
+  if (!modelPresent) {
+    await ensureSplash();
     sendStatus(`Downloading model: ${MODEL}`);
     try {
       await pullModel();
@@ -260,12 +323,13 @@ async function bootstrap() {
       console.error(`Model pull failed: ${err.message}`);
       sendStatus(`Model pull failed (${err.message}) — continuing startup...`);
     }
+  }
 
-    // 3. Seed configs
+  // Step 5 — First-run config seeding
+  if (isFirstRun) {
     sendStatus("Configuring NemoClaw...");
     seedAll();
 
-    // 4. Mark setup complete
     writeLauncherConfig({
       launcher_setup_complete: true,
       ollama_model: MODEL,

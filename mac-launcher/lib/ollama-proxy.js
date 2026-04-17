@@ -113,6 +113,9 @@ function startProxy(onListening) {
             console.log(`[ollama-proxy] Forwarding ${parsed.tools.length} tool definitions`);
           }
 
+          // Prevent model unloading and KV cache eviction (Ollama default is 5m)
+          parsed.keep_alive = -1; 
+
           // ── Session-aware Context Pruning + KV Prefix Cache Engine ───────────
           //
           // Goal: send the shortest legal payload AND keep the token prefix

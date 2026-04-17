@@ -500,37 +500,105 @@ const app = (() => {
 
   async function performBackgroundWarmup() {
     const btn = document.querySelector('.topbar-btn[data-action="open-chat"]');
-    const originalContent = btn ? btn.innerHTML : '';
-    if (btn) {
+
+    const setBusy = (msg) => {
+      if (!btn) return;
+      // Snapshot original HTML the first time so setReady can restore it exactly
+      if (!btn.dataset.originalHtml) {
+        btn.dataset.originalHtml = btn.innerHTML;
+      }
       btn.disabled = true;
-      btn.innerHTML = `<span class="icon icon-md" style="display:inline-block; animation: spin 1s linear infinite;"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg></span> Warming up AI...`;
-    }
+      btn.classList.add("topbar-btn--warming");
+      btn.innerHTML = msg;
+    };
 
-    try {
-      const sess = await gateway.createSession("Warmup");
-      await new Promise((resolve) => {
-        const timeout = setTimeout(resolve, 45000); // 45s max safety
-        const handler = (payload) => {
-          if (payload.sessionKey === sess.key) {
-            clearTimeout(timeout);
-            gateway.off("chat", handler);
-            resolve();
-          }
-        };
-        gateway.on("chat", handler);
-        gateway.sendMessage(sess.key, "Please reply briefly: OK.");
-      });
-      // Cleanup the dummy session natively so it doesn't clutter history
-      await gateway.deleteSession(sess.key).catch(() => {});
-    } catch (e) {
-      console.warn("[app] Background warmup fell through:", e.message);
-    }
-
-    if (btn) {
+    const setReady = () => {
+      if (!btn) return;
       btn.disabled = false;
-      btn.innerHTML = originalContent;
+      btn.classList.remove("topbar-btn--warming");
+      if (btn.dataset.originalHtml) {
+        btn.innerHTML = btn.dataset.originalHtml;
+        delete btn.dataset.originalHtml;
+      }
+    };
+
+    setBusy("Connecting...");
+
+    // Phase 1 — wait for gateway handshake
+    await new Promise((resolve) => {
+      if (gateway.connected) return resolve();
+      const onConn = () => resolve();
+      gateway.on("connected", onConn);
+      setTimeout(() => { gateway.off("connected", onConn); resolve(); }, 8000);
+    });
+
+    if (!gateway.connected) {
+      console.warn("[warmup] Gateway not reachable — unlocking button.");
+      setReady();
+      return;
     }
+
+    setBusy("Warming up AI...");
+
+    // Phase 2 — create warmup session
+    let warmupKey = null;
+    try {
+      const sess = await gateway.createSession("__warmup__");
+      // Defensive: OpenClaw may return key or sessionKey
+      warmupKey = sess.key ?? sess.sessionKey ?? null;
+      console.log("[warmup] session created, key =", warmupKey, "| full response:", JSON.stringify(sess));
+    } catch (e) {
+      console.warn("[warmup] createSession failed:", e.message);
+      setReady();
+      return;
+    }
+
+    if (!warmupKey) {
+      console.warn("[warmup] No session key in response — cannot warmup.");
+      setReady();
+      return;
+    }
+
+    // Phase 3 — send ping and wait for ANY event from the warmup session
+    await new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.warn("[warmup] 60s timeout — Ollama may be loading model from disk.");
+        gateway.off("event", rawHandler);
+        resolve();
+      }, 60000);
+
+      const rawHandler = (frame) => {
+        // frame = { type, event, payload }
+        // Extract session key from any location the gateway may embed it
+        const key =
+          frame.payload?.sessionKey ??
+          frame.payload?.key ??
+          frame.payload?.session?.key ??
+          null;
+        console.log("[warmup] event:", frame.event, "| key in payload:", key);
+        if (key && key === warmupKey) {
+          clearTimeout(timeout);
+          gateway.off("event", rawHandler);
+          resolve();
+        }
+      };
+      gateway.on("event", rawHandler);
+
+      gateway.sendMessage(warmupKey, "Ping. Reply OK.").catch((e) => {
+        console.warn("[warmup] sendMessage failed:", e.message);
+        clearTimeout(timeout);
+        gateway.off("event", rawHandler);
+        resolve();
+      });
+    });
+
+    // Phase 4 — cleanup silently
+    gateway.deleteSession(warmupKey).catch(() => {});
+
+    setReady();
+    console.log("[warmup] ✅ AI is hot — KV cache anchored, button unlocked.");
   }
+
 
   async function connectGateway() {
     try {
@@ -542,8 +610,6 @@ const app = (() => {
     try {
       await gateway.connect(_gatewayPort);
       console.log("[app] connected to gateway on port", _gatewayPort);
-      
-      // Fire the warmup in the background
       performBackgroundWarmup();
     } catch (e) {
       console.error("[app] gateway connection failed:", e.message);
@@ -670,7 +736,7 @@ const app = (() => {
         case "unmount-local-folder": unmountLocalFolder(el.dataset.path); break;
         case "toggle-connector":     toggleConnector(el); break;
         case "app-launch":           launch(); break;
-        case "open-chat":            chat.open(); break;
+        case "open-chat":            if (!el.disabled) chat.open(); break;
         case "new-workflow":         newWorkflow(); break;
         case "toggle-avatar-menu":   toggleAvatarMenu(); break;
         case "navigate":             navigateTo(el.dataset.target); break;

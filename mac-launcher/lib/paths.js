@@ -3,6 +3,7 @@
 
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const { app } = require("electron");
 
 function isPackaged() {
@@ -40,7 +41,11 @@ function resolveOllama() {
   const dev = path.join(__dirname, "..", "resources", "ollama-mac", "ollama");
   if (fs.existsSync(dev)) return dev;
 
-  throw new Error("Cannot locate Ollama binary — run 'npm run download-ollama' first.");
+  // Runtime-downloaded fallback
+  const runtime = path.join(os.homedir(), ".nemoclaw", "ollama-mac", "ollama");
+  if (fs.existsSync(runtime)) return runtime;
+
+  return null;
 }
 
 function resolveNemoclawPlugin() {
