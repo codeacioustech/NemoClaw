@@ -9,14 +9,21 @@ const PROXY_PORT = 11435;
 const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the renderer
 
 const SYSTEM_INSTRUCTION =
-  "You are a helpful assistant running inside the NemoClaw desktop app. " +
-  "You must use the following tools to interact with the filesystem and terminal:\n" +
-  "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
-  "- `edit`: to modify existing files.\n" +
-  "- `write`: to create or completely overwrite files.\n" +
-  "- `terminal`: to execute a shell command in a sandboxed directory (e.g. git, npm, python, build tools). Only single commands are allowed — no chaining.\n" +
-  "ALWAYS wait for the tool result before replying. " +
-  "For non-file questions, answer in plain text.";
+  "You are a helpful assistant running inside the NemoClaw desktop app.\n\n" +
+  "## Available Tools\n" +
+  "You MUST use tools to interact with the filesystem and terminal:\n" +
+  "- `read` — read a file or list directory contents (pass a file or directory path).\n" +
+  "- `edit` — modify an existing file by replacing text blocks.\n" +
+  "- `write` — create or completely overwrite a file.\n" +
+  "- `terminal` — execute a shell command in a sandboxed directory (git, npm, python, build tools, etc.). Single commands only — no chaining.\n\n" +
+  "## CRITICAL: Reason → Act Rule\n" +
+  "When a user request requires inspecting files, running commands, or modifying code:\n" +
+  "1. Think BRIEFLY about which tool to use (1-2 sentences max).\n" +
+  "2. IMMEDIATELY call that tool. Do NOT describe what you would do — DO it.\n" +
+  "3. Wait for the tool result before replying.\n" +
+  "4. NEVER refuse to use a tool by explaining the command textually instead.\n\n" +
+  "If the request is a pure knowledge question with no file/terminal action needed, reply in plain text.\n" +
+  "When in doubt, USE A TOOL rather than explaining what you would do.";
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
@@ -80,6 +87,71 @@ function deriveSessionId(headers, parsedBody) {
   let h = 5381;
   for (let i = 0; i < seed.length; i++) h = ((h << 5) + h) ^ seed.charCodeAt(i);
   return `hash-${(h >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+// ── Text-based tool call recovery ──────────────────────────────────────────
+// Local models sometimes output tool calls as JSON text in content instead of
+// structured tool_calls. This function tries to extract a valid tool call from
+// the accumulated content string.
+const KNOWN_TOOLS = new Set(["read", "write", "edit", "terminal"]);
+
+function _extractTextToolCall(content) {
+  const trimmed = content.trim();
+
+  // Pattern 1: {"name": "tool", "arguments": {...}}
+  // Pattern 2: {"function": {"name": "tool", "arguments": {...}}}
+  // Pattern 3: ```json\n{...}\n``` wrapped
+  let jsonStr = trimmed;
+
+  // Strip markdown code fences
+  const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+  // Try to extract JSON object(s) from the string
+  const jsonCandidates = [];
+  // Find all top-level JSON objects
+  const objRegex = /\{[\s\S]*?\}(?=\s*$|\s*\n|\s*```)/g;
+  let match;
+  while ((match = objRegex.exec(jsonStr)) !== null) {
+    jsonCandidates.push(match[0]);
+  }
+  // Also try the whole string
+  jsonCandidates.unshift(jsonStr);
+
+  for (const candidate of jsonCandidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+
+      // Pattern 1: direct {name, arguments}
+      if (parsed.name && KNOWN_TOOLS.has(parsed.name)) {
+        return {
+          function: {
+            name: parsed.name,
+            arguments: parsed.arguments || parsed.params || parsed.parameters || {},
+          },
+        };
+      }
+
+      // Pattern 2: {function: {name, arguments}}
+      if (parsed.function?.name && KNOWN_TOOLS.has(parsed.function.name)) {
+        return {
+          function: {
+            name: parsed.function.name,
+            arguments: parsed.function.arguments || parsed.function.params || {},
+          },
+        };
+      }
+
+      // Pattern 3: {tool: "name", ...args}
+      if (parsed.tool && KNOWN_TOOLS.has(parsed.tool)) {
+        const { tool, ...args } = parsed;
+        return { function: { name: tool, arguments: args } };
+      }
+    } catch {
+      // Not valid JSON, skip
+    }
+  }
+  return null;
 }
 
 /**
@@ -310,7 +382,9 @@ function startProxy(onListening) {
           parsed.keep_alive = "10m";
 
           // Constrain context window for faster prompt eval.
-          parsed.options = { ...(parsed.options || {}), num_ctx: 8192 };
+          // num_predict caps total generation (thinking + response) so reasoning
+          // cannot exhaust the context window and starve the tool_calls output.
+          parsed.options = { ...(parsed.options || {}), num_ctx: 8192, num_predict: 4096 };
 
           // gemma4:e4b supports native reasoning/thinking mode.
           // Force think=true regardless of what the client sends — OpenClaw
@@ -354,6 +428,7 @@ function startProxy(onListening) {
           clientRes.writeHead(proxyRes.statusCode, proxyRes.headers);
 
           let accumulator = "";
+          let fullContent = "";   // accumulates ALL content tokens to detect text-based tool calls
           let detected = false; // whether we've checked for the JSON pattern
           let isWrapped = false;
 
@@ -389,8 +464,37 @@ function startProxy(onListening) {
 
               const token = obj?.message?.content;
 
+              // Accumulate all content for text-based tool call detection
+              if (typeof token === "string") fullContent += token;
+
               // Non-content lines, tool_calls, or end-of-stream signals: forward directly
               if (typeof token !== "string" || obj?.message?.tool_calls || obj?.done) {
+                // ── Text-based tool call recovery ──────────────────────────────
+                // Local models sometimes emit tool calls as JSON text in content
+                // instead of structured tool_calls. Detect this on the done signal
+                // and convert it to a proper tool_calls response so the gateway
+                // can process it.
+                if (obj?.done && !obj?.message?.tool_calls && fullContent.length > 0) {
+                  const toolCall = _extractTextToolCall(fullContent);
+                  if (toolCall) {
+                    console.log(`[ollama-proxy] Recovered text-based tool call: ${toolCall.function.name}`);
+                    // Emit a synthetic tool_calls frame before the done frame
+                    const syntheticFrame = JSON.stringify({
+                      model: obj.model || "",
+                      message: {
+                        role: "assistant",
+                        content: "",
+                        tool_calls: [toolCall],
+                      },
+                      done: false,
+                    });
+                    clientRes.write(syntheticFrame + "\n");
+                    // Clear content from the done frame so it doesn't duplicate
+                    if (obj.message) obj.message.content = "";
+                    accumulator = "";
+                  }
+                }
+                // ───────────────────────────────────────────────────────────────
                 if (obj?.done && accumulator && !obj.message) obj.message = { role: "assistant" };
                 if (accumulator) obj.message.content = accumulator;
                 clientRes.write(JSON.stringify(obj) + "\n");
