@@ -1,0 +1,29 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# PKG postinstall — runs as root after NemoClaw.app is copied to /Applications.
+# Keeps it lightweight (~2 seconds) so the macOS installer finishes fast.
+# Heavy downloads (Ollama binary, Gemma 4 model) happen inside the app on
+# first launch where the user gets a splash screen with visible progress.
+
+set -euo pipefail
+
+NEMOCLAW_DIR="$HOME/.nemoclaw"
+
+# Create the NemoClaw config directory with secure permissions
+mkdir -p "$NEMOCLAW_DIR"
+chmod 700 "$NEMOCLAW_DIR"
+
+# Write a flag so the app knows this is a fresh PKG install and should
+# show the splash screen with download progress on first launch.
+cat > "$NEMOCLAW_DIR/pkg-install-meta.json" <<EOF
+{
+  "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "installerType": "pkg",
+  "firstLaunchNeeded": true
+}
+EOF
+chmod 600 "$NEMOCLAW_DIR/pkg-install-meta.json"
+
+exit 0

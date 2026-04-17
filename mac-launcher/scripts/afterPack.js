@@ -5,6 +5,29 @@ const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
+// Modules excluded from the app bundle to reduce size (~435 MB saved).
+// These are transitive deps of openclaw that the mac-launcher never uses.
+const EXCLUDE_PATTERNS = [
+  "playwright-core",        // 150 MB — browser automation, not used in local chat
+  "@playwright",
+  "@aws-sdk",               //  75 MB — Bedrock cloud inference, using Ollama instead
+  "matrix-js-sdk",          //  20 MB — Matrix messaging, not configured
+  "@matrix-org",
+  "grammy",                 //  15 MB — Telegram bot framework, not configured
+  "@grammyjs",
+  "@slack",                 //  20 MB — Slack integration, not configured
+  "@line",                  //  10 MB — LINE messaging, not configured
+  "@larksuiteoapi",         //  10 MB — Lark messaging, not configured
+  "jimp",                   //  50 MB — redundant with sharp
+  "@jimp",
+  "pdfjs-dist",             //  15 MB — PDF processing, not needed for chat
+  "node-edge-tts",          //  10 MB — text-to-speech, not used
+];
+
+function isExcluded(name) {
+  return EXCLUDE_PATTERNS.some((p) => name === p || name.startsWith(p + "/"));
+}
+
 function isModuleComplete(dir) {
   return fs.existsSync(path.join(dir, "package.json"));
 }
@@ -63,8 +86,15 @@ exports.default = async function (context) {
 
   let copied = 0;
 
+  let excluded = 0;
+
   // Copy direct production deps
   for (const dep of prodDeps) {
+    if (isExcluded(dep)) {
+      console.log(`[afterPack]   - ${dep} (excluded)`);
+      excluded++;
+      continue;
+    }
     if (copyModule(srcModules, destModules, dep)) copied++;
   }
 
@@ -90,6 +120,10 @@ exports.default = async function (context) {
     });
 
     for (const name of allDeps) {
+      if (isExcluded(name)) {
+        excluded++;
+        continue;
+      }
       if (copyModule(srcModules, destModules, name)) copied++;
 
       const nested = path.join(srcModules, name);
@@ -112,5 +146,5 @@ exports.default = async function (context) {
   // Verify critical module
   const carbonCheck = path.join(destModules, "@buape", "carbon", "package.json");
   console.log(`[afterPack] @buape/carbon present: ${fs.existsSync(carbonCheck)}`);
-  console.log(`[afterPack] Copied ${copied} missing modules.`);
+  console.log(`[afterPack] Copied ${copied} missing modules, excluded ${excluded} heavy modules.`);
 };

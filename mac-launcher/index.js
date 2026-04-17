@@ -94,21 +94,51 @@ function downloadOllama() {
   const tgzPath = path.join(OLLAMA_DEST, "ollama-darwin.tgz");
 
   return new Promise((resolve, reject) => {
-    const dl = spawn("curl", ["-L", OLLAMA_URL, "-o", tgzPath]);
-    dl.on("exit", (code) => {
-      if (code !== 0) return reject(new Error(`curl exited with code ${code}`));
-      const ext = spawn("tar", ["-xzf", tgzPath, "-C", OLLAMA_DEST]);
-      ext.on("exit", (code2) => {
-        if (code2 !== 0) return reject(new Error(`tar exited with code ${code2}`));
-        try {
-          fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
-          fs.unlinkSync(tgzPath);
-        } catch (e) {
-          return reject(e);
+    function followRedirects(url, redirects) {
+      if (redirects > 5) return reject(new Error("Too many redirects"));
+      const mod = url.startsWith("https") ? require("https") : http;
+      mod.get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          return followRedirects(res.headers.location, redirects + 1);
         }
-        resolve();
-      });
-    });
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+        }
+
+        const total = parseInt(res.headers["content-length"] || "0", 10);
+        let downloaded = 0;
+        const fileStream = fs.createWriteStream(tgzPath);
+
+        res.on("data", (chunk) => {
+          downloaded += chunk.length;
+          if (total > 0) {
+            sendProgress({ completed: downloaded, total });
+          }
+        });
+
+        res.pipe(fileStream);
+        fileStream.on("finish", () => {
+          fileStream.close(() => {
+            try {
+              require("child_process").execSync(
+                `tar -xzf "${tgzPath}" -C "${OLLAMA_DEST}"`,
+                { stdio: "pipe" }
+              );
+              fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
+              fs.unlinkSync(tgzPath);
+              resolve();
+            } catch (err) {
+              reject(new Error(`Extract failed: ${err.message}`));
+            }
+          });
+        });
+        fileStream.on("error", reject);
+      }).on("error", reject);
+    }
+
+    followRedirects(OLLAMA_URL, 0);
   });
 }
 
@@ -243,17 +273,17 @@ async function bootstrap() {
   const config = readLauncherConfig();
   const isFirstRun = !config.launcher_setup_complete;
 
-  // Step 1 — Ensure Ollama binary exists
+  // Step 1 — Ensure Ollama binary exists (bundled, runtime-downloaded, or system)
   let ollamaPath = paths.resolveOllama();
   if (!ollamaPath) {
     await ensureSplash();
-    sendStatus("Installing Ollama...");
+    sendStatus("Downloading AI engine...");
     try {
       await downloadOllama();
       ollamaPath = paths.resolveOllama();
       if (!ollamaPath) throw new Error("Binary not found after download");
     } catch (err) {
-      sendError(`Ollama install failed: ${err.message}`);
+      sendError(`Failed to download AI engine: ${err.message}`);
       return;
     }
   }
