@@ -362,6 +362,87 @@ const chat = (() => {
     connect();
   }
 
+  // --- Tool call extraction from model content ---
+  // Local models can't emit structured tool_calls. We detect multiple formats:
+
+  const TOOL_NAMES = ["read", "write", "edit", "terminal"];
+
+  /**
+   * Try to extract a tool call from the model's text output.
+   * Returns { name, args, beforeText } or null.
+   */
+  function _extractToolFromContent(text) {
+    if (!text || typeof text !== "string") return null;
+
+    // ── Format 1: ReAct — "Action: terminal\nInput: {...}" ──
+    const reactMatch = text.match(/Action:\s*(read|write|edit|terminal)\s*\n\s*Input:\s*(\{[\s\S]*?\})/i);
+    if (reactMatch) {
+      try {
+        const args = JSON.parse(reactMatch[2]);
+        const beforeText = text.slice(0, reactMatch.index).trim();
+        return { name: reactMatch[1].toLowerCase(), args, beforeText };
+      } catch { /* fall through */ }
+    }
+
+    // ── Format 2: <tool_call>JSON</tool_call> ──
+    const tagMatch = text.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/);
+    if (tagMatch) {
+      try {
+        const parsed = JSON.parse(tagMatch[1]);
+        if (parsed.name && TOOL_NAMES.includes(parsed.name)) {
+          const beforeText = text.slice(0, tagMatch.index).trim();
+          return { name: parsed.name, args: parsed.arguments || parsed.params || {}, beforeText };
+        }
+      } catch { /* fall through */ }
+    }
+
+    // ── Format 3: Raw JSON — {"name": "terminal", "arguments": {...}} ──
+    const jsonMatch = text.match(/\{\s*"name"\s*:\s*"(read|write|edit|terminal)"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/);
+    if (jsonMatch) {
+      try {
+        const args = JSON.parse(jsonMatch[2]);
+        const beforeText = text.slice(0, jsonMatch.index).trim();
+        return { name: jsonMatch[1], args, beforeText };
+      } catch { /* fall through */ }
+    }
+
+    // ── Format 4: Natural language — "I'll run `git status`" / "Let me execute `ls -la`" ──
+    // Match backtick-wrapped commands after action verbs
+    const nlMatch = text.match(/(?:(?:I(?:'ll| will| am going to|'m going to)|let me|running|executing|using)\s+(?:run|execute|use|check|call)?[:\s]*`([^`]+)`)/i);
+    if (nlMatch) {
+      const cmd = nlMatch[1].trim();
+      // Only match if it looks like a real command (not a file path or code snippet)
+      if (cmd.length > 0 && cmd.length < 200 && !cmd.includes("\n")) {
+        const beforeText = text.slice(0, nlMatch.index).trim();
+        return { name: "terminal", args: { command: cmd }, beforeText };
+      }
+    }
+
+    // ── Format 5: Code block with shell command ──
+    const codeBlockMatch = text.match(/```(?:bash|sh|shell|terminal|console|zsh)?\s*\n\s*([^\n]+?)\s*\n\s*```/);
+    if (codeBlockMatch) {
+      const cmd = codeBlockMatch[1].trim();
+      if (cmd.length > 0 && cmd.length < 200) {
+        const beforeText = text.slice(0, codeBlockMatch.index).trim();
+        return { name: "terminal", args: { command: cmd }, beforeText };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Strips tool-call syntax from display text so the user sees clean output.
+   */
+  function _cleanDisplayText(text) {
+    if (!text) return "";
+    return text
+      .replace(/Action:\s*(read|write|edit|terminal)\s*\n\s*Input:\s*\{[\s\S]*?\}/gi, "")
+      .replace(/<tool_call>[\s\S]*?(<\/tool_call>)?/g, "")
+      .replace(/```(?:bash|sh|shell|terminal|console|zsh)?\s*\n\s*[^\n]+?\s*\n\s*```/g, "")
+      .trim();
+  }
+
   // --- Streaming handler ---
 
   function handleChatEvent(payload) {
@@ -378,13 +459,11 @@ const chat = (() => {
 
     if (state === "delta") {
       hideTyping();
-      // Ensure the outer bubble exists (creates it and attaches the pending
-      // thinking block if one was built before the first text delta).
       ensureAssistantBubble();
       _accumulatedText = text;
 
-      // Display the text BUT hide <tool_call> tags from the user
-      const displayText = _accumulatedText.replace(/<tool_call>[\s\S]*?(<\/tool_call>)?$/g, "").trim();
+      // Display cleaned text (strip tool call syntax while streaming)
+      const displayText = _cleanDisplayText(_accumulatedText);
       const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
       if (answerDiv) answerDiv.textContent = displayText;
       scrollToBottom();
@@ -394,37 +473,29 @@ const chat = (() => {
       hideTyping();
 
       // ── Content-based tool call detection ─────────────────────────────
-      // Local models often can't emit structured tool_calls. The system
-      // prompt instructs them to use <tool_call>JSON</tool_call> tags.
-      // Detect these in the final accumulated text and execute them
-      // directly, bypassing the gateway's tool.invoke pipeline.
+      // Detect tool calls from ANY format the model might use:
+      // ReAct (Action/Input), <tool_call> tags, raw JSON, natural language,
+      // or code blocks. Execute them directly via handleToolInvoke.
       const finalText = text || _accumulatedText || "";
-      const toolCallMatch = finalText.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/);
 
-      if (toolCallMatch && state !== "error") {
-        console.log("[chat] Detected <tool_call> tag in content, intercepting...");
-        let toolCallData;
-        try {
-          toolCallData = JSON.parse(toolCallMatch[1]);
-        } catch (e) {
-          console.error("[chat] Failed to parse tool_call JSON:", e.message);
-        }
+      if (state !== "error") {
+        const extracted = _extractToolFromContent(finalText);
 
-        if (toolCallData && toolCallData.name) {
-          // Strip the <tool_call> tag from the displayed message — show only
-          // the text before it (reasoning summary), if any.
-          const beforeTag = finalText.split(/<tool_call>/)[0].trim();
+        if (extracted) {
+          console.log("[chat] Detected tool call in content:", extracted.name, JSON.stringify(extracted.args));
+
+          // Update display to show only the reasoning before the tool call
           if (_currentAssistantEl) {
             const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
-            if (answerDiv) answerDiv.textContent = beforeTag || "";
+            if (answerDiv) answerDiv.textContent = extracted.beforeText || "";
           }
 
           // Synthesize a tool.invoke payload and handle it
           const syntheticPayload = {
             sessionKey: _sessionKey,
             toolCallId: "content-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
-            name: toolCallData.name,
-            arguments: toolCallData.arguments || toolCallData.params || {},
+            name: extracted.name,
+            arguments: extracted.args,
           };
 
           _streaming = false;
@@ -435,7 +506,7 @@ const chat = (() => {
           _accumulatedText = "";
           updateSendButton();
 
-          // Execute the tool (async — don't block)
+          // Execute the tool
           handleToolInvoke(syntheticPayload);
           return;
         }
@@ -447,7 +518,7 @@ const chat = (() => {
       }
       if (_currentAssistantEl && finalText) {
         const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
-        if (answerDiv) answerDiv.textContent = finalText;
+        if (answerDiv) answerDiv.textContent = _cleanDisplayText(finalText);
       }
 
       if (state === "error") {

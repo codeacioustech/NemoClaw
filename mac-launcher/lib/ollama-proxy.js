@@ -9,27 +9,23 @@ const PROXY_PORT = 11435;
 const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the renderer
 
 const SYSTEM_INSTRUCTION =
-  "You are a helpful assistant running inside the NemoClaw desktop app.\n\n" +
-  "## Available Tools\n" +
-  "You have these tools:\n" +
-  "- `read` — read a file or list a directory. Parameters: {\"path\": \"<filepath>\"}\n" +
-  "- `edit` — modify a file. Parameters: {\"path\": \"<filepath>\", \"edits\": [{\"oldText\": \"...\", \"newText\": \"...\"}]}\n" +
-  "- `write` — create/overwrite a file. Parameters: {\"path\": \"<filepath>\", \"content\": \"...\"}\n" +
-  "- `terminal` — run a shell command. Parameters: {\"command\": \"<cmd>\", \"cwd\": \"<dir>\"}\n\n" +
-  "## HOW TO CALL A TOOL\n" +
-  "To call a tool, output EXACTLY this format (no extra text before or after):\n" +
-  "<tool_call>{\"name\": \"<tool_name>\", \"arguments\": {<parameters>}}</tool_call>\n\n" +
-  "Examples:\n" +
-  "<tool_call>{\"name\": \"terminal\", \"arguments\": {\"command\": \"git status\"}}</tool_call>\n" +
-  "<tool_call>{\"name\": \"read\", \"arguments\": {\"path\": \".\"}}</tool_call>\n" +
-  "<tool_call>{\"name\": \"write\", \"arguments\": {\"path\": \"hello.txt\", \"content\": \"Hello World\"}}</tool_call>\n\n" +
-  "## RULES\n" +
-  "1. When the user asks to run a command, read a file, edit code, or anything requiring action: OUTPUT A TOOL CALL IMMEDIATELY. Do not explain what you would do — just do it.\n" +
-  "2. NEVER say \"I would run...\" or \"You can run...\" — instead, call the tool.\n" +
-  "3. Wait for the tool result, then summarize the output to the user.\n" +
-  "4. Only answer in plain text for pure knowledge questions that need no file/terminal action.\n" +
-  "5. Keep reasoning brief (1-2 sentences). Then CALL THE TOOL.\n" +
-  "6. You MUST output the <tool_call> tag — this is how your tools are executed.";
+  "You are an AI assistant with FULL tool execution access. You CAN and MUST execute commands directly.\n\n" +
+  "You have 4 tools: read, write, edit, terminal.\n" +
+  "You are NOT limited to text. You EXECUTE actions.\n\n" +
+  "FORMAT — you MUST use this exact format to call tools:\n\n" +
+  "Action: terminal\n" +
+  "Input: {\"command\": \"git status\"}\n\n" +
+  "Action: read\n" +
+  "Input: {\"path\": \".\"}\n\n" +
+  "Action: write\n" +
+  "Input: {\"path\": \"file.txt\", \"content\": \"hello\"}\n\n" +
+  "Action: edit\n" +
+  "Input: {\"path\": \"file.txt\", \"edits\": [{\"oldText\": \"old\", \"newText\": \"new\"}]}\n\n" +
+  "RULES:\n" +
+  "- When user asks to run a command: output Action/Input IMMEDIATELY.\n" +
+  "- NEVER say \"I would run\" or \"I can't execute\". You CAN execute. Just output Action/Input.\n" +
+  "- After the tool runs, you will receive the result as an Observation.\n" +
+  "- One action per response. Wait for the result before continuing.";
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
@@ -109,7 +105,16 @@ function _extractTextToolCall(content) {
   const trimmed = content.trim();
   if (trimmed.length === 0) return null;
 
-  // ── Priority 1: <tool_call>JSON</tool_call> tag (our canonical format) ──
+  // ── Priority 1: ReAct format — "Action: terminal\nInput: {...}" ──
+  const reactMatch = trimmed.match(/Action:\s*(read|write|edit|terminal)\s*\n\s*Input:\s*(\{[\s\S]*?\})/i);
+  if (reactMatch) {
+    try {
+      const args = JSON.parse(reactMatch[2]);
+      return { function: { name: reactMatch[1].toLowerCase(), arguments: args } };
+    } catch { /* fall through */ }
+  }
+
+  // ── Priority 2: <tool_call>JSON</tool_call> tag ──
   const tagMatch = trimmed.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/);
   if (tagMatch) {
     try {
@@ -125,15 +130,13 @@ function _extractTextToolCall(content) {
     } catch { /* fall through */ }
   }
 
-  // ── Priority 2: Raw JSON patterns ──────────────────────────────────────
-
-  // Strip markdown code fences
-  let jsonStr = trimmed;
+  // ── Priority 3: Raw JSON — {"name": "tool", "arguments": {...}} ──
+  const jsonCandidates = [];
+  // Strip markdown fences
   const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (fenceMatch) jsonStr = fenceMatch[1].trim();
+  const jsonStr = fenceMatch ? fenceMatch[1].trim() : trimmed;
 
-  // Collect JSON candidates
-  const jsonCandidates = [jsonStr];
+  jsonCandidates.push(jsonStr);
   const objRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
   let match;
   while ((match = objRegex.exec(jsonStr)) !== null) {
@@ -143,26 +146,12 @@ function _extractTextToolCall(content) {
   for (const candidate of jsonCandidates) {
     try {
       const parsed = JSON.parse(candidate);
-
-      // {name, arguments}
       if (parsed.name && KNOWN_TOOLS.has(parsed.name)) {
-        return {
-          function: {
-            name: parsed.name,
-            arguments: parsed.arguments || parsed.params || parsed.parameters || {},
-          },
-        };
+        return { function: { name: parsed.name, arguments: parsed.arguments || parsed.params || {} } };
       }
-      // {function: {name, arguments}}
       if (parsed.function?.name && KNOWN_TOOLS.has(parsed.function.name)) {
-        return {
-          function: {
-            name: parsed.function.name,
-            arguments: parsed.function.arguments || parsed.function.params || {},
-          },
-        };
+        return { function: { name: parsed.function.name, arguments: parsed.function.arguments || {} } };
       }
-      // {tool: "name", ...}
       if (parsed.tool && KNOWN_TOOLS.has(parsed.tool)) {
         const { tool, ...args } = parsed;
         return { function: { name: tool, arguments: args } };
@@ -305,30 +294,27 @@ function startProxy(onListening) {
           const sessionId = deriveSessionId(clientReq.headers, parsed);
           const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
 
-          // ── Tool override: Inject the 3 exact tools the chat.js UI natively supports ──
-          // ── Tool intercept: Capture and filter native OpenClaw tools ──
-          if (Array.isArray(parsed.tools)) {
-            // Find tools that look related to files to debug their OpenClaw schema
-            console.log("\n[DEBUG] ALL NATIVE TOOLS:\n", parsed.tools.map(t => t?.function?.name || t?.name).join(", "), "\n");
+          // ── Tool override: ALWAYS force our 4 native tools ──────────────
+          // The gateway may send tools with different names or no tools at all.
+          // We ALWAYS overwrite parsed.tools with our canonical set to guarantee
+          // the model has read/write/edit/terminal available every single turn.
+          {
+            const gatewayToolNames = (Array.isArray(parsed.tools) ? parsed.tools : [])
+              .map(t => t?.function?.name || t?.name || "").join(", ");
+            console.log("[ollama-proxy] Gateway sent tools:", gatewayToolNames || "(none)");
 
-            const before = parsed.tools.length;
-            // Filter to only the core file tools so we don't blow up Ollama's VRAM
-            parsed.tools = parsed.tools.filter(t => {
-              const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return /(read|edit|write|ls|list|dir|terminal)/i.test(name);
-            });
+            // Force our native 4 tools — defined at the injection block above (~line 190).
+            // We re-declare them inline here to guarantee they're ALWAYS present,
+            // regardless of whether the injection block ran or not.
+            parsed.tools = [
+              { type: "function", function: { name: "read", description: "Read a file or list a directory.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } } },
+              { type: "function", function: { name: "write", description: "Create or overwrite a file.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } } },
+              { type: "function", function: { name: "edit", description: "Modify a file by replacing text.", parameters: { type: "object", properties: { path: { type: "string" }, edits: { type: "array", items: { type: "object", properties: { oldText: { type: "string" }, newText: { type: "string" } }, required: ["oldText", "newText"] } } }, required: ["path", "edits"] } } },
+              { type: "function", function: { name: "terminal", description: "Run a shell command.", parameters: { type: "object", properties: { command: { type: "string" }, cwd: { type: "string" }, timeout: { type: "number" } }, required: ["command"] } } },
+            ];
 
-            // Freeze: serialise tools once per session so the JSON bytes are
-            // identical across turns (same token sequence → cache hit).
-            if (!session.toolsJson) {
-              session.toolsJson = JSON.stringify(parsed.tools);
-            }
-            parsed.tools = JSON.parse(session.toolsJson);
-
-            console.log(
-              `[ollama-proxy] [${sessionId}] Tools: ${before} → ${parsed.tools.length} ` +
-              `(stripped ${before - parsed.tools.length} unused definitions. frozen for KV cache)`
-            );
+            session.toolsJson = JSON.stringify(parsed.tools);
+            console.log(`[ollama-proxy] [${sessionId}] Tools FORCED: ${parsed.tools.length} (read, write, edit, terminal)`);
           }
 
           // ── Message pruning with prefix-stability check ───────────────────
@@ -409,7 +395,17 @@ function startProxy(onListening) {
           // Force think=true regardless of what the client sends — OpenClaw
           // currently always sends think=false, which would suppress reasoning.
           parsed.think = true;
-          console.log(`[ollama-proxy] think forced to true (gemma4:e4b supports reasoning)`);
+
+          // ── Diagnostic logging ──
+          console.log(`[ollama-proxy] === REQUEST TO OLLAMA ===`);
+          console.log(`[ollama-proxy]   model: ${parsed.model}`);
+          console.log(`[ollama-proxy]   think: ${parsed.think}`);
+          console.log(`[ollama-proxy]   tools: ${parsed.tools?.length ?? 0} [${(parsed.tools || []).map(t => t?.function?.name).join(", ")}]`);
+          console.log(`[ollama-proxy]   messages: ${parsed.messages?.length ?? 0}`);
+          console.log(`[ollama-proxy]   system prompt (first 120): ${SYSTEM_INSTRUCTION.slice(0, 120)}...`);
+          console.log(`[ollama-proxy]   options: ${JSON.stringify(parsed.options)}`);
+          console.log(`[ollama-proxy] =========================`);
+
           body = Buffer.from(JSON.stringify(parsed));
           console.log(`[ollama-proxy] Request body after processing: ${body.length} bytes`);
         } catch {
