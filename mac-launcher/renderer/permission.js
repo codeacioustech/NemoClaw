@@ -121,13 +121,24 @@ const permission = (() => {
     if (titleEl) titleEl.textContent = meta.title;
 
     // Description — include path if available, or terminal-specific info
+    // Icon — must be queried BEFORE the description block so that
+    // terminal-specific rendering can override the icon color class.
+    const iconWrap = $("#perm-icon-wrap");
+    const iconEl = $("#perm-icon");
+    if (iconWrap) {
+      iconWrap.className = "perm-icon-wrap " + meta.colorClass;
+    }
+    if (iconEl) {
+      iconEl.innerHTML = meta.iconSvg;
+    }
+
     const descEl = $("#perm-desc");
     if (descEl) {
       if (name === "terminal" && args) {
         // Terminal-specific rendering with risk badge
         const risk = args._risk || "high";
         const riskColors = { low: "perm-icon-primary", medium: "perm-icon-warning", high: "perm-icon-danger" };
-        // Override icon color based on risk
+        // Override icon color based on risk (iconWrap is already defined above)
         if (iconWrap) iconWrap.className = "perm-icon-wrap " + (riskColors[risk] || "perm-icon-danger");
         descEl.innerHTML = meta.desc +
           '<br><span class="perm-risk-badge perm-risk-' + risk + '">' + risk.toUpperCase() + ' RISK</span>' +
@@ -138,16 +149,6 @@ const permission = (() => {
       } else {
         descEl.textContent = meta.desc;
       }
-    }
-
-    // Icon
-    const iconWrap = $("#perm-icon-wrap");
-    const iconEl = $("#perm-icon");
-    if (iconWrap) {
-      iconWrap.className = "perm-icon-wrap " + meta.colorClass;
-    }
-    if (iconEl) {
-      iconEl.innerHTML = meta.iconSvg;
     }
 
     // Payload list

@@ -8,6 +8,18 @@ const OLLAMA_PORT = 11434;
 const PROXY_PORT = 11435;
 const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the renderer
 
+// ── Reasoning loop detection constants ─────────────────────────────────────
+const MAX_THINK_TOKENS = 500;       // Max reasoning tokens before force-stopping
+const MAX_REASONING_MS = 8000;      // Max time in reasoning phase before intervention
+const REASONING_LOOP_PATTERNS = [
+  /I would run/i, /I can't execute/i, /I cannot execute/i,
+  /Let me think/i, /I('ll| will) need to/i,
+  /Here's what I('d| would)/i, /I should/i,
+  /Let me reason/i, /Let me consider/i,
+  /I('ll| will) explain/i, /Let me explain/i,
+  /I don't have.*access/i, /I'm unable to/i,
+];
+
 const SYSTEM_INSTRUCTION =
   "You are an AI assistant with FULL tool execution access. You CAN and MUST execute commands directly.\n\n" +
   "You have 4 tools: read, write, edit, terminal.\n" +
@@ -22,8 +34,10 @@ const SYSTEM_INSTRUCTION =
   "Action: edit\n" +
   "Input: {\"path\": \"file.txt\", \"edits\": [{\"oldText\": \"old\", \"newText\": \"new\"}]}\n\n" +
   "RULES:\n" +
-  "- When user asks to run a command: output Action/Input IMMEDIATELY.\n" +
-  "- NEVER say \"I would run\" or \"I can't execute\". You CAN execute. Just output Action/Input.\n" +
+  "- When user asks to run a command: output Action/Input IMMEDIATELY on the FIRST line.\n" +
+  "- NEVER say \"I would run\" or \"I can't execute\" or \"Let me think\". You CAN execute.\n" +
+  "- Do NOT explain what you will do. Do NOT add preamble. Just output Action/Input.\n" +
+  "- CRITICAL: Maximum 1 sentence before Action/Input. No multi-paragraph reasoning.\n" +
   "- After the tool runs, you will receive the result as an Observation.\n" +
   "- One action per response. Wait for the result before continuing.";
 
@@ -447,6 +461,13 @@ function startProxy(onListening) {
           let detected = false; // whether we've checked for the JSON pattern
           let isWrapped = false;
 
+          // ── Reasoning loop detection state ──────────────────────────────
+          let _thinkTokenCount = 0;          // number of reasoning tokens received
+          let _thinkStartTime = null;        // timestamp of first reasoning token
+          let _accumulatedThinking = "";     // full reasoning text for pattern matching
+          let _reasoningForceKilled = false; // true if we force-ended this response
+          // ────────────────────────────────────────────────────────────────
+
           // Signal start of a new reasoning block to all SSE listeners
           _broadcastThink({ type: "thinking_start" });
 
@@ -456,9 +477,15 @@ function startProxy(onListening) {
               console.timeLog(`[ollama-proxy] ${_reqId} total-round-trip`,
                 "← first chunk from Ollama");
             }
+
+            // If we already force-killed this response, discard further data
+            if (_reasoningForceKilled) return;
+
             const lines = chunk.toString().split("\n").filter(Boolean);
 
             for (const line of lines) {
+              if (_reasoningForceKilled) break;
+
               let obj;
               try {
                 obj = JSON.parse(line);
@@ -474,6 +501,63 @@ function startProxy(onListening) {
               const thinkToken = obj?.message?.thinking;
               if (typeof thinkToken === "string" && thinkToken.length > 0) {
                 _broadcastThink({ type: "thinking_delta", text: thinkToken });
+
+                // ── Reasoning loop detection ────────────────────────────────
+                _thinkTokenCount++;
+                _accumulatedThinking += thinkToken;
+                if (!_thinkStartTime) _thinkStartTime = Date.now();
+
+                const thinkElapsed = Date.now() - _thinkStartTime;
+                const overTokenLimit = _thinkTokenCount > MAX_THINK_TOKENS;
+                const overTimeLimit = thinkElapsed > MAX_REASONING_MS;
+
+                if (overTokenLimit || overTimeLimit) {
+                  // Check for loop patterns in reasoning text
+                  const hasLoopPattern = REASONING_LOOP_PATTERNS.some(p => p.test(_accumulatedThinking));
+
+                  // Try to extract a tool call from reasoning text
+                  const thinkToolCall = _extractTextToolCall(_accumulatedThinking);
+
+                  if (hasLoopPattern || overTokenLimit) {
+                    console.log(
+                      `[ollama-proxy] ⚠️  Reasoning loop detected: ` +
+                      `tokens=${_thinkTokenCount}, elapsed=${thinkElapsed}ms, ` +
+                      `pattern=${hasLoopPattern}, toolFound=${!!thinkToolCall}`
+                    );
+
+                    _reasoningForceKilled = true;
+                    _broadcastThink({ type: "thinking_force_end", reason: "loop_detected" });
+
+                    if (thinkToolCall) {
+                      // Emit synthetic tool_calls frame extracted from thinking
+                      console.log(`[ollama-proxy] Force-emitting tool call from reasoning: ${thinkToolCall.function.name}`);
+                      const syntheticFrame = JSON.stringify({
+                        model: obj.model || "",
+                        message: {
+                          role: "assistant",
+                          content: "",
+                          tool_calls: [thinkToolCall],
+                        },
+                        done: false,
+                      });
+                      clientRes.write(syntheticFrame + "\n");
+                    }
+
+                    // Emit done frame to close the response
+                    const doneFrame = JSON.stringify({
+                      model: obj.model || "",
+                      message: { role: "assistant", content: "" },
+                      done: true,
+                      done_reason: "force_stop",
+                    });
+                    clientRes.write(doneFrame + "\n");
+
+                    // Destroy the upstream connection to stop Ollama generating
+                    try { proxyRes.destroy(); } catch { /* ignore */ }
+                    break;
+                  }
+                }
+                // ────────────────────────────────────────────────────────────
               }
               // ──────────────────────────────────────────────────────────────
 
@@ -557,30 +641,37 @@ function startProxy(onListening) {
           });
 
           proxyRes.on("end", () => {
-            // Signal end of reasoning block
-            _broadcastThink({ type: "thinking_end" });
+            // Signal end of reasoning block (unless already force-ended)
+            if (!_reasoningForceKilled) {
+              _broadcastThink({ type: "thinking_end" });
+            }
 
             console.timeEnd(`[ollama-proxy] ${_reqId} total-round-trip`);
+            if (_reasoningForceKilled) {
+              console.log(`[ollama-proxy] [${_reqId}] Response was force-killed due to reasoning loop`);
+            }
 
             // Flush remaining buffer, stripping JSON wrapper suffix if detected
-            if (isWrapped && accumulator) {
-              const cleaned = accumulator.replace(JSON_WRAPPER_SUFFIX, "");
-              if (cleaned) {
+            if (!_reasoningForceKilled) {
+              if (isWrapped && accumulator) {
+                const cleaned = accumulator.replace(JSON_WRAPPER_SUFFIX, "");
+                if (cleaned) {
+                  const flush = JSON.stringify({
+                    model: "",
+                    message: { role: "assistant", content: cleaned },
+                    done: false,
+                  });
+                  clientRes.write(flush + "\n");
+                }
+              } else if (accumulator && !detected) {
+                // Short response that never hit detection threshold
                 const flush = JSON.stringify({
                   model: "",
-                  message: { role: "assistant", content: cleaned },
+                  message: { role: "assistant", content: accumulator },
                   done: false,
                 });
                 clientRes.write(flush + "\n");
               }
-            } else if (accumulator && !detected) {
-              // Short response that never hit detection threshold
-              const flush = JSON.stringify({
-                model: "",
-                message: { role: "assistant", content: accumulator },
-                done: false,
-              });
-              clientRes.write(flush + "\n");
             }
             clientRes.end();
           });

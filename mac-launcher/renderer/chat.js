@@ -15,6 +15,19 @@ const chat = (() => {
   let _thinkingActive = false;      // true while reasoning tokens are flowing
   let _accumulatedText = "";
 
+  // ── Reasoning loop detection (renderer-side safety net) ───────────────
+  const MAX_REASONING_TOKENS_UI = 600;    // slightly above proxy limit as fallback
+  const REASONING_WATCHDOG_MS = 20000;    // overall watchdog timer for reasoning
+  let _reasoningTokenCount = 0;           // tokens in current reasoning phase
+  let _reasoningText = "";                // accumulated reasoning text
+  let _watchdogTimer = null;              // overall response watchdog
+  const LOOP_PHRASES = [
+    /I would run/i, /I can't execute/i, /I cannot execute/i,
+    /Let me think/i, /Let me reason/i, /I('ll| will) need to/i,
+    /I should/i, /I'm unable to/i,
+  ];
+  // ─────────────────────────────────────────────────────────────────────────
+
   const $ = (sel) => document.querySelector(sel);
 
   function open() {
@@ -269,8 +282,63 @@ const chat = (() => {
     _currentThinkEl = null;
     _currentThinkBody = null;
     _thinkingActive = false;
+    _reasoningTokenCount = 0;
+    _reasoningText = "";
     updateSendButton();
     showTyping();
+
+    // ── Reasoning watchdog timer ─────────────────────────────────────
+    // If no tool call or final response arrives within the watchdog
+    // window, and thinking tokens are still streaming, force-end the
+    // response and notify the user.
+    if (_watchdogTimer) clearTimeout(_watchdogTimer);
+    _watchdogTimer = setTimeout(() => {
+      _watchdogTimer = null;
+      if (!_streaming) return;
+
+      // Check if we're stuck in reasoning with no content
+      if (_reasoningTokenCount > 0 && !_accumulatedText) {
+        console.log(`[chat] ⚠️ Reasoning watchdog fired: ${_reasoningTokenCount} think tokens, no content`);
+
+        // Try to extract a tool from accumulated reasoning
+        const extracted = _extractToolFromContent(_reasoningText);
+        if (extracted) {
+          console.log("[chat] Watchdog: found tool in reasoning text:", extracted.name);
+          const syntheticPayload = {
+            sessionKey: _sessionKey,
+            toolCallId: "watchdog-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+            name: extracted.name,
+            arguments: extracted.args,
+          };
+          _streaming = false;
+          _currentAssistantEl = null;
+          _currentThinkEl = null;
+          _currentThinkBody = null;
+          _thinkingActive = false;
+          _reasoningTokenCount = 0;
+          _reasoningText = "";
+          hideTyping();
+          updateSendButton();
+          handleToolInvoke(syntheticPayload);
+        } else {
+          // No tool found — notify the user
+          _streaming = false;
+          _currentAssistantEl = null;
+          _currentThinkEl = null;
+          _currentThinkBody = null;
+          _thinkingActive = false;
+          _reasoningTokenCount = 0;
+          _reasoningText = "";
+          hideTyping();
+          updateSendButton();
+          appendSystemMessage(
+            "⚠️ The AI spent too long reasoning without taking action. " +
+            "Try rephrasing your request more directly (e.g., \"run git status\")."
+          );
+        }
+      }
+    }, REASONING_WATCHDOG_MS);
+    // ─────────────────────────────────────────────────────────────────
 
     try {
       await gateway.sendMessage(key, text);
@@ -304,6 +372,8 @@ const chat = (() => {
           // at once after the final answer. By eagerly creating the bubble
           // here we guarantee every token renders immediately as it arrives.
           _thinkingActive = true;
+          _reasoningTokenCount = 0;
+          _reasoningText = "";
 
           const details = document.createElement("details");
           details.className = "chat-reasoning";
@@ -340,7 +410,39 @@ const chat = (() => {
 
         } else if (payload.type === "thinking_delta" && _currentThinkBody) {
           _currentThinkBody.textContent += payload.text;
+          _reasoningTokenCount++;
+          _reasoningText += payload.text;
           scrollToBottom();
+
+          // ── Renderer-side reasoning loop detection (safety net) ──────
+          if (_reasoningTokenCount > MAX_REASONING_TOKENS_UI) {
+            const hasLoopPhrase = LOOP_PHRASES.some(p => p.test(_reasoningText));
+            if (hasLoopPhrase) {
+              console.log(`[chat] ⚠️ Renderer detected reasoning loop: ${_reasoningTokenCount} tokens`);
+              // The proxy should have already killed this, but if it didn't,
+              // add a warning to the UI
+              if (_currentThinkEl) {
+                const warnEl = document.createElement("div");
+                warnEl.className = "chat-reasoning-warning";
+                warnEl.textContent = "⚠️ Reasoning loop detected — waiting for proxy to intervene...";
+                _currentThinkEl.appendChild(warnEl);
+                scrollToBottom();
+              }
+            }
+          }
+
+        } else if (payload.type === "thinking_force_end") {
+          // Proxy force-ended the reasoning due to loop detection
+          _thinkingActive = false;
+          if (_currentThinkEl) {
+            _currentThinkEl.open = false;
+            const warnEl = document.createElement("div");
+            warnEl.className = "chat-reasoning-warning";
+            warnEl.textContent = "⚠️ Reasoning loop detected and interrupted. Forcing action.";
+            _currentThinkEl.appendChild(warnEl);
+          }
+          // Clear the watchdog since the proxy handled it
+          if (_watchdogTimer) { clearTimeout(_watchdogTimer); _watchdogTimer = null; }
 
         } else if (payload.type === "thinking_end") {
           _thinkingActive = false;
@@ -532,6 +634,9 @@ const chat = (() => {
       _currentThinkBody = null;
       _thinkingActive = false;
       _accumulatedText = "";
+      _reasoningTokenCount = 0;
+      _reasoningText = "";
+      if (_watchdogTimer) { clearTimeout(_watchdogTimer); _watchdogTimer = null; }
       updateSendButton();
       scrollToBottom();
     }
