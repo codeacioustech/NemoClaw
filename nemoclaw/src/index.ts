@@ -463,6 +463,23 @@ export default function register(api: OpenClawPluginApi): void {
       // Map host paths to sandbox paths
       const resolvedPath = resolvePathForSandbox(filePath);
 
+      // Check if path is directory (for Read tool) - suggest Glob instead
+      const isReadTool = toolName === "read";
+      const looksLikeDir =
+        resolvedPath.endsWith("/") || resolvedPath === "." || !resolvedPath.includes(".");
+
+      if (isReadTool && looksLikeDir) {
+        return {
+          block: true,
+          blockReason:
+            `❌ **Cannot read directory as file**\n\n` +
+            `Path: \`${resolvedPath}\`\n\n` +
+            `**Use "Glob" tool instead of "Read"** to list files.\n` +
+            `Example: use Glob with path \`${resolvedPath}/*\`\n\n` +
+            `Or ask me: "List files in ${resolvedPath}"`,
+        };
+      }
+
       // Check permission (deny-first, cached)
       const hasAccess = checkAccess(resolvedPath, action, sandboxName);
       if (!hasAccess) {

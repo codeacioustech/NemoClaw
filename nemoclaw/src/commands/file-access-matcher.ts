@@ -140,9 +140,13 @@ export function resolvePathForSandbox(filePath: string): string {
   }
 
   // Detect if running in sandbox
-  const isSandbox = process.env.HOME?.startsWith("/sandbox") ?? false;
   const sandboxRoot = "/sandbox";
   const hostHome = process.env.HOME ?? "/tmp";
+
+  // Handle empty or current directory
+  if (!filePath || filePath === ".") {
+    return `${sandboxRoot}/`;
+  }
 
   // Host path patterns to replace
   const hostPatterns: Array<{ from: RegExp; to: string }> = [
