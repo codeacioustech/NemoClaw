@@ -387,41 +387,14 @@ function startProxy(onListening) {
           parsed.keep_alive = "10m";
 
           // Constrain context window for faster prompt eval.
-          // num_predict caps total generation (thinking + response).
-          // num_predict_thinking (Ollama 0.9+) caps thinking tokens independently
-          // so reasoning cannot starve the tool_calls output.
-          parsed.options = {
-            ...(parsed.options || {}),
-            num_ctx: 8192,
-            num_predict: 6144,
-            num_predict_thinking: 2048,
-          };
+          // num_predict caps total generation (thinking + response) so reasoning
+          // cannot exhaust the context window and starve the tool_calls output.
+          parsed.options = { ...(parsed.options || {}), num_ctx: 8192, num_predict: 4096 };
 
           // gemma4:e4b supports native reasoning/thinking mode.
-          // Conditionally enable thinking: disable on tool-result turns so the
-          // model acts immediately instead of re-reasoning about the result.
-          const lastMsg = parsed.messages?.[parsed.messages.length - 1];
-          const isToolResultTurn = lastMsg && (
-            lastMsg.role === 'tool' ||
-            (lastMsg.role === 'user' && typeof lastMsg.content === 'string' &&
-             lastMsg.content.startsWith('[Tool Result:'))
-          );
-
-          // Check for reasoning loop: if the model has produced multiple
-          // consecutive reasoning-only turns, force thinking off and nudge
-          // the system prompt to demand immediate action.
-          const reasoningCount = session.reasoningOnlyCount || 0;
-          if (reasoningCount >= 2) {
-            parsed.think = false;
-            parsed.messages[0].content += "\n\nIMPORTANT: You MUST output an Action/Input tool call NOW. Do NOT reason further. Output your action IMMEDIATELY.";
-            console.log(`[ollama-proxy] [${sessionId}] Forcing think=false after ${reasoningCount} reasoning-only turns`);
-          } else {
-            parsed.think = !isToolResultTurn;
-          }
-
-          if (isToolResultTurn) {
-            console.log(`[ollama-proxy] [${sessionId}] Tool-result turn detected — think=false`);
-          }
+          // Force think=true regardless of what the client sends — OpenClaw
+          // currently always sends think=false, which would suppress reasoning.
+          parsed.think = true;
 
           // ── Diagnostic logging ──
           console.log(`[ollama-proxy] === REQUEST TO OLLAMA ===`);
@@ -471,10 +444,8 @@ function startProxy(onListening) {
 
           let accumulator = "";
           let fullContent = "";   // accumulates ALL content tokens to detect text-based tool calls
-          let fullThinking = "";  // accumulates thinking/reasoning tokens for fallback tool recovery
           let detected = false; // whether we've checked for the JSON pattern
           let isWrapped = false;
-          let emittedToolCalls = false; // tracks whether any tool_calls were produced this turn
 
           // Signal start of a new reasoning block to all SSE listeners
           _broadcastThink({ type: "thinking_start" });
@@ -502,7 +473,6 @@ function startProxy(onListening) {
               // it here and broadcast to SSE subscribers before forwarding.
               const thinkToken = obj?.message?.thinking;
               if (typeof thinkToken === "string" && thinkToken.length > 0) {
-                fullThinking += thinkToken;
                 _broadcastThink({ type: "thinking_delta", text: thinkToken });
               }
               // ──────────────────────────────────────────────────────────────
@@ -514,21 +484,15 @@ function startProxy(onListening) {
 
               // Non-content lines, tool_calls, or end-of-stream signals: forward directly
               if (typeof token !== "string" || obj?.message?.tool_calls || obj?.done) {
-                // Track structured tool_calls from the model
-                if (obj?.message?.tool_calls) {
-                  emittedToolCalls = true;
-                }
                 // ── Text-based tool call recovery ──────────────────────────────
                 // Local models sometimes emit tool calls as JSON text in content
                 // instead of structured tool_calls. Detect this on the done signal
                 // and convert it to a proper tool_calls response so the gateway
-                // can process it. Also check thinking tokens as a fallback.
-                if (obj?.done && !obj?.message?.tool_calls && !emittedToolCalls) {
-                  const toolCall = _extractTextToolCall(fullContent) || _extractTextToolCall(fullThinking);
+                // can process it.
+                if (obj?.done && !obj?.message?.tool_calls && fullContent.length > 0) {
+                  const toolCall = _extractTextToolCall(fullContent);
                   if (toolCall) {
-                    emittedToolCalls = true;
-                    const source = _extractTextToolCall(fullContent) ? "content" : "thinking";
-                    console.log(`[ollama-proxy] Recovered text-based tool call from ${source}: ${toolCall.function.name}`);
+                    console.log(`[ollama-proxy] Recovered text-based tool call: ${toolCall.function.name}`);
                     // Emit a synthetic tool_calls frame before the done frame
                     const syntheticFrame = JSON.stringify({
                       model: obj.model || "",
@@ -618,20 +582,6 @@ function startProxy(onListening) {
               });
               clientRes.write(flush + "\n");
             }
-            // ── Reasoning loop tracking ──────────────────────────────────
-            // If this turn produced no content and no tool calls, it was a
-            // reasoning-only turn. Track consecutive occurrences so the next
-            // request can force think=false and break the loop.
-            const trimmedFinalContent = fullContent.trim();
-            if (!trimmedFinalContent && !emittedToolCalls) {
-              session.reasoningOnlyCount = (session.reasoningOnlyCount || 0) + 1;
-              console.log(`[ollama-proxy] [${sessionId}] Reasoning-only turn #${session.reasoningOnlyCount} (no content, no tool calls)`);
-            } else {
-              session.reasoningOnlyCount = 0;
-            }
-            _sessionStore.set(sessionId, session);
-            // ─────────────────────────────────────────────────────────────
-
             clientRes.end();
           });
         }

@@ -120,9 +120,6 @@ const permission = (() => {
     const titleEl = $("#perm-title");
     if (titleEl) titleEl.textContent = meta.title;
 
-    // Icon (declared before descEl block so terminal risk coloring can use it)
-    const iconWrap = $("#perm-icon-wrap");
-
     // Description — include path if available, or terminal-specific info
     const descEl = $("#perm-desc");
     if (descEl) {
@@ -143,7 +140,8 @@ const permission = (() => {
       }
     }
 
-    // Icon (iconWrap already declared above)
+    // Icon
+    const iconWrap = $("#perm-icon-wrap");
     const iconEl = $("#perm-icon");
     if (iconWrap) {
       iconWrap.className = "perm-icon-wrap " + meta.colorClass;
