@@ -18,6 +18,7 @@ import {
   loadOnboardConfig,
 } from "./onboard/config.js";
 import { scanForSecrets, isMemoryPath } from "./security/secret-scanner.js";
+import { checkAccess, resolvePathForSandbox } from "./commands/file-access-matcher.js";
 import {
   commandGrant,
   commandRevoke,
@@ -25,7 +26,6 @@ import {
   commandDeny,
   commandCleanup,
 } from "./commands/file-access.js";
-import { checkAccess } from "./commands/file-access-matcher.js";
 import type { FileAction } from "./commands/file-access-types.js";
 
 // ---------------------------------------------------------------------------
@@ -460,17 +460,20 @@ export default function register(api: OpenClawPluginApi): void {
       // Resolve and normalize path
       const filePath = api.resolvePath(rawPath);
 
+      // Map host paths to sandbox paths
+      const resolvedPath = resolvePathForSandbox(filePath);
+
       // Check permission (deny-first, cached)
-      const hasAccess = checkAccess(filePath, action, sandboxName);
+      const hasAccess = checkAccess(resolvedPath, action, sandboxName);
       if (!hasAccess) {
-        api.logger.warn(`[file-access] Blocked ${action} on ${filePath} — no permission`);
+        api.logger.warn(`[file-access] Blocked ${action} on ${resolvedPath} — no permission`);
         const actionFlag = action === "write" ? "rw" : "r";
 
         return {
           block: true,
           blockReason:
             `🔐 **File Access Request**\n\n` +
-            `Path: \`${filePath}\`\n` +
+            `Path: \`${resolvedPath}\`\n` +
             `Action: ${action.toUpperCase()}\n\n` +
             `**[1] Allow (this chat)** - until chat ends\n` +
             `**[2] Allow (session)** - until sandbox restarts\n` +
