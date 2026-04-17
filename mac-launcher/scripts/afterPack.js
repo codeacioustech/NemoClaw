@@ -5,23 +5,20 @@ const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
-// Modules excluded from the app bundle to reduce size (~435 MB saved).
-// These are transitive deps of openclaw that the mac-launcher never uses.
+// Modules excluded from the app bundle to reduce size.
+// ONLY exclude modules that are confirmed lazy-loaded (not imported at
+// gateway startup). OpenClaw eagerly imports messaging SDKs (@slack,
+// grammy, matrix-js-sdk, etc.) at boot — excluding those crashes the gateway.
+//
+// Safe to exclude: binaries/engines that are only invoked when a specific
+// tool is triggered by the user, not at module load time.
 const EXCLUDE_PATTERNS = [
-  "playwright-core",        // 150 MB — browser automation, not used in local chat
+  "playwright-core",        // 150 MB — browser automation, lazy-loaded by web-browse tool
   "@playwright",
-  "@aws-sdk",               //  75 MB — Bedrock cloud inference, using Ollama instead
-  "matrix-js-sdk",          //  20 MB — Matrix messaging, not configured
-  "@matrix-org",
-  "grammy",                 //  15 MB — Telegram bot framework, not configured
-  "@grammyjs",
-  "@slack",                 //  20 MB — Slack integration, not configured
-  "@line",                  //  10 MB — LINE messaging, not configured
-  "@larksuiteoapi",         //  10 MB — Lark messaging, not configured
-  "jimp",                   //  50 MB — redundant with sharp
-  "@jimp",
-  // pdfjs-dist kept — users may mount folders with PDFs
-  "node-edge-tts",          //  10 MB — text-to-speech, not used
+  "@aws-sdk",               //  75 MB — Bedrock inference, lazy-loaded by provider selection
+  "node-edge-tts",          //  10 MB — text-to-speech, lazy-loaded
+  // ~235 MB saved. Messaging SDKs (@slack, grammy, matrix, @line,
+  // @larksuiteoapi, jimp) are NOT excluded — OpenClaw imports them eagerly.
 ];
 
 function isExcluded(name) {
