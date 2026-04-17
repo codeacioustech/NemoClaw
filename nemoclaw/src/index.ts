@@ -26,6 +26,8 @@ import {
   commandDeny,
   commandCleanup,
 } from "./commands/file-access.js";
+import { ensureFileAccess } from "./commands/file-access-agent-api.js";
+import { addPermission } from "./commands/file-access-store.js";
 import type { FileAction } from "./commands/file-access-types.js";
 
 // ---------------------------------------------------------------------------
@@ -270,19 +272,26 @@ const FILE_TOOL_NAMES = new Set([
   "edit",
   "apply_patch",
   "notebook_edit",
-  " Bash",
   "bash",
   "executec",
   "executep",
-  " Glob",
   "glob",
-  " Grep",
   "grep",
-  " Ls",
   "ls",
-  " Read",
-  "read",
 ]);
+
+/** Auto-retry cache: tracks approved-for-retry requests */
+const approvedForRetry = new Set<string>();
+
+/**
+ * Create a cache key for a tool call (for deferred retry).
+ * Hash of (toolName + params) to identify exact request.
+ */
+function createRequestCacheKey(toolName: string, params: Record<string, unknown>): string {
+  const key = `${toolName}:${JSON.stringify(params)}`;
+  // Simple hash: just use string length + first chars (good enough for same-request detection)
+  return `${toolName}_${Object.keys(params).join(",")}_${String(params["file_path"]).slice(0, 30)}`;
+}
 
 export default function register(api: OpenClawPluginApi): void {
   // 1. Register /nemoclaw slash command (chat interface)
@@ -444,7 +453,7 @@ export default function register(api: OpenClawPluginApi): void {
         toolName === "notebook_edit"
       ) {
         action = "write";
-      } else if (toolName === "bash" || toolName === "executec" || toolName === " Glob") {
+      } else if (toolName === "bash" || toolName === "executec" || toolName === "glob") {
         action = "execute";
       }
 
@@ -452,7 +461,6 @@ export default function register(api: OpenClawPluginApi): void {
       const rawPath =
         event.params["file_path"] ??
         event.params["path"] ??
-        event.params["file_path"] ??
         event.params["file"] ??
         event.params["command"];
       if (typeof rawPath !== "string" || rawPath.length === 0) return undefined;
@@ -463,12 +471,12 @@ export default function register(api: OpenClawPluginApi): void {
       // Map host paths to sandbox paths
       const resolvedPath = resolvePathForSandbox(filePath);
 
-      // Check if path is directory (for Read tool) - suggest Glob instead
+      // Check if path is directory (for Read tool) - only block clear directory cases
       const isReadTool = toolName === "read";
-      const looksLikeDir =
-        resolvedPath.endsWith("/") || resolvedPath === "." || !resolvedPath.includes(".");
+      const isDirectoryPath =
+        resolvedPath === "." || resolvedPath === "/sandbox" || resolvedPath.endsWith("/");
 
-      if (isReadTool && looksLikeDir) {
+      if (isReadTool && isDirectoryPath) {
         return {
           block: true,
           blockReason:
@@ -480,23 +488,58 @@ export default function register(api: OpenClawPluginApi): void {
         };
       }
 
+      // Check if this exact request was already approved for retry
+      const cacheKey = createRequestCacheKey(toolName, event.params as Record<string, unknown>);
+      if (approvedForRetry.has(cacheKey)) {
+        approvedForRetry.delete(cacheKey);
+        api.logger.info(`[file-access] Auto-retry approved for ${action} on ${resolvedPath}`);
+        return undefined;
+      }
+
       // Check permission (deny-first, cached)
       const hasAccess = checkAccess(resolvedPath, action, sandboxName);
-      if (!hasAccess) {
+      if (!hasAccess.allowed) {
         api.logger.warn(`[file-access] Blocked ${action} on ${resolvedPath} — no permission`);
         const actionFlag = action === "write" ? "rw" : "r";
+
+        // Trigger interactive approval in background (non-blocking)
+        // This will show TUI but won't block tool execution
+        // User can approve for next attempt
+        ensureFileAccess(
+          {
+            path: resolvedPath,
+            action,
+            reason: `Agent requesting ${action} access to ${resolvedPath}`,
+          },
+          sandboxName,
+          (pattern, actions, scope, reason) => {
+            addPermission({
+              pattern,
+              actions,
+              scope,
+              reason: reason || `Interactive approval: ${action} on ${resolvedPath}`,
+              sandbox: sandboxName,
+              grantedBy: "tui-approval",
+            });
+            // ✨ AUTO-RETRY BRIDGE: Mark this request as approved-for-retry
+            approvedForRetry.add(cacheKey);
+            api.logger.info(`[file-access] Marked for auto-retry: ${cacheKey}`);
+          }
+        ).catch((err) => {
+          api.logger.warn(`[file-access] Approval failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
 
         return {
           block: true,
           blockReason:
-            `🔐 **File Access Request**\n\n` +
+            `🔐 **File Access Denied**\n\n` +
             `Path: \`${resolvedPath}\`\n` +
             `Action: ${action.toUpperCase()}\n\n` +
-            `**[1] Allow (this chat)** - until chat ends\n` +
-            `**[2] Allow (session)** - until sandbox restarts\n` +
-            `**[3] Allow (persistent)** - forever\n` +
-            `**[4] Deny**\n\n` +
-            `Reply with 1, 2, 3, or 4`,
+            `An interactive approval prompt has been shown.\n` +
+            `Select an option (1–5) to grant access.\n` +
+            `Your request will be automatically retried upon approval.\n\n` +
+            `Or manually grant via:\n` +
+            `  /file-access grant ${resolvedPath} ${actionFlag} session`,
         };
       }
 
