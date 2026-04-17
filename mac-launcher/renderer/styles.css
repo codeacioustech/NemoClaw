@@ -1012,6 +1012,13 @@ details.chat-reasoning[open] .chat-reasoning-summary::before {
 .perm-icon-primary { background: var(--primary-muted); color: var(--primary-light); }
 .perm-icon-success { background: var(--success-muted); color: var(--success); }
 .perm-icon-muted   { background: var(--surface-3); color: var(--text-secondary); }
+.perm-icon-danger  { background: var(--danger-muted, rgba(239,68,68,0.15)); color: var(--danger, #ef4444); }
+
+/* Terminal risk badges */
+.perm-risk-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; margin-top:4px; }
+.perm-risk-low    { background: var(--primary-muted); color: var(--primary-light); }
+.perm-risk-medium { background: var(--warning-muted); color: var(--warning); }
+.perm-risk-high   { background: var(--danger-muted, rgba(239,68,68,0.15)); color: var(--danger, #ef4444); }
 
 .perm-type {
   font-size: 11px; font-weight: 600; text-transform: uppercase;

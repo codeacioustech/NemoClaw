@@ -23,4 +23,8 @@ contextBridge.exposeInMainWorld("launcher", {
   getMountedFolders: () => ipcRenderer.invoke("get-mounted-folders"),
   mountFolder: (data) => ipcRenderer.invoke("mount-folder", data),
   unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
+
+  // Terminal tool channels
+  executeCommand: (params) => ipcRenderer.invoke("terminal-execute", params),
+  classifyCommandRisk: (command) => ipcRenderer.invoke("terminal-classify-risk", command),
 });

@@ -436,6 +436,15 @@ const chat = (() => {
     const { toolCallId, name, arguments: args } = payload;
     console.log("[chat] tool invocation:", name, "id:", toolCallId);
 
+    // ── Pre-flight: enrich terminal args with risk classification ──
+    if (name === "terminal" && args && args.command) {
+      try {
+        args._risk = await window.launcher.classifyCommandRisk(args.command);
+      } catch (_e) {
+        args._risk = "high";
+      }
+    }
+
     // ── Permission gate: every tool invocation requires explicit user approval ──
     appendToolMessage("🔒", `Permission requested: ${name}`, "pending");
 
@@ -514,6 +523,27 @@ const chat = (() => {
           } catch(e) {
             result = { success: false, error: e.message };
             appendToolMessage("❌", `Failed to edit: ${args.path} - ${e.message}`, "error");
+          }
+          break;
+        }
+        case "terminal": {
+          const cmd = args.command || "";
+          const cwd = args.cwd || "";
+          appendToolMessage("💻", `Terminal: ${cmd}${cwd ? " (in " + cwd + ")" : ""}`, "pending");
+          try {
+            result = await window.launcher.executeCommand({
+              command: cmd,
+              cwd: args.cwd,
+              timeout: args.timeout,
+            });
+            if (result.success) {
+              appendToolMessage("✅", `Command completed (exit ${result.exit_code})`, "success");
+            } else {
+              appendToolMessage("⚠️", `Command failed (exit ${result.exit_code})`, "error");
+            }
+          } catch (e) {
+            result = { success: false, stdout: "", stderr: e.message, exit_code: -1 };
+            appendToolMessage("❌", `Terminal error: ${e.message}`, "error");
           }
           break;
         }

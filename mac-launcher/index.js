@@ -13,6 +13,7 @@ const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-see
 const { startGateway, waitForGateway } = require("./lib/gateway");
 const { startProxy, waitForProxy, warmUpModel } = require("./lib/ollama-proxy");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
+const { executeCommand, classifyRisk } = require("./lib/terminal-tool");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -511,6 +512,38 @@ ipcMain.handle("unmount-folder", (_, folderPath) => {
   cfg.mountedFolders = (cfg.mountedFolders || []).filter((f) => f.path !== folderPath);
   writeLauncherConfig(cfg);
   return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// Terminal tool IPC — sandboxed command execution
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("terminal-execute", async (_, params) => {
+  console.log(`[terminal] execute request: command="${params.command}" cwd=${params.cwd || "(default)"}`);
+  try {
+    const result = await executeCommand({
+      command: params.command,
+      cwd: params.cwd,
+      timeout: params.timeout,
+      getMountedFolders: () => {
+        const cfg = readLauncherConfig();
+        return (cfg.mountedFolders || []).map((f) => (typeof f === "string" ? f : f.path));
+      },
+    });
+    console.log(`[terminal] completed: exit=${result.exit_code} success=${result.success}`);
+    return result;
+  } catch (err) {
+    console.error(`[terminal] blocked/failed: ${err.message}`);
+    return { success: false, stdout: "", stderr: err.message, exit_code: -1, risk: "high" };
+  }
+});
+
+ipcMain.handle("terminal-classify-risk", (_, command) => {
+  try {
+    return classifyRisk(command);
+  } catch (_err) {
+    return "high";
+  }
 });
 
 // ---------------------------------------------------------------------------

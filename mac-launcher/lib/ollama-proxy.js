@@ -10,10 +10,11 @@ const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the r
 
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant running inside the NemoClaw desktop app. " +
-  "You must use the following tools to interact with the filesystem:\n" +
+  "You must use the following tools to interact with the filesystem and terminal:\n" +
   "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
   "- `edit`: to modify existing files.\n" +
   "- `write`: to create or completely overwrite files.\n" +
+  "- `terminal`: to execute a shell command in a sandboxed directory (e.g. git, npm, python, build tools). Only single commands are allowed — no chaining.\n" +
   "ALWAYS wait for the tool result before replying. " +
   "For non-file questions, answer in plain text.";
 
@@ -169,6 +170,22 @@ function startProxy(onListening) {
                     required: ["path", "edits"]
                   }
                 }
+              },
+              {
+                type: "function",
+                function: {
+                  name: "terminal",
+                  description: "Execute a shell command in a sandboxed directory. Use this to run CLI tools, build scripts, git commands, or inspect the system. The command runs in the working directory you specify (must be a mounted folder). Only single commands are allowed — no chaining (&&, ||, ;) or piping (|).",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      command: { type: "string", description: "The command to execute (e.g. 'ls -la', 'git status', 'npm test')" },
+                      cwd: { type: "string", description: "Working directory for the command (must be inside a mounted folder). Defaults to the first mounted folder." },
+                      timeout: { type: "number", description: "Maximum execution time in milliseconds. Default 30000, max 120000." }
+                    },
+                    required: ["command"]
+                  }
+                }
               }
             ];
           }
@@ -207,7 +224,7 @@ function startProxy(onListening) {
             // Filter to only the core file tools so we don't blow up Ollama's VRAM
             parsed.tools = parsed.tools.filter(t => {
               const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return /(read|edit|write|ls|list|dir)/i.test(name);
+              return /(read|edit|write|ls|list|dir|terminal)/i.test(name);
             });
 
             // Freeze: serialise tools once per session so the JSON bytes are

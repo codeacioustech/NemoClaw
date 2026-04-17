@@ -47,6 +47,13 @@ const permission = (() => {
       iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
       colorClass: "perm-icon-warning",
     },
+    terminal: {
+      type: "Terminal Command",
+      title: "Execute Command",
+      desc: "The AI wants to run a shell command.",
+      iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+      colorClass: "perm-icon-warning",
+    },
   };
 
   const DEFAULT_META = {
@@ -56,6 +63,12 @@ const permission = (() => {
     iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
     colorClass: "perm-icon-muted",
   };
+
+  // --- HTML escape helper ---
+
+  function _escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
 
   // --- Modal show/hide (simplified, no hidden attribute) ---
 
@@ -107,10 +120,20 @@ const permission = (() => {
     const titleEl = $("#perm-title");
     if (titleEl) titleEl.textContent = meta.title;
 
-    // Description — include path if available
+    // Description — include path if available, or terminal-specific info
     const descEl = $("#perm-desc");
     if (descEl) {
-      if (args && args.path) {
+      if (name === "terminal" && args) {
+        // Terminal-specific rendering with risk badge
+        const risk = args._risk || "high";
+        const riskColors = { low: "perm-icon-primary", medium: "perm-icon-warning", high: "perm-icon-danger" };
+        // Override icon color based on risk
+        if (iconWrap) iconWrap.className = "perm-icon-wrap " + (riskColors[risk] || "perm-icon-danger");
+        descEl.innerHTML = meta.desc +
+          '<br><span class="perm-risk-badge perm-risk-' + risk + '">' + risk.toUpperCase() + ' RISK</span>' +
+          '<br><strong>Command:</strong> <code>' + _escapeHtml(args.command || "") + '</code>' +
+          (args.cwd ? '<br><strong>Directory:</strong> ' + _escapeHtml(args.cwd) : "");
+      } else if (args && args.path) {
         descEl.textContent = meta.desc + "\nPath: " + args.path;
       } else {
         descEl.textContent = meta.desc;
