@@ -20,7 +20,7 @@ const EXCLUDE_PATTERNS = [
   "@larksuiteoapi",         //  10 MB — Lark messaging, not configured
   "jimp",                   //  50 MB — redundant with sharp
   "@jimp",
-  "pdfjs-dist",             //  15 MB — PDF processing, not needed for chat
+  // pdfjs-dist kept — users may mount folders with PDFs
   "node-edge-tts",          //  10 MB — text-to-speech, not used
 ];
 

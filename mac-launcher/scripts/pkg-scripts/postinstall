@@ -9,21 +9,29 @@
 
 set -euo pipefail
 
-NEMOCLAW_DIR="$HOME/.nemoclaw"
+# Find the actual user (not root)
+CONSOLE_USER=$(stat -f%Su /dev/console)
+USER_HOME=$(eval echo "~$CONSOLE_USER")
+NEMOCLAW_DIR="$USER_HOME/.nemoclaw"
 
-# Create the NemoClaw config directory with secure permissions
+echo "Installing for user: $CONSOLE_USER in $NEMOCLAW_DIR"
+
+# Create the NemoClaw config directory
 mkdir -p "$NEMOCLAW_DIR"
+chown "$CONSOLE_USER" "$NEMOCLAW_DIR"
 chmod 700 "$NEMOCLAW_DIR"
 
 # Write a flag so the app knows this is a fresh PKG install and should
 # show the splash screen with download progress on first launch.
-cat > "$NEMOCLAW_DIR/pkg-install-meta.json" <<EOF
+FLAG_FILE="$NEMOCLAW_DIR/pkg-install-meta.json"
+cat > "$FLAG_FILE" <<EOF
 {
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "installerType": "pkg",
   "firstLaunchNeeded": true
 }
 EOF
-chmod 600 "$NEMOCLAW_DIR/pkg-install-meta.json"
+chown "$CONSOLE_USER" "$FLAG_FILE"
+chmod 600 "$FLAG_FILE"
 
 exit 0

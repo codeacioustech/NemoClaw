@@ -39,6 +39,11 @@ mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
 # Step 1: Build .app with electron-builder (no Ollama, slim deps)
 echo "==> Step 1: Building .app bundle (SKIP_OLLAMA=1)..."
+# Ensure resources/ollama-mac is empty so it doesn't get bundled by electron-builder
+rm -rf "$PROJECT_DIR/resources/ollama-mac"
+mkdir -p "$PROJECT_DIR/resources/ollama-mac"
+touch "$PROJECT_DIR/resources/ollama-mac/.gitkeep"
+
 SKIP_OLLAMA=1 npx electron-builder --mac --dir --config.mac.target=dir
 
 # Find the built .app — electron-builder puts it in dist/mac-arm64/ or dist/mac/

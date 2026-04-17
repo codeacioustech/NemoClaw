@@ -18,6 +18,7 @@ const db = require("./lib/db");
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
 const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
+const PKG_INSTALL_META = path.join(NEMOCLAW_DIR, "pkg-install-meta.json");
 const OPENCLAW_CONFIG = path.join(os.homedir(), ".openclaw", "openclaw.json");
 
 let splashWindow = null;
@@ -40,6 +41,30 @@ function writeLauncherConfig(data) {
   const dir = path.dirname(LAUNCHER_CONFIG);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.writeFileSync(LAUNCHER_CONFIG, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+function checkPkgInstallFlag() {
+  if (fs.existsSync(PKG_INSTALL_META)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(PKG_INSTALL_META, "utf-8"));
+      if (meta.firstLaunchNeeded) {
+        return true;
+      }
+    } catch {
+      // ignore malformed meta
+    }
+  }
+  return false;
+}
+
+function clearPkgInstallFlag() {
+  if (fs.existsSync(PKG_INSTALL_META)) {
+    try {
+      fs.unlinkSync(PKG_INSTALL_META);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +296,8 @@ async function ensureSplash() {
 
 async function bootstrap() {
   const config = readLauncherConfig();
-  const isFirstRun = !config.launcher_setup_complete;
+  const isPkgInstall = checkPkgInstallFlag();
+  const isFirstRun = !config.launcher_setup_complete || isPkgInstall;
 
   // Step 1 — Ensure Ollama binary exists (bundled, runtime-downloaded, or system)
   let ollamaPath = paths.resolveOllama();
@@ -299,11 +325,11 @@ async function bootstrap() {
     return;
   }
 
-  // Step 3 + 4 — Check model, download if missing
+  // Step 3 — Always check model, download if missing
   const modelPresent = await checkModelExists(MODEL);
   if (!modelPresent) {
     await ensureSplash();
-    sendStatus(`Downloading model: ${MODEL}`);
+    sendStatus(`Downloading AI model: ${MODEL}...`);
     try {
       await pullModel();
     } catch (err) {
@@ -312,17 +338,19 @@ async function bootstrap() {
     }
   }
 
-  // Step 5 — First-run config seeding
+  // Step 4 — First-run config seeding
   if (isFirstRun) {
     sendStatus("Configuring NemoClaw...");
     seedAll();
 
     writeLauncherConfig({
+      ...config,
       launcher_setup_complete: true,
       ollama_model: MODEL,
       gateway_port: GATEWAY_PORT,
       setupCompletedAt: new Date().toISOString(),
     });
+    clearPkgInstallFlag();
   }
 
   // Ensure gateway config has required settings
