@@ -202,16 +202,30 @@ const chat = (() => {
   }
 
   async function newChat() {
+    // If a generation is in flight, cancel it first so we don't leak state.
+    if (_streaming) {
+      await stopGeneration();
+    }
+    // Tear down the old gateway session so the LLM context is fresh.
+    const oldKey = _sessionKey;
+    _sessionKey = null;
+    if (oldKey) {
+      try { await gateway.deleteSession(oldKey); } catch {}
+    }
+    clearMessages();
     try {
       const s = await window.launcher.db.createSession("New Chat");
       _dbSessionId = s.id;
+    } catch (e) {
+      appendSystemMessage("Failed to create DB session: " + e.message);
+    }
+    try {
       const res = await gateway.createSession("open-coot Chat");
       _sessionKey = res.key;
-      clearMessages();
-      loadHistoryList();
     } catch (e) {
-      appendSystemMessage("Failed to create new chat: " + e.message);
+      appendSystemMessage("Failed to create gateway session: " + e.message);
     }
+    loadHistoryList();
   }
 
   // --- Slash command handler ---
@@ -574,16 +588,31 @@ const chat = (() => {
     }
   }
 
-  function stopGeneration() {
+  async function stopGeneration() {
      if (!_streaming) return;
      _streaming = false;
+     const oldKey = _sessionKey;
+     // Null out immediately so any in-flight deltas are ignored by handleChatEvent
+     _sessionKey = null;
+     _currentAssistantEl = null;
+     _currentThinkEl = null;
+     _currentThinkBody = null;
+     _thinkingActive = false;
+     _accumulatedText = "";
      hideTyping();
      updateSendButton();
      appendSystemMessage("Generation stopped by user.");
-     
-     gateway.createSession("open-coot Chat").then(res => {
-         _sessionKey = res.key;
-     }).catch(console.error);
+
+     // Abort the live generation by deleting the old session, then make a fresh one
+     if (oldKey) {
+       try { await gateway.deleteSession(oldKey); } catch (e) { console.warn("[chat] deleteSession:", e.message); }
+     }
+     try {
+       const res = await gateway.createSession("open-coot Chat");
+       _sessionKey = res.key;
+     } catch (e) {
+       console.error("[chat] createSession after stop failed:", e.message);
+     }
   }
 
   function handleSendClick() {
