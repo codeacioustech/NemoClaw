@@ -12,6 +12,7 @@
  * Uses minimatch for glob patterns. Results are cached with a 30s TTL.
  */
 
+import * as path from "node:path";
 import { minimatch } from "minimatch";
 
 import type {
@@ -20,22 +21,12 @@ import type {
   FileDenyRule,
   AccessCheckResult,
 } from "./file-access-types.js";
-import {
-  getPermissions,
-  getDenyRules,
-} from "./file-access-store.js";
+import { getPermissions, getDenyRules } from "./file-access-store.js";
 
-const cache = new Map<
-  string,
-  { result: AccessCheckResult; expiresAt: number }
->();
+const cache = new Map<string, { result: AccessCheckResult; expiresAt: number }>();
 const CACHE_TTL_MS = 30_000; // 30 seconds
 
-function cacheKey(
-  filePath: string,
-  action: FileAction,
-  sandbox: string,
-): string {
+function cacheKey(filePath: string, action: FileAction, sandbox: string): string {
   return `${sandbox}:${action}:${filePath}`;
 }
 
@@ -132,4 +123,51 @@ function _checkAccessUncached(
     matchedRule: null,
     reason: "No matching permission (default deny)",
   };
+}
+
+/**
+ * Resolve path for local vs remote sandbox environments.
+ * Maps host paths to sandbox paths automatically.
+ */
+export function resolvePathForSandbox(filePath: string): string {
+  if (!filePath || typeof filePath !== "string") {
+    return filePath;
+  }
+
+  // Already a sandbox path
+  if (filePath.startsWith("/sandbox/") || filePath.startsWith("/tmp/")) {
+    return filePath;
+  }
+
+  // Detect if running in sandbox
+  const isSandbox = process.env.HOME?.startsWith("/sandbox") ?? false;
+  const sandboxRoot = "/sandbox";
+  const hostHome = process.env.HOME ?? "/tmp";
+
+  // Host path patterns to replace
+  const hostPatterns: Array<{ from: RegExp; to: string }> = [
+    // ~/.openclaw/... → /sandbox/... (not .openclaw subfolder)
+    { from: new RegExp(`^${hostHome}/\\.openclaw/workspace-default/`), to: `${sandboxRoot}/` },
+    // ~/.openclaw/... → /sandbox/.openclaw/...
+    { from: new RegExp(`^${hostHome}/\\.openclaw/`), to: `${sandboxRoot}/.openclaw/` },
+    // ~/... → /sandbox/home/...
+    { from: new RegExp(`^${hostHome}/`), to: `${sandboxRoot}/home/` },
+    // /Users/username/... → /sandbox/home/...
+    { from: /^\/Users\/[^/]+\//, to: `${sandboxRoot}/home/` },
+    // workspace-default → workspace → /sandbox/...
+    { from: /workspace-default/, to: "workspace" },
+  ];
+
+  for (const { from, to } of hostPatterns) {
+    if (from.test(filePath)) {
+      return filePath.replace(from, to);
+    }
+  }
+
+  // If relative path, assume relative to sandbox workspace
+  if (!filePath.startsWith("/")) {
+    return `${sandboxRoot}/${filePath}`;
+  }
+
+  return filePath;
 }
