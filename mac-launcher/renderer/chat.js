@@ -16,15 +16,28 @@ const chat = (() => {
   let _accumulatedText = "";
 
   // ── Reasoning loop detection (renderer-side safety net) ───────────────
-  const MAX_REASONING_TOKENS_UI = 600;    // slightly above proxy limit as fallback
-  const REASONING_WATCHDOG_MS = 20000;    // overall watchdog timer for reasoning
+  const MAX_REASONING_TOKENS_UI = 2500;   // high bar — proxy is primary guard
+  const REASONING_WATCHDOG_MS = 25000;    // overall watchdog timer for reasoning
   let _reasoningTokenCount = 0;           // tokens in current reasoning phase
   let _reasoningText = "";                // accumulated reasoning text
   let _watchdogTimer = null;              // overall response watchdog
+  let _currentMessageIsCommand = false;   // true if user's message has command intent
+  // Only target refusal-to-act patterns, NOT normal reasoning phrases.
   const LOOP_PHRASES = [
     /I would run/i, /I can't execute/i, /I cannot execute/i,
-    /Let me think/i, /Let me reason/i, /I('ll| will) need to/i,
-    /I should/i, /I'm unable to/i,
+    /I('m| am) unable to (?:execute|run)/i,
+    /I don't have.*(?:access|ability)/i,
+    /Here's what I('d| would) (?:do|run)/i,
+    /I would (?:suggest|recommend) running/i,
+  ];
+  const CMD_INTENT = [
+    /\b(?:run|execute|do|perform|call|invoke|launch|start|stop|kill)\b/i,
+    /\b(?:git|npm|npx|node|python|pip|make|cargo|docker)\b/i,
+    /\b(?:ls|dir|cat|head|tail|grep|find|mkdir|rm|cp|mv)\b/i,
+    /\b(?:list|show|read|write|create|delete|edit|open|save)\s+(?:file|dir|folder)/i,
+    /\b(?:check|status|log|diff|branch|commit|push|pull|merge)\b/i,
+    /\b(?:install|build|test|lint|format|deploy|compile)\b/i,
+    /`[^`]+`/,
   ];
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -284,10 +297,13 @@ const chat = (() => {
     _thinkingActive = false;
     _reasoningTokenCount = 0;
     _reasoningText = "";
+    _currentMessageIsCommand = CMD_INTENT.some(p => p.test(text));
     updateSendButton();
     showTyping();
 
     // ── Reasoning watchdog timer ─────────────────────────────────────
+    // Only fires for command-intent messages. Conversational messages
+    // ("hello", "thanks") get unlimited reasoning time.
     // If no tool call or final response arrives within the watchdog
     // window, and thinking tokens are still streaming, force-end the
     // response and notify the user.
@@ -296,8 +312,8 @@ const chat = (() => {
       _watchdogTimer = null;
       if (!_streaming) return;
 
-      // Check if we're stuck in reasoning with no content
-      if (_reasoningTokenCount > 0 && !_accumulatedText) {
+      // Only fire for command-intent messages
+      if (_currentMessageIsCommand && _reasoningTokenCount > 0 && !_accumulatedText) {
         console.log(`[chat] ⚠️ Reasoning watchdog fired: ${_reasoningTokenCount} think tokens, no content`);
 
         // Try to extract a tool from accumulated reasoning
@@ -415,7 +431,8 @@ const chat = (() => {
           scrollToBottom();
 
           // ── Renderer-side reasoning loop detection (safety net) ──────
-          if (_reasoningTokenCount > MAX_REASONING_TOKENS_UI) {
+          // Only check for command-intent messages; let conversation flow.
+          if (_currentMessageIsCommand && _reasoningTokenCount > MAX_REASONING_TOKENS_UI) {
             const hasLoopPhrase = LOOP_PHRASES.some(p => p.test(_reasoningText));
             if (hasLoopPhrase) {
               console.log(`[chat] ⚠️ Renderer detected reasoning loop: ${_reasoningTokenCount} tokens`);

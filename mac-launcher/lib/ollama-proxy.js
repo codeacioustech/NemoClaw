@@ -9,16 +9,46 @@ const PROXY_PORT = 11435;
 const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the renderer
 
 // ── Reasoning loop detection constants ─────────────────────────────────────
-const MAX_THINK_TOKENS = 500;       // Max reasoning tokens before force-stopping
-const MAX_REASONING_MS = 8000;      // Max time in reasoning phase before intervention
+// Command-intent messages get aggressive limits; conversational messages get
+// generous limits so the model can reason freely about "hello" etc.
+const MAX_THINK_TOKENS_CMD = 500;        // aggressive: command-intent messages
+const MAX_REASONING_MS_CMD = 8000;
+const MAX_THINK_TOKENS_CHAT = 2000;      // generous: normal conversation
+const MAX_REASONING_MS_CHAT = 30000;
+
+// These patterns indicate the model is REFUSING to act or LOOPING instead of
+// emitting a tool call. They are intentionally specific — "I should" alone is
+// too broad and fires on normal conversation.
 const REASONING_LOOP_PATTERNS = [
   /I would run/i, /I can't execute/i, /I cannot execute/i,
-  /Let me think/i, /I('ll| will) need to/i,
-  /Here's what I('d| would)/i, /I should/i,
-  /Let me reason/i, /Let me consider/i,
-  /I('ll| will) explain/i, /Let me explain/i,
-  /I don't have.*access/i, /I'm unable to/i,
+  /I('m| am) unable to execute/i, /I('m| am) unable to run/i,
+  /I don't have.*(?:access|ability|capability)/i,
+  /I('m| am) not able to/i,
+  /Here's what I('d| would) do/i, /Here's what I('d| would) run/i,
+  /I would (?:suggest|recommend) running/i,
+  /If I (?:could|had|were)/i,
 ];
+
+// Regex patterns that signal the user wants a command/tool action.
+// If the last user message matches ANY of these, we apply aggressive loop limits.
+const COMMAND_INTENT_PATTERNS = [
+  /\b(?:run|execute|do|perform|call|invoke|launch|start|stop|kill)\b/i,
+  /\b(?:git|npm|npx|node|python|pip|make|cargo|docker|kubectl)\b/i,
+  /\b(?:ls|dir|cat|head|tail|grep|find|mkdir|rm|cp|mv|touch)\b/i,
+  /\b(?:list|show|read|write|create|delete|edit|open|save)\s+(?:file|dir|folder|content)/i,
+  /\b(?:check|status|log|diff|branch|commit|push|pull|merge|rebase)\b/i,
+  /\b(?:install|build|test|lint|format|deploy|compile)\b/i,
+  /\b(?:what(?:'s| is) (?:in|inside)|show me|look at)\b/i,
+  /`[^`]+`/,  // backtick-wrapped command
+];
+
+/**
+ * Returns true if the message text looks like a command/tool request.
+ */
+function _hasCommandIntent(text) {
+  if (!text || typeof text !== "string") return false;
+  return COMMAND_INTENT_PATTERNS.some(p => p.test(text));
+}
 
 const SYSTEM_INSTRUCTION =
   "You are an AI assistant with FULL tool execution access. You CAN and MUST execute commands directly.\n\n" +
@@ -427,6 +457,29 @@ function startProxy(onListening) {
         }
       }
 
+      // ── Command intent detection ──────────────────────────────────────────
+      // Extract the last user message to decide whether aggressive loop
+      // detection should be applied. Conversational messages ("hello",
+      // "thanks") get generous reasoning limits.
+      let _lastUserText = "";
+      let _isCommandIntent = false;
+      if (isChatEndpoint) {
+        try {
+          const _p = JSON.parse(body.toString());
+          const _msgs = Array.isArray(_p.messages) ? _p.messages : [];
+          // Find the last user message (iterate from end)
+          for (let i = _msgs.length - 1; i >= 0; i--) {
+            if (_msgs[i].role === "user" && typeof _msgs[i].content === "string") {
+              _lastUserText = _msgs[i].content;
+              break;
+            }
+          }
+          _isCommandIntent = _hasCommandIntent(_lastUserText);
+          console.log(`[ollama-proxy] Command intent: ${_isCommandIntent} ("${_lastUserText.slice(0, 80)}${_lastUserText.length > 80 ? '...' : ''}")`); 
+        } catch { /* ignore — body already parsed above */ }
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
       // ── Latency logging ─────────────────────────────────────────────────────
       const _reqId = `ollama-req-${Date.now()}`;
       console.time(`[ollama-proxy] ${_reqId} total-round-trip`);
@@ -508,8 +561,13 @@ function startProxy(onListening) {
                 if (!_thinkStartTime) _thinkStartTime = Date.now();
 
                 const thinkElapsed = Date.now() - _thinkStartTime;
-                const overTokenLimit = _thinkTokenCount > MAX_THINK_TOKENS;
-                const overTimeLimit = thinkElapsed > MAX_REASONING_MS;
+
+                // Use aggressive limits for command-intent messages,
+                // generous limits for normal conversation.
+                const tokenCap = _isCommandIntent ? MAX_THINK_TOKENS_CMD : MAX_THINK_TOKENS_CHAT;
+                const timeCap  = _isCommandIntent ? MAX_REASONING_MS_CMD : MAX_REASONING_MS_CHAT;
+                const overTokenLimit = _thinkTokenCount > tokenCap;
+                const overTimeLimit = thinkElapsed > timeCap;
 
                 if (overTokenLimit || overTimeLimit) {
                   // Check for loop patterns in reasoning text
@@ -518,7 +576,13 @@ function startProxy(onListening) {
                   // Try to extract a tool call from reasoning text
                   const thinkToolCall = _extractTextToolCall(_accumulatedThinking);
 
-                  if (hasLoopPattern || overTokenLimit) {
+                  // For command-intent: kill on loop pattern OR hard token limit
+                  // For conversation: kill ONLY if loop pattern found (model is refusing)
+                  const shouldKill = _isCommandIntent
+                    ? (hasLoopPattern || overTokenLimit)
+                    : (hasLoopPattern && overTokenLimit);
+
+                  if (shouldKill) {
                     console.log(
                       `[ollama-proxy] ⚠️  Reasoning loop detected: ` +
                       `tokens=${_thinkTokenCount}, elapsed=${thinkElapsed}ms, ` +
