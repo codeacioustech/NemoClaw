@@ -11,19 +11,25 @@ const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the r
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant running inside the NemoClaw desktop app.\n\n" +
   "## Available Tools\n" +
-  "You MUST use tools to interact with the filesystem and terminal:\n" +
-  "- `read` — read a file or list directory contents (pass a file or directory path).\n" +
-  "- `edit` — modify an existing file by replacing text blocks.\n" +
-  "- `write` — create or completely overwrite a file.\n" +
-  "- `terminal` — execute a shell command in a sandboxed directory (git, npm, python, build tools, etc.). Single commands only — no chaining.\n\n" +
-  "## CRITICAL: Reason → Act Rule\n" +
-  "When a user request requires inspecting files, running commands, or modifying code:\n" +
-  "1. Think BRIEFLY about which tool to use (1-2 sentences max).\n" +
-  "2. IMMEDIATELY call that tool. Do NOT describe what you would do — DO it.\n" +
-  "3. Wait for the tool result before replying.\n" +
-  "4. NEVER refuse to use a tool by explaining the command textually instead.\n\n" +
-  "If the request is a pure knowledge question with no file/terminal action needed, reply in plain text.\n" +
-  "When in doubt, USE A TOOL rather than explaining what you would do.";
+  "You have these tools:\n" +
+  "- `read` — read a file or list a directory. Parameters: {\"path\": \"<filepath>\"}\n" +
+  "- `edit` — modify a file. Parameters: {\"path\": \"<filepath>\", \"edits\": [{\"oldText\": \"...\", \"newText\": \"...\"}]}\n" +
+  "- `write` — create/overwrite a file. Parameters: {\"path\": \"<filepath>\", \"content\": \"...\"}\n" +
+  "- `terminal` — run a shell command. Parameters: {\"command\": \"<cmd>\", \"cwd\": \"<dir>\"}\n\n" +
+  "## HOW TO CALL A TOOL\n" +
+  "To call a tool, output EXACTLY this format (no extra text before or after):\n" +
+  "<tool_call>{\"name\": \"<tool_name>\", \"arguments\": {<parameters>}}</tool_call>\n\n" +
+  "Examples:\n" +
+  "<tool_call>{\"name\": \"terminal\", \"arguments\": {\"command\": \"git status\"}}</tool_call>\n" +
+  "<tool_call>{\"name\": \"read\", \"arguments\": {\"path\": \".\"}}</tool_call>\n" +
+  "<tool_call>{\"name\": \"write\", \"arguments\": {\"path\": \"hello.txt\", \"content\": \"Hello World\"}}</tool_call>\n\n" +
+  "## RULES\n" +
+  "1. When the user asks to run a command, read a file, edit code, or anything requiring action: OUTPUT A TOOL CALL IMMEDIATELY. Do not explain what you would do — just do it.\n" +
+  "2. NEVER say \"I would run...\" or \"You can run...\" — instead, call the tool.\n" +
+  "3. Wait for the tool result, then summarize the output to the user.\n" +
+  "4. Only answer in plain text for pure knowledge questions that need no file/terminal action.\n" +
+  "5. Keep reasoning brief (1-2 sentences). Then CALL THE TOOL.\n" +
+  "6. You MUST output the <tool_call> tag — this is how your tools are executed.";
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
@@ -90,39 +96,24 @@ function deriveSessionId(headers, parsedBody) {
 }
 
 // ── Text-based tool call recovery ──────────────────────────────────────────
-// Local models sometimes output tool calls as JSON text in content instead of
-// structured tool_calls. This function tries to extract a valid tool call from
-// the accumulated content string.
+// Local models (gemma4:e4b, etc.) often cannot generate structured Ollama
+// tool_calls. Instead, the system prompt instructs them to use:
+//   <tool_call>{"name": "terminal", "arguments": {"command": "ls"}}</tool_call>
+//
+// This module detects that pattern (and several fallbacks) in the accumulated
+// content and converts it to a proper tool_calls frame.
 const KNOWN_TOOLS = new Set(["read", "write", "edit", "terminal"]);
 
 function _extractTextToolCall(content) {
+  if (!content || typeof content !== "string") return null;
   const trimmed = content.trim();
+  if (trimmed.length === 0) return null;
 
-  // Pattern 1: {"name": "tool", "arguments": {...}}
-  // Pattern 2: {"function": {"name": "tool", "arguments": {...}}}
-  // Pattern 3: ```json\n{...}\n``` wrapped
-  let jsonStr = trimmed;
-
-  // Strip markdown code fences
-  const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (fenceMatch) jsonStr = fenceMatch[1].trim();
-
-  // Try to extract JSON object(s) from the string
-  const jsonCandidates = [];
-  // Find all top-level JSON objects
-  const objRegex = /\{[\s\S]*?\}(?=\s*$|\s*\n|\s*```)/g;
-  let match;
-  while ((match = objRegex.exec(jsonStr)) !== null) {
-    jsonCandidates.push(match[0]);
-  }
-  // Also try the whole string
-  jsonCandidates.unshift(jsonStr);
-
-  for (const candidate of jsonCandidates) {
+  // ── Priority 1: <tool_call>JSON</tool_call> tag (our canonical format) ──
+  const tagMatch = trimmed.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/);
+  if (tagMatch) {
     try {
-      const parsed = JSON.parse(candidate);
-
-      // Pattern 1: direct {name, arguments}
+      const parsed = JSON.parse(tagMatch[1]);
       if (parsed.name && KNOWN_TOOLS.has(parsed.name)) {
         return {
           function: {
@@ -131,8 +122,38 @@ function _extractTextToolCall(content) {
           },
         };
       }
+    } catch { /* fall through */ }
+  }
 
-      // Pattern 2: {function: {name, arguments}}
+  // ── Priority 2: Raw JSON patterns ──────────────────────────────────────
+
+  // Strip markdown code fences
+  let jsonStr = trimmed;
+  const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+  // Collect JSON candidates
+  const jsonCandidates = [jsonStr];
+  const objRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+  let match;
+  while ((match = objRegex.exec(jsonStr)) !== null) {
+    if (match[0] !== jsonStr) jsonCandidates.push(match[0]);
+  }
+
+  for (const candidate of jsonCandidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+
+      // {name, arguments}
+      if (parsed.name && KNOWN_TOOLS.has(parsed.name)) {
+        return {
+          function: {
+            name: parsed.name,
+            arguments: parsed.arguments || parsed.params || parsed.parameters || {},
+          },
+        };
+      }
+      // {function: {name, arguments}}
       if (parsed.function?.name && KNOWN_TOOLS.has(parsed.function.name)) {
         return {
           function: {
@@ -141,16 +162,14 @@ function _extractTextToolCall(content) {
           },
         };
       }
-
-      // Pattern 3: {tool: "name", ...args}
+      // {tool: "name", ...}
       if (parsed.tool && KNOWN_TOOLS.has(parsed.tool)) {
         const { tool, ...args } = parsed;
         return { function: { name: tool, arguments: args } };
       }
-    } catch {
-      // Not valid JSON, skip
-    }
+    } catch { /* skip */ }
   }
+
   return null;
 }
 

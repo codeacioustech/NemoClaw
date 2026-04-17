@@ -382,19 +382,72 @@ const chat = (() => {
       // thinking block if one was built before the first text delta).
       ensureAssistantBubble();
       _accumulatedText = text;
+
+      // Display the text BUT hide <tool_call> tags from the user
+      const displayText = _accumulatedText.replace(/<tool_call>[\s\S]*?(<\/tool_call>)?$/g, "").trim();
       const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
-      if (answerDiv) answerDiv.textContent = _accumulatedText;
+      if (answerDiv) answerDiv.textContent = displayText;
       scrollToBottom();
     }
 
     if (state === "final" || state === "error") {
       hideTyping();
-      if (!_currentAssistantEl && text) {
+
+      // ── Content-based tool call detection ─────────────────────────────
+      // Local models often can't emit structured tool_calls. The system
+      // prompt instructs them to use <tool_call>JSON</tool_call> tags.
+      // Detect these in the final accumulated text and execute them
+      // directly, bypassing the gateway's tool.invoke pipeline.
+      const finalText = text || _accumulatedText || "";
+      const toolCallMatch = finalText.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/);
+
+      if (toolCallMatch && state !== "error") {
+        console.log("[chat] Detected <tool_call> tag in content, intercepting...");
+        let toolCallData;
+        try {
+          toolCallData = JSON.parse(toolCallMatch[1]);
+        } catch (e) {
+          console.error("[chat] Failed to parse tool_call JSON:", e.message);
+        }
+
+        if (toolCallData && toolCallData.name) {
+          // Strip the <tool_call> tag from the displayed message — show only
+          // the text before it (reasoning summary), if any.
+          const beforeTag = finalText.split(/<tool_call>/)[0].trim();
+          if (_currentAssistantEl) {
+            const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
+            if (answerDiv) answerDiv.textContent = beforeTag || "";
+          }
+
+          // Synthesize a tool.invoke payload and handle it
+          const syntheticPayload = {
+            sessionKey: _sessionKey,
+            toolCallId: "content-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+            name: toolCallData.name,
+            arguments: toolCallData.arguments || toolCallData.params || {},
+          };
+
+          _streaming = false;
+          _currentAssistantEl = null;
+          _currentThinkEl = null;
+          _currentThinkBody = null;
+          _thinkingActive = false;
+          _accumulatedText = "";
+          updateSendButton();
+
+          // Execute the tool (async — don't block)
+          handleToolInvoke(syntheticPayload);
+          return;
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────
+
+      if (!_currentAssistantEl && finalText) {
         ensureAssistantBubble();
       }
-      if (_currentAssistantEl && text) {
+      if (_currentAssistantEl && finalText) {
         const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
-        if (answerDiv) answerDiv.textContent = text;
+        if (answerDiv) answerDiv.textContent = finalText;
       }
 
       if (state === "error") {
@@ -559,7 +612,26 @@ const chat = (() => {
     try {
       await gateway.sendToolResult(_sessionKey, toolCallId, result);
     } catch (e) {
-      appendSystemMessage("Failed to send tool result: " + e.message);
+      console.warn("[chat] sendToolResult failed:", e.message);
+      // Fallback for content-based tool calls: the gateway doesn't know
+      // about our synthetic toolCallId, so send the result as a user
+      // message instead so the model can see the output and respond.
+      if (typeof toolCallId === "string" && toolCallId.startsWith("content-")) {
+        const resultText =
+          `[Tool Result: ${name}]\n` +
+          (result.success === false ? `Error: ${result.error || result.stderr || "unknown"}` :
+           result.stdout || result.message || JSON.stringify(result));
+        try {
+          await gateway.sendMessage(_sessionKey, resultText);
+          _streaming = true;
+          updateSendButton();
+          showTyping();
+        } catch (e2) {
+          appendSystemMessage("Failed to send tool result as message: " + e2.message);
+        }
+      } else {
+        appendSystemMessage("Failed to send tool result: " + e.message);
+      }
     }
   }
 
