@@ -3,7 +3,7 @@
 
 /**
  * CLI commands for file access management.
- * 
+ *
  * Subcommands:
  *   nemoclaw file-access grant <path> <r|rw|rwx> [session|persistent] [reason]
  *   nemoclaw file-access revoke <pattern>
@@ -76,7 +76,8 @@ export function commandGrant(
   }
 
   const actions = parseActions(actionsStr);
-  const scope: PermissionScope = scopeStr === "persistent" ? "persistent" : "session";
+  const scope: PermissionScope =
+    scopeStr === "persistent" ? "persistent" : scopeStr === "chat" ? "chat" : "session";
 
   const perm = addPermission({
     pattern: pathPattern,
@@ -106,10 +107,7 @@ export function commandGrant(
 /**
  * nemoclaw file-access revoke <pattern>
  */
-export function commandRevoke(
-  sandboxName: string,
-  pattern: string,
-): void {
+export function commandRevoke(sandboxName: string, pattern: string): void {
   const validation = validatePathPattern(pattern);
   if (!validation.valid) {
     console.error(`  ✗ Invalid path: ${validation.error}`);
@@ -231,11 +229,7 @@ export function commandCleanup(sandboxName: string): void {
 /**
  * Check access for debugging (internal).
  */
-export function commandCheck(
-  filePath: string,
-  action: FileAction,
-  sandboxName: string,
-): void {
+export function commandCheck(filePath: string, action: FileAction, sandboxName: string): void {
   const result = checkAccess(filePath, action, sandboxName);
 
   console.log(`\n  Access check result:`);

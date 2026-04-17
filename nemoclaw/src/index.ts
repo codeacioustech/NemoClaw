@@ -18,6 +18,15 @@ import {
   loadOnboardConfig,
 } from "./onboard/config.js";
 import { scanForSecrets, isMemoryPath } from "./security/secret-scanner.js";
+import {
+  commandGrant,
+  commandRevoke,
+  commandList,
+  commandDeny,
+  commandCleanup,
+} from "./commands/file-access.js";
+import { checkAccess } from "./commands/file-access-matcher.js";
+import type { FileAction } from "./commands/file-access-types.js";
 
 // ---------------------------------------------------------------------------
 // OpenClaw Plugin SDK compatible types (mirrors openclaw/plugin-sdk)
@@ -253,6 +262,28 @@ export function getPluginConfig(api: OpenClawPluginApi): NemoClawConfig {
 /** Tool names that can write/modify files and should be scanned for secrets. */
 const WRITE_TOOL_NAMES = new Set(["write", "edit", "apply_patch", "notebook_edit"]);
 
+/** Tool names that access the filesystem */
+const FILE_TOOL_NAMES = new Set([
+  "read",
+  "str_replace_editor",
+  "write",
+  "edit",
+  "apply_patch",
+  "notebook_edit",
+  " Bash",
+  "bash",
+  "executec",
+  "executep",
+  " Glob",
+  "glob",
+  " Grep",
+  "grep",
+  " Ls",
+  "ls",
+  " Read",
+  "read",
+]);
+
 export default function register(api: OpenClawPluginApi): void {
   // 1. Register /nemoclaw slash command (chat interface)
   api.registerCommand({
@@ -260,6 +291,83 @@ export default function register(api: OpenClawPluginApi): void {
     description: "NemoClaw sandbox management (status, eject).",
     acceptsArgs: true,
     handler: (ctx) => handleSlashCommand(ctx, api),
+  });
+
+  // 2. Register /file-access slash command (file permission management)
+  api.registerCommand({
+    name: "file-access",
+    description: "Manage file access permissions (grant, revoke, list, deny, cleanup).",
+    acceptsArgs: true,
+    handler: (ctx) => {
+      const args = ctx.args?.trim().split(/\s+/) ?? [];
+      const subcommand = args[0] ?? "";
+      const sandboxName = (ctx.config["sandboxName"] as string) ?? "default";
+
+      try {
+        switch (subcommand) {
+          case "grant": {
+            const pathPattern = args[1] ?? "";
+            const actions = args[2] ?? "r";
+            const scope = args[3] ?? "session";
+            if (!pathPattern) {
+              return { text: "Usage: /file-access grant <path> <r|rw|rwx> [session|persistent]" };
+            }
+            commandGrant(sandboxName, pathPattern, actions, scope);
+            return { text: `✓ Granted ${actions} on ${pathPattern} (${scope})` };
+          }
+          case "revoke": {
+            const pattern = args[1] ?? "";
+            if (!pattern) {
+              return { text: "Usage: /file-access revoke <pattern>" };
+            }
+            commandRevoke(sandboxName, pattern);
+            return { text: `✓ Revoked permissions for ${pattern}` };
+          }
+          case "list": {
+            commandList(sandboxName);
+            return { text: "Listed file permissions." };
+          }
+          case "deny": {
+            const pattern = args[1] ?? "";
+            const reason = args.slice(2).join(" ") ?? "Denied via CLI";
+            if (!pattern) {
+              return { text: "Usage: /file-access deny <pattern> [reason]" };
+            }
+            commandDeny(sandboxName, pattern, reason);
+            return { text: `✓ Denied access to ${pattern}` };
+          }
+          case "cleanup": {
+            const removed = commandCleanup(sandboxName);
+            return { text: `✓ Cleaned up ${removed} session permission(s)` };
+          }
+          default:
+            return {
+              text: [
+                "**File Access Management**",
+                "",
+                "Usage: `/file-access <subcommand>`",
+                "",
+                "Subcommands:",
+                "  `grant <path> <r|rw|rwx> [session|persistent]` - Grant permission",
+                "  `revoke <pattern>` - Revoke permission",
+                "  `list` - List all permissions",
+                "  `deny <pattern> [reason]` - Create deny rule",
+                "  `cleanup` - Clean up session permissions",
+                "",
+                "Examples:",
+                "  /file-access grant /sandbox/project rw session",
+                "  /file-access grant /sandbox/project/** r persistent",
+                "  /file-access revoke /sandbox/project",
+                "  /file-access deny /etc/shadow",
+              ].join("\n"),
+            };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        api.logger.error(`[file-access] Command failed: ${msg}`);
+        return { text: `✗ Error: ${msg}` };
+      }
+    },
   });
 
   // 2. Register nvidia-nim provider — use onboard config if available
@@ -314,6 +422,69 @@ export default function register(api: OpenClawPluginApi): void {
   } catch (err) {
     api.logger.warn(
       `[SECURITY] Could not register secret scanner hook: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // 4. Register before_tool_call hook for file access permission checks
+  const sandboxName = (api.config["sandboxName"] as string) ?? "default";
+  try {
+    api.on("before_tool_call", (...args: unknown[]): BeforeToolCallResult | undefined => {
+      const event = args[0] as Partial<BeforeToolCallEvent> | undefined;
+      if (!event?.toolName || !event.params) return undefined;
+
+      const toolName = event.toolName.toLowerCase();
+      if (!FILE_TOOL_NAMES.has(toolName)) return undefined;
+
+      // Determine action type based on tool
+      let action: FileAction = "read";
+      if (
+        toolName === "write" ||
+        toolName === "edit" ||
+        toolName === "apply_patch" ||
+        toolName === "notebook_edit"
+      ) {
+        action = "write";
+      } else if (toolName === "bash" || toolName === "executec" || toolName === " Glob") {
+        action = "execute";
+      }
+
+      // Get file path from various tool param names
+      const rawPath =
+        event.params["file_path"] ??
+        event.params["path"] ??
+        event.params["file_path"] ??
+        event.params["file"] ??
+        event.params["command"];
+      if (typeof rawPath !== "string" || rawPath.length === 0) return undefined;
+
+      // Resolve and normalize path
+      const filePath = api.resolvePath(rawPath);
+
+      // Check permission (deny-first, cached)
+      const hasAccess = checkAccess(filePath, action, sandboxName);
+      if (!hasAccess) {
+        api.logger.warn(`[file-access] Blocked ${action} on ${filePath} — no permission`);
+        const actionFlag = action === "write" ? "rw" : "r";
+
+        return {
+          block: true,
+          blockReason:
+            `🔐 **File Access Request**\n\n` +
+            `Path: \`${filePath}\`\n` +
+            `Action: ${action.toUpperCase()}\n\n` +
+            `**[1] Allow (this chat)** - until chat ends\n` +
+            `**[2] Allow (session)** - until sandbox restarts\n` +
+            `**[3] Allow (persistent)** - forever\n` +
+            `**[4] Deny**\n\n` +
+            `Reply with 1, 2, 3, or 4`,
+        };
+      }
+
+      return undefined;
+    });
+  } catch (err) {
+    api.logger.warn(
+      `[file-access] Could not register file access hook: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
