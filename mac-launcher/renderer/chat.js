@@ -8,6 +8,7 @@
 
 const chat = (() => {
   let _sessionKey = null;
+  let _dbSessionId = null;
   let _streaming = false;
   let _currentAssistantEl = null;   // outer .chat-msg.assistant bubble
   let _currentThinkEl = null;       // <details> reasoning block inside bubble
@@ -120,7 +121,63 @@ const chat = (() => {
 
   // --- Session management ---
 
+  async function loadHistoryList() {
+    const list = $("#chat-history-list");
+    if (!list) return;
+    const sessions = await window.launcher.db.getSessions();
+    list.innerHTML = "";
+    for (const s of sessions) {
+      const el = document.createElement("div");
+      el.className = "chat-history-item";
+      el.style.cssText = "padding: 8px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; word-break: break-all;";
+      el.onmouseenter = () => el.style.background = "var(--surface-2)";
+      el.onmouseleave = () => el.style.background = "";
+      if (s.id === _dbSessionId) el.style.borderColor = "var(--primary)";
+      el.textContent = s.title;
+      el.onclick = () => loadHistoricalSession(s.id);
+      list.appendChild(el);
+    }
+  }
+
+  async function loadHistoricalSession(id) {
+    if (_streaming) return;
+    _dbSessionId = id;
+    try {
+      const res = await gateway.createSession("open-coot Chat");
+      _sessionKey = res.key;
+    } catch {
+       _sessionKey = null;
+    }
+    
+    clearMessages();
+    const msgs = await window.launcher.db.getMessages(id);
+    const container = $(".chat-messages");
+    if (!container) return;
+    const empty = container.querySelector(".chat-empty");
+    if (empty) empty.remove();
+    
+    for (const m of msgs) {
+      const el = document.createElement("div");
+      el.className = `chat-msg ${m.role}`;
+      const answerDiv = document.createElement("div");
+      if (m.role === 'assistant') {
+         answerDiv.className = "chat-answer";
+      }
+      answerDiv.textContent = m.content;
+      el.appendChild(answerDiv);
+      container.appendChild(el);
+    }
+    scrollToBottom();
+    appendSystemMessage("Historical session loaded. A new live context has been started.");
+    loadHistoryList();
+  }
+
   async function ensureSession() {
+    if (!_dbSessionId) {
+      const s = await window.launcher.db.createSession("New Chat");
+      _dbSessionId = s.id;
+      loadHistoryList();
+    }
     if (_sessionKey) return _sessionKey;
 
     try {
@@ -146,9 +203,12 @@ const chat = (() => {
 
   async function newChat() {
     try {
+      const s = await window.launcher.db.createSession("New Chat");
+      _dbSessionId = s.id;
       const res = await gateway.createSession("open-coot Chat");
       _sessionKey = res.key;
       clearMessages();
+      loadHistoryList();
     } catch (e) {
       appendSystemMessage("Failed to create new chat: " + e.message);
     }
@@ -245,6 +305,10 @@ const chat = (() => {
 
     const key = await ensureSession();
     if (!key) return;
+    
+    if (_dbSessionId) {
+       await window.launcher.db.saveMessage(_dbSessionId, "user", text);
+    }
 
     const isFirstMsg = document.querySelectorAll(".chat-bubble.user").length === 1;
     if (isFirstMsg) {
@@ -384,6 +448,10 @@ const chat = (() => {
         const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
         if (answerDiv) answerDiv.textContent = text;
       }
+      
+      if (state === "final" && text && _dbSessionId) {
+         window.launcher.db.saveMessage(_dbSessionId, "assistant", text);
+      }
 
       if (state === "error") {
         const errMsg = payload.error?.message || "Response failed";
@@ -506,12 +574,29 @@ const chat = (() => {
     }
   }
 
+  function stopGeneration() {
+     if (!_streaming) return;
+     _streaming = false;
+     hideTyping();
+     updateSendButton();
+     appendSystemMessage("Generation stopped by user.");
+     
+     gateway.createSession("open-coot Chat").then(res => {
+         _sessionKey = res.key;
+     }).catch(console.error);
+  }
+
+  function handleSendClick() {
+     if (_streaming) stopGeneration();
+     else send();
+  }
+
   function updateSendButton() {
     const btn = $(".chat-send");
     if (!btn) return;
-    btn.disabled = _streaming;
+    btn.disabled = false;
     if (_streaming) {
-       btn.innerHTML = `<span class="icon icon-md spinner" style="animation: spin 1s linear infinite;"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg></span>`;
+       btn.innerHTML = `<span class="icon icon-md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg></span>`;
     } else {
        btn.innerHTML = `<span class="icon icon-md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg></span>`;
     }
@@ -523,8 +608,10 @@ const chat = (() => {
     // Wire send button
     const sendBtn = $(".chat-send");
     if (sendBtn) {
-      sendBtn.addEventListener("click", send);
+      sendBtn.addEventListener("click", handleSendClick);
     }
+    
+    loadHistoryList();
 
     // Wire input: Enter to send, Shift+Enter for newline
     const input = $(".chat-input");

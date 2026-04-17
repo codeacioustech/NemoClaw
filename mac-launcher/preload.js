@@ -23,4 +23,16 @@ contextBridge.exposeInMainWorld("launcher", {
   getMountedFolders: () => ipcRenderer.invoke("get-mounted-folders"),
   mountFolder: (data) => ipcRenderer.invoke("mount-folder", data),
   unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
+
+  // Database channels
+  db: {
+    createSession: (title) => ipcRenderer.invoke("db-create-session", title),
+    getSessions: () => ipcRenderer.invoke("db-get-sessions"),
+    saveMessage: (sessionId, role, content) => ipcRenderer.invoke("db-save-message", sessionId, role, content),
+    getMessages: (sessionId) => ipcRenderer.invoke("db-get-messages", sessionId)
+  },
+
+  // Model selection
+  getModels: () => ipcRenderer.invoke("get-ollama-models"),
+  setModel: (modelName) => ipcRenderer.invoke("set-ollama-model", modelName)
 });

@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const { NEMOCLAW_DIR } = require("./config-seeder");
+const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -236,6 +240,15 @@ function startProxy(onListening) {
 
           // Constrain context window for faster prompt eval.
           parsed.options = { ...(parsed.options || {}), num_ctx: 8192 };
+
+          try {
+            const config = JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
+            if (config.ollama_model) {
+              parsed.model = config.ollama_model;
+            }
+          } catch (e) {
+            // fallback
+          }
 
           // gemma4:e4b supports native reasoning/thinking mode.
           // Force think=true regardless of what the client sends — OpenClaw

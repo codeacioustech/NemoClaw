@@ -592,7 +592,7 @@
         <div class="dash-panel">
           <div class="panel-header"><span class="panel-title">Configuration</span></div>
           <dl class="settings-list">
-            <dt>Local model</dt>           <dd class="settings-model">—</dd>
+            <dt>Local model</dt>           <dd><select id="model-selector" class="input" style="max-width:200px; padding: 4px;"></select></dd>
             <dt>Ollama endpoint</dt>       <dd>http://127.0.0.1:11434 (via proxy 11435)</dd>
             <dt>Gateway port</dt>          <dd class="settings-gateway-port">—</dd>
             <dt>Mounted folders</dt>       <dd class="settings-folder-count">—</dd>
@@ -618,6 +618,10 @@
 ════════════════════════════════════════════════════ -->
 <div class="chat-overlay">
   <div class="chat-backdrop"></div>
+  <div class="chat-history-sidebar" style="position: absolute; right: 400px; top: 0; bottom: 0; width: 240px; background: var(--surface); border-left: 1px solid var(--border); border-right: 1px solid var(--border); display: flex; flex-direction: column;">
+    <div style="padding: 16px; font-weight: 600; border-bottom: 1px solid var(--border); color: var(--text-primary);">Chat History</div>
+    <div id="chat-history-list" style="flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px;"></div>
+  </div>
   <div class="chat-panel" role="dialog" aria-label="Chat with AI">
     <div class="chat-header">
       <div class="chat-header-title">Chat with AI</div>
