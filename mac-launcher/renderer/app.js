@@ -479,7 +479,7 @@ const app = (() => {
       }
       btn.disabled = true;
       btn.classList.add("topbar-btn--warming");
-      btn.innerHTML = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#fff;animation:dot-pulse 1.4s ease-in-out infinite;flex-shrink:0;"></span> ${msg}`;
+      btn.innerHTML = msg;
     };
 
     const setReady = () => {
@@ -624,7 +624,7 @@ const app = (() => {
         case "unmount-local-folder": unmountLocalFolder(el.dataset.path); break;
         case "toggle-connector":     toggleConnector(el); break;
         case "app-launch":           launch(); break;
-        case "open-chat":            chat.open(); break;
+        case "open-chat":            if (!el.disabled) chat.open(); break;
         case "new-workflow":         newWorkflow(); break;
         case "toggle-avatar-menu":   toggleAvatarMenu(); break;
         case "navigate":             navigateTo(el.dataset.target); break;

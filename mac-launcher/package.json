@@ -4,10 +4,9 @@
   "description": "macOS desktop launcher for NemoClaw",
   "main": "index.js",
   "scripts": {
-    "prestart": "bash scripts/download-ollama.sh && (test -f ../nemoclaw/dist/index.js || (cd ../nemoclaw && npm install --ignore-scripts && npx tsc))",
+    "prestart": "test -f ../nemoclaw/dist/index.js || (cd ../nemoclaw && npm install --ignore-scripts && npx tsc)",
     "start": "electron .",
-    "dist": "npm run download-ollama && electron-builder",
-    "download-ollama": "bash scripts/download-ollama.sh"
+    "dist": "electron-builder"
   },
   "dependencies": {
     "openclaw": "2026.4.14",
@@ -92,12 +91,7 @@
     "asar": false,
     "npmRebuild": false,
     "afterPack": "./scripts/afterPack.js",
-    "extraResources": [
-      {
-        "from": "resources/ollama-mac",
-        "to": "ollama-mac"
-      }
-    ],
+    "extraResources": [],
     "files": [
       "**/*",
       "!scripts",
