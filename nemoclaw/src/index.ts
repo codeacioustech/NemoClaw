@@ -502,9 +502,9 @@ export default function register(api: OpenClawPluginApi): void {
         api.logger.warn(`[file-access] Blocked ${action} on ${resolvedPath} — no permission`);
         const actionFlag = action === "write" ? "rw" : "r";
 
-        // Trigger interactive approval in background (non-blocking)
-        // This will show TUI but won't block tool execution
-        // User can approve for next attempt
+        // Trigger interactive approval in background (fire-and-forget)
+        // Hook returns immediately with block=true (blocks this tool call)
+        // TUI runs async, user can approve, permission cached for next invocation
         ensureFileAccess(
           {
             path: resolvedPath,
@@ -521,9 +521,9 @@ export default function register(api: OpenClawPluginApi): void {
               sandbox: sandboxName,
               grantedBy: "tui-approval",
             });
-            // ✨ AUTO-RETRY BRIDGE: Mark this request as approved-for-retry
+            // Mark this request as approved-for-next-invocation (cache for manual retry)
             approvedForRetry.add(cacheKey);
-            api.logger.info(`[file-access] Marked for auto-retry: ${cacheKey}`);
+            api.logger.info(`[file-access] Approval cached for next invocation: ${cacheKey}`);
           }
         ).catch((err) => {
           api.logger.warn(`[file-access] Approval failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -536,10 +536,11 @@ export default function register(api: OpenClawPluginApi): void {
             `Path: \`${resolvedPath}\`\n` +
             `Action: ${action.toUpperCase()}\n\n` +
             `An interactive approval prompt has been shown.\n` +
-            `Select an option (1–5) to grant access.\n` +
-            `Your request will be automatically retried upon approval.\n\n` +
-            `Or manually grant via:\n` +
-            `  /file-access grant ${resolvedPath} ${actionFlag} session`,
+            `Select an option (1–5) to grant access.\n\n` +
+            `After you approve, you can retry this command and it will be automatically allowed.\n\n` +
+            `To retry: Re-run the same command (e.g., Read("${resolvedPath}"))\n\n` +
+            `Or grant permanently via:\n` +
+            `  /file-access grant ${resolvedPath} ${actionFlag} persistent`,
         };
       }
 
