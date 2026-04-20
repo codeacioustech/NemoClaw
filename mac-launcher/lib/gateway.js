@@ -9,34 +9,40 @@ const { GATEWAY_PORT } = require("./config-seeder");
 function startGateway(onStdout, onStderr) {
   const openclawMjs = paths.resolveOpenclawMjs();
   const openclawDir = paths.resolveOpenclawDir();
+  const nemoclawPlugin = paths.resolveNemoclawPlugin();
 
-  const child = spawn(
-    process.execPath,
-    [
-      openclawMjs,
-      "gateway",
-      "run",
-      "--port",
-      String(GATEWAY_PORT),
-      "--auth",
-      "none",
-      "--allow-unconfigured",
-      "--bind",
-      "loopback",
-      "--verbose",
-    ],
-    {
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: "1",
-        OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
-        NODE_OPTIONS: "",
-      },
-      cwd: openclawDir,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-    }
-  );
+  const args = [
+    openclawMjs,
+    "gateway",
+    "run",
+    "--port",
+    String(GATEWAY_PORT),
+    "--auth",
+    "none",
+    "--allow-unconfigured",
+    "--bind",
+    "loopback",
+  ];
+
+  if (nemoclawPlugin) {
+    args.push("--plugin", nemoclawPlugin);
+  } else {
+    console.warn("[gateway] nemoclaw plugin not found — file-access approval disabled");
+  }
+
+  args.push("--verbose");
+
+  const child = spawn(process.execPath, args, {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
+      NODE_OPTIONS: "",
+    },
+    cwd: openclawDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: false,
+  });
 
   if (onStdout) child.stdout.on("data", (chunk) => onStdout(chunk.toString()));
   if (onStderr) child.stderr.on("data", (chunk) => onStderr(chunk.toString()));
