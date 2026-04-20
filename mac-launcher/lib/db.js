@@ -56,8 +56,9 @@ function saveMessage(sessionId, role, content) {
 
 function getMessages(sessionId) {
   initDb();
+  if (!sessionId) return [];
   const stmt = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC');
-  return stmt.all();
+  return stmt.all(sessionId);
 }
 
 function updateSessionTitle(sessionId, title) {
