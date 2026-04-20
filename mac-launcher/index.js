@@ -453,9 +453,10 @@ async function bootstrap() {
     return;
   }
 
-  // Fire silent warm-up request so the model is in VRAM before the user
-  // sends their first message. Non-blocking — we don't await it.
-  warmUpModel(MODEL);
+  // Fire warm-up request so the model is in VRAM before the user
+  // sends their first message. We await this to prevent "cold start" lag.
+  sendStatus("Warming up AI model (VRAM)...");
+  await warmUpModel(MODEL);
 
   // 6. Start gateway
   sendStatus("Starting gateway...");
