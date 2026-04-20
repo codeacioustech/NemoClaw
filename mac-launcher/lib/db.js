@@ -60,9 +60,16 @@ function getMessages(sessionId) {
   return stmt.all();
 }
 
+function updateSessionTitle(sessionId, title) {
+  initDb();
+  db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(title, sessionId);
+  return { id: sessionId, title };
+}
+
 module.exports = {
   createSession,
   getSessions,
   saveMessage,
-  getMessages
+  getMessages,
+  updateSessionTitle
 };

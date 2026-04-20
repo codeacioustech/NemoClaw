@@ -29,7 +29,8 @@ contextBridge.exposeInMainWorld("launcher", {
     createSession: (title) => ipcRenderer.invoke("db-create-session", title),
     getSessions: () => ipcRenderer.invoke("db-get-sessions"),
     saveMessage: (sessionId, role, content) => ipcRenderer.invoke("db-save-message", sessionId, role, content),
-    getMessages: (sessionId) => ipcRenderer.invoke("db-get-messages", sessionId)
+    getMessages: (sessionId) => ipcRenderer.invoke("db-get-messages", sessionId),
+    updateSessionTitle: (sessionId, title) => ipcRenderer.invoke("db-update-session-title", sessionId, title)
   },
 
   // Model selection

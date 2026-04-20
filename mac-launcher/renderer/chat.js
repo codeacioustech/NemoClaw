@@ -322,6 +322,19 @@ const chat = (() => {
     
     if (_dbSessionId) {
        await window.launcher.db.saveMessage(_dbSessionId, "user", text);
+
+       // Auto-title the session from the first user message.
+       const priorMsgs = await window.launcher.db.getMessages(_dbSessionId);
+       const userCount = priorMsgs.filter((m) => m.role === "user").length;
+       if (userCount === 1) {
+         const title = text.replace(/\s+/g, " ").trim().slice(0, 60);
+         try {
+           await window.launcher.db.updateSessionTitle(_dbSessionId, title);
+           loadHistoryList();
+         } catch (e) {
+           console.warn("[chat] updateSessionTitle failed:", e.message);
+         }
+       }
     }
 
     const isFirstMsg = document.querySelectorAll(".chat-bubble.user").length === 1;
