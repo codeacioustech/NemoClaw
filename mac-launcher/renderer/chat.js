@@ -143,6 +143,9 @@ const chat = (() => {
     if (_streaming) return;
     _dbSessionId = id;
     try {
+      await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
+    } catch {}
+    try {
       const res = await gateway.createSession("open-coot Chat");
       _sessionKey = res.key;
     } catch {
@@ -212,6 +215,9 @@ const chat = (() => {
     if (oldKey) {
       try { await gateway.deleteSession(oldKey); } catch {}
     }
+    try {
+      await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
+    } catch {}
     clearMessages();
     try {
       const s = await window.launcher.db.createSession("New Chat");
@@ -620,6 +626,9 @@ const chat = (() => {
      if (oldKey) {
        try { await gateway.deleteSession(oldKey); } catch (e) { console.warn("[chat] deleteSession:", e.message); }
      }
+     try {
+       await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
+     } catch {}
      try {
        const res = await gateway.createSession("open-coot Chat");
        _sessionKey = res.key;

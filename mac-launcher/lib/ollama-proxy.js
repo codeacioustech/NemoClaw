@@ -94,6 +94,16 @@ function startProxy(onListening) {
   const server = http.createServer((clientReq, clientRes) => {
     console.log(`[ollama-proxy] ${clientReq.method} ${clientReq.url} content-length=${clientReq.headers["content-length"] || "none"}`);
 
+    // Renderer-triggered reset: wipe proxy-side session store so a new chat
+    // starts with zero prior messages regardless of static bearer token.
+    if (clientReq.method === "POST" && clientReq.url === "/session/reset") {
+      _sessionStore.clear();
+      console.log("[ollama-proxy] /session/reset — cleared all session state");
+      clientRes.writeHead(200, { "Content-Type": "application/json" });
+      clientRes.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
     const isChatEndpoint =
       clientReq.method === "POST" && clientReq.url === "/api/chat";
 
