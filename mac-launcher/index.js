@@ -218,13 +218,15 @@ function createMainWindow() {
     width: 1280,
     height: 800,
     title: "open-coot",
-    frame: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+  if (process.platform === "darwin" && typeof mainWindow.setWindowButtonVisibility === "function") {
+    mainWindow.setWindowButtonVisibility(false);
+  }
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   return mainWindow;
 }
