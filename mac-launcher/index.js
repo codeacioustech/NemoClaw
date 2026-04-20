@@ -449,6 +449,7 @@ ipcMain.handle("db-get-sessions", () => db.getSessions());
 ipcMain.handle("db-save-message", (_, sessionId, role, content) => db.saveMessage(sessionId, role, content));
 ipcMain.handle("db-get-messages", (_, sessionId) => db.getMessages(sessionId));
 ipcMain.handle("db-update-session-title", (_, sessionId, title) => db.updateSessionTitle(sessionId, title));
+ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
 
 ipcMain.handle("get-ollama-models", () => {
   return new Promise((resolve) => {

@@ -128,13 +128,32 @@ const chat = (() => {
     list.innerHTML = "";
     for (const s of sessions) {
       const el = document.createElement("div");
-      el.className = "chat-history-item";
-      el.style.cssText = "padding: 8px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; word-break: break-all;";
-      el.onmouseenter = () => el.style.background = "var(--surface-2)";
-      el.onmouseleave = () => el.style.background = "";
-      if (s.id === _dbSessionId) el.style.borderColor = "var(--primary)";
-      el.textContent = s.title;
-      el.onclick = () => loadHistoricalSession(s.id);
+      el.className = "chat-history-item" + (s.id === _dbSessionId ? " active" : "");
+      const title = document.createElement("span");
+      title.className = "chat-history-title";
+      title.textContent = s.title;
+      const delBtn = document.createElement("button");
+      delBtn.className = "chat-history-delete";
+      delBtn.setAttribute("aria-label", "Delete chat");
+      delBtn.textContent = "×";
+      delBtn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (!confirm("Delete this chat?")) return;
+        try {
+          await window.launcher.db.deleteSession(s.id);
+        } catch (e) {
+          appendSystemMessage("Failed to delete chat: " + e.message);
+          return;
+        }
+        if (s.id === _dbSessionId) {
+          await newChat();
+        } else {
+          loadHistoryList();
+        }
+      });
+      el.appendChild(title);
+      el.appendChild(delBtn);
+      el.addEventListener("click", () => loadHistoricalSession(s.id));
       list.appendChild(el);
     }
   }
@@ -145,15 +164,24 @@ const chat = (() => {
     try {
       await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
     } catch {}
+    const msgs = await window.launcher.db.getMessages(id);
+    try {
+      await fetch("http://127.0.0.1:11435/session/prime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: msgs.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+    } catch {}
     try {
       const res = await gateway.createSession("open-coot Chat");
       _sessionKey = res.key;
     } catch {
        _sessionKey = null;
     }
-    
+
     clearMessages();
-    const msgs = await window.launcher.db.getMessages(id);
     const container = $(".chat-messages");
     if (!container) return;
     const empty = container.querySelector(".chat-empty");
@@ -171,7 +199,7 @@ const chat = (() => {
       container.appendChild(el);
     }
     scrollToBottom();
-    appendSystemMessage("Historical session loaded. A new live context has been started.");
+    appendSystemMessage("Historical session loaded. Context restored.");
     loadHistoryList();
   }
 

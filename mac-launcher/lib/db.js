@@ -67,10 +67,18 @@ function updateSessionTitle(sessionId, title) {
   return { id: sessionId, title };
 }
 
+function deleteSession(sessionId) {
+  initDb();
+  db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+  return { id: sessionId };
+}
+
 module.exports = {
   createSession,
   getSessions,
   saveMessage,
   getMessages,
-  updateSessionTitle
+  updateSessionTitle,
+  deleteSession
 };
