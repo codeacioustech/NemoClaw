@@ -118,7 +118,7 @@ function startProxy(onListening) {
           }
 
           // Prevent model unloading and KV cache eviction (Ollama default is 5m)
-          parsed.keep_alive = -1; 
+          parsed.keep_alive = -1;
 
           // ── Session-aware Context Pruning + KV Prefix Cache Engine ───────────
           //

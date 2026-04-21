@@ -148,14 +148,14 @@ const chat = (() => {
     } catch {
        _sessionKey = null;
     }
-    
+
     clearMessages();
     const msgs = await window.launcher.db.getMessages(id);
     const container = $(".chat-messages");
     if (!container) return;
     const empty = container.querySelector(".chat-empty");
     if (empty) empty.remove();
-    
+
     for (const m of msgs) {
       const el = document.createElement("div");
       el.className = `chat-msg ${m.role}`;
@@ -319,7 +319,7 @@ const chat = (() => {
 
     const key = await ensureSession();
     if (!key) return;
-    
+
     if (_dbSessionId) {
        await window.launcher.db.saveMessage(_dbSessionId, "user", text);
 
@@ -475,7 +475,7 @@ const chat = (() => {
         const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
         if (answerDiv) answerDiv.textContent = text;
       }
-      
+
       if (state === "final" && text && _dbSessionId) {
          window.launcher.db.saveMessage(_dbSessionId, "assistant", text);
       }
@@ -652,7 +652,7 @@ const chat = (() => {
     if (sendBtn) {
       sendBtn.addEventListener("click", handleSendClick);
     }
-    
+
     loadHistoryList();
 
     // Wire input: Enter to send, Shift+Enter for newline
