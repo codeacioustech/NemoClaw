@@ -194,25 +194,16 @@ button:focus-visible,
 .input::placeholder { color: var(--text-muted); }
 
 /* ===================================================
-   WINDOW CHROME
+   DRAG STRIP (frameless window drag region)
 ==================================================== */
-.window-chrome {
-  height: 44px; min-height: 44px;
-  background: #111318; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; padding: 0 16px; gap: 8px;
+.drag-strip {
+  height: 28px; min-height: 28px;
+  background: var(--bg);
   flex-shrink: 0;
   -webkit-app-region: drag;
 }
-.window-chrome button, .window-chrome input { -webkit-app-region: no-drag; }
-.traffic-lights { display: flex; gap: 6px; }
-.tl { width: 12px; height: 12px; border-radius: 50%; }
-.tl-red    { background: #FF5F57; }
-.tl-yellow { background: #FFBD2E; }
-.tl-green  { background: #28C840; }
-.window-title {
-  flex: 1; text-align: center;
-  font-size: 12px; color: var(--text-muted); font-weight: 500;
-}
+.drag-strip button, .drag-strip input,
+button, input, textarea, select, a { -webkit-app-region: no-drag; }
 
 /* ===================================================
    ONBOARDING SHARED
@@ -457,7 +448,7 @@ button:focus-visible,
 
 /* Sidebar */
 .dash-sidebar {
-  width: 240px; min-width: 240px; background: #0E0F15;
+  width: 240px; min-width: 240px; background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -925,18 +916,6 @@ textarea:focus-visible {
   outline: none;
   box-shadow: var(--macos-focus);
 }
-
-/* --- Traffic lights (macOS title bar) --- */
-.traffic-lights {
-  display: flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 12px;
-  -webkit-app-region: drag;
-}
-.dash-screen .traffic-lights,
-#screen-dashboard .traffic-lights { height: 52px; }
-.traffic-lights > * { -webkit-app-region: no-drag; }
 
 /* --- Landing hero --- */
 .land-hero-title .grad {
