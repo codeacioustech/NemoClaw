@@ -790,6 +790,13 @@ details.chat-reasoning[open] .chat-reasoning-summary::before {
   padding: 2px 4px; font-size: 12px; border-radius: 4px;
 }
 .mounted-folder-remove:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+.mounted-folder-item.stale .mounted-folder-name { color: var(--danger); text-decoration: line-through; }
+.mounted-folder-reauth {
+  background: var(--danger-muted, rgba(239,68,68,0.12)); border: 1px solid var(--danger);
+  color: var(--danger); cursor: pointer; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px; margin-left: auto;
+}
+.mounted-folder-reauth:hover { background: var(--danger); color: #fff; }
 
 .dash-section[hidden] { display: none; }
 .section-empty {

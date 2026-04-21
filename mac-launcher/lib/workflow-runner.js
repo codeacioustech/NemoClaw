@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const wfDb = require('./workflow-db');
+const { withBookmarkAccess } = require('./bookmarks');
 
 const RUNS_PORT = 11437;
 const HOST = '127.0.0.1';
@@ -89,14 +90,30 @@ async function execTool(step, ctx) {
   const { op, path: p, content } = step.config || {};
   if (!op || !p) throw new Error('tool step requires { op, path }');
   const abs = path.resolve(p);
-  if (op === 'read') return { output: fs.readFileSync(abs, 'utf8') };
-  if (op === 'write') { fs.writeFileSync(abs, renderTemplate(content || '', ctx), 'utf8'); return { output: `wrote ${abs}` }; }
+  // All fs ops must go through withBookmarkAccess — it validates the path is
+  // inside a mounted folder and brackets the op with
+  // start/stopAccessingSecurityScopedResource. Raw fs.* calls here would be
+  // denied by the macOS sandbox with EPERM.
+  if (op === 'read') {
+    const output = await withBookmarkAccess(abs, () => fs.promises.readFile(abs, 'utf8'));
+    return { output };
+  }
+  if (op === 'write') {
+    await withBookmarkAccess(abs, async () => {
+      await fs.promises.mkdir(path.dirname(abs), { recursive: true });
+      await fs.promises.writeFile(abs, renderTemplate(content || '', ctx), 'utf8');
+    });
+    return { output: `wrote ${abs}` };
+  }
   if (op === 'edit') {
     const { find, replace } = step.config;
-    const cur = fs.readFileSync(abs, 'utf8');
-    if (!cur.includes(find)) throw new Error(`edit: find-string not found in ${abs}`);
-    fs.writeFileSync(abs, cur.replace(find, renderTemplate(replace || '', ctx)), 'utf8');
-    return { output: `edited ${abs}` };
+    const output = await withBookmarkAccess(abs, async () => {
+      const cur = await fs.promises.readFile(abs, 'utf8');
+      if (!cur.includes(find)) throw new Error(`edit: find-string not found in ${abs}`);
+      await fs.promises.writeFile(abs, cur.replace(find, renderTemplate(replace || '', ctx)), 'utf8');
+      return `edited ${abs}`;
+    });
+    return { output };
   }
   throw new Error(`unknown tool op: ${op}`);
 }

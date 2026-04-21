@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("launcher", {
   getMountedFolders: () => ipcRenderer.invoke("get-mounted-folders"),
   mountFolder: (data) => ipcRenderer.invoke("mount-folder", data),
   unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
+  reauthorizeFolder: (folderPath) => ipcRenderer.invoke("reauthorize-folder", folderPath),
 
   // Database channels
   db: {

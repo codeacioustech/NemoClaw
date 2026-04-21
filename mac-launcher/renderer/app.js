@@ -244,25 +244,46 @@ const app = (() => {
     }
   }
 
+  async function reauthorizeLocalFolder(folderPath) {
+    try {
+      const res = await window.launcher.reauthorizeFolder(folderPath);
+      if (res?.ok) appendToast("Folder re-authorized.");
+      else if (!res?.canceled) appendToast("Re-authorization failed.");
+      await refreshMountedFolders();
+    } catch (e) {
+      appendToast("Failed to re-authorize: " + e.message);
+    }
+  }
+
   function renderMountedFolderList(listEl, folders) {
     if (!listEl) return;
     listEl.replaceChildren(...folders.map((f) => {
       const name = f.path.split("/").pop() || f.path;
       const item = document.createElement("div");
-      item.className = "mounted-folder-item";
+      item.className = "mounted-folder-item" + (f.stale ? " stale" : "");
 
       const nameEl = document.createElement("span");
       nameEl.className = "mounted-folder-name";
-      nameEl.title = f.path;
+      nameEl.title = f.path + (f.stale ? " (access expired — re-authorize)" : "");
       nameEl.textContent = name;
+
+      item.appendChild(nameEl);
+
+      if (f.stale) {
+        const reauth = document.createElement("button");
+        reauth.className = "mounted-folder-reauth";
+        reauth.dataset.action = "reauthorize-local-folder";
+        reauth.dataset.path = f.path;
+        reauth.textContent = "Re-authorize";
+        item.appendChild(reauth);
+      }
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "mounted-folder-remove";
       removeBtn.dataset.action = "unmount-local-folder";
       removeBtn.dataset.path = f.path;
       removeBtn.textContent = "✕";
-
-      item.append(nameEl, removeBtn);
+      item.appendChild(removeBtn);
       return item;
     }));
   }
@@ -364,20 +385,31 @@ const app = (() => {
           list.replaceChildren(...folders.map((f) => {
             const name = f.path.split("/").pop() || f.path;
             const item = document.createElement("div");
-            item.className = "mounted-folder-item";
+            item.className = "mounted-folder-item" + (f.stale ? " stale" : "");
 
             const nameEl = document.createElement("span");
             nameEl.className = "mounted-folder-name";
-            nameEl.title = f.path;
+            nameEl.title = f.path + (f.stale ? " (access expired — re-authorize)" : "");
             nameEl.textContent = name;
+
+            item.appendChild(nameEl);
+
+            if (f.stale) {
+              const reauth = document.createElement("button");
+              reauth.className = "mounted-folder-reauth";
+              reauth.dataset.action = "reauthorize-local-folder";
+              reauth.dataset.path = f.path;
+              reauth.textContent = "Re-authorize";
+              item.appendChild(reauth);
+            }
 
             const btn = document.createElement("button");
             btn.className = "mounted-folder-remove";
             btn.dataset.action = "unmount-local-folder";
             btn.dataset.path = f.path;
             btn.textContent = "✕";
+            item.appendChild(btn);
 
-            item.append(nameEl, btn);
             return item;
           }));
         }
@@ -589,6 +621,7 @@ const app = (() => {
         case "remove-invite-row":    removeInviteRow(el); break;
         case "mount-local-folder":   mountLocalFolder(); break;
         case "unmount-local-folder": unmountLocalFolder(el.dataset.path); break;
+        case "reauthorize-local-folder": reauthorizeLocalFolder(el.dataset.path); break;
         case "toggle-connector":     toggleConnector(el); break;
         case "app-launch":           launch(); break;
         case "open-chat":            if (!el.disabled) chat.open(); break;
