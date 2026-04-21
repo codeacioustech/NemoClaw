@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const os = require("os");
+const express = require("express");
 
 const paths = require("./lib/paths");
 const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-seeder");
@@ -770,6 +771,94 @@ ipcMain.handle("clear-expired-approvals", () => {
 });
 
 // ---------------------------------------------------------------------------
+// File Access HTTP API (for OpenClaw gateway to call)
+// ---------------------------------------------------------------------------
+
+function startFileAccessAPI() {
+  const fileApp = express();
+  fileApp.use(express.json());
+
+  // POST /api/files/read - Read file or list directory
+  fileApp.post("/api/files/read", async (req, res) => {
+    const { filePath } = req.body;
+    if (!filePath) {
+      return res.status(400).json({ error: "Missing filePath" });
+    }
+
+    try {
+      await validatePathInMountedFolders(filePath);
+      await ensureFileApproval(filePath);
+
+      const content = await withBookmarkAccess(filePath, async () => {
+        const stat = await fs.promises.stat(filePath);
+        if (stat.isDirectory()) {
+          const entries = await fs.promises.readdir(filePath, { withFileTypes: true });
+          return JSON.stringify({
+            type: "directory",
+            path: filePath,
+            contents: entries.map((e) => ({ name: e.name, isDir: e.isDirectory() }))
+          });
+        }
+        return fs.promises.readFile(filePath, "utf-8");
+      });
+
+      res.json({ ok: true, content });
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
+
+  // POST /api/files/write - Write file
+  fileApp.post("/api/files/write", async (req, res) => {
+    const { filePath, content } = req.body;
+    if (!filePath || content === undefined) {
+      return res.status(400).json({ error: "Missing filePath or content" });
+    }
+
+    try {
+      await validatePathInMountedFolders(filePath);
+      await ensureFileApproval(filePath);
+
+      await withBookmarkAccess(filePath, async () => {
+        const dir = path.dirname(filePath);
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(filePath, content, "utf-8");
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
+
+  // POST /api/files/list - List directory
+  fileApp.post("/api/files/list", async (req, res) => {
+    const { dirPath } = req.body;
+    if (!dirPath) {
+      return res.status(400).json({ error: "Missing dirPath" });
+    }
+
+    try {
+      await validatePathInMountedFolders(dirPath);
+      await ensureFileApproval(dirPath);
+
+      const entries = await withBookmarkAccess(dirPath, async () => {
+        const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        return items.map((e) => ({ name: e.name, isDir: e.isDirectory() }));
+      });
+
+      res.json({ ok: true, entries });
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
+
+  fileApp.listen(3001, "127.0.0.1", () => {
+    console.log("[File API] Listening on http://127.0.0.1:3001");
+  });
+}
+
+// ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 
@@ -779,4 +868,9 @@ app.whenReady().then(() => {
     console.error("Bootstrap failed:", err);
     sendError(err.message);
   });
+
+  // Start file access API after bootstrap
+  setTimeout(() => {
+    startFileAccessAPI();
+  }, 2000);
 });
