@@ -546,7 +546,17 @@ ipcMain.handle("select-folder", async () => {
 });
 
 ipcMain.handle("fs-read-file", async (_, filePath) => {
-  return withBookmarkAccess(filePath, () => fs.promises.readFile(filePath, "utf-8"));
+  return withBookmarkAccess(filePath, async () => {
+    const st = await fs.promises.stat(filePath);
+    if (st.isDirectory()) {
+      const entries = await fs.promises.readdir(filePath, { withFileTypes: true });
+      return entries
+        .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+        .sort()
+        .join("\n");
+    }
+    return fs.promises.readFile(filePath, "utf-8");
+  });
 });
 
 ipcMain.handle("fs-write-file", async (_, filePath, content) => {

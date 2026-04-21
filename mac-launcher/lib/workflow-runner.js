@@ -95,7 +95,21 @@ async function execTool(step, ctx) {
   // start/stopAccessingSecurityScopedResource. Raw fs.* calls here would be
   // denied by the macOS sandbox with EPERM.
   if (op === 'read') {
-    const output = await withBookmarkAccess(abs, () => fs.promises.readFile(abs, 'utf8'));
+    const output = await withBookmarkAccess(abs, async () => {
+      const st = await fs.promises.stat(abs);
+      if (st.isDirectory()) {
+        const entries = await fs.promises.readdir(abs, { withFileTypes: true });
+        return entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).sort().join('\n');
+      }
+      return fs.promises.readFile(abs, 'utf8');
+    });
+    return { output };
+  }
+  if (op === 'list') {
+    const output = await withBookmarkAccess(abs, async () => {
+      const entries = await fs.promises.readdir(abs, { withFileTypes: true });
+      return entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).sort().join('\n');
+    });
     return { output };
   }
   if (op === 'write') {
