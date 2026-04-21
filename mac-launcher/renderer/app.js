@@ -311,7 +311,7 @@ const app = (() => {
              modelSelect.appendChild(opt);
           }
         }
-        
+
         if (!modelSelect.dataset.handled) {
           modelSelect.dataset.handled = "true";
           modelSelect.addEventListener("change", (e) => {
