@@ -676,7 +676,7 @@ button:focus-visible,
 .chat-close:hover { background: var(--surface-2); color: var(--text-primary); }
 
 .chat-messages {
-  flex: 1; overflow-y: auto; padding: 16px;
+  flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 16px;
   display: flex; flex-direction: column; gap: 12px;
 }
 
@@ -921,3 +921,193 @@ details.chat-reasoning[open] .chat-reasoning-summary::before {
   to   { opacity: 1; transform: translateY(0); }
 }
 .toast.fade-out { opacity: 0; transform: translateY(-4px); }
+
+/* ===================================================
+   macOS POLISH LAYER
+   Premium native-feel overrides layered on top of the
+   base design system. Applies globally unless scoped.
+==================================================== */
+:root {
+  --primary-grad: linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%);
+  --hero-grad:    linear-gradient(135deg, #0A84FF 0%, #BF5AF2 60%, #FF375F 100%);
+  --surface-glass: rgba(22, 24, 32, 0.72);
+  --backdrop-glass: rgba(0, 0, 0, 0.35);
+  --radius-card: 14px;
+  --radius-btn:  12px;
+  --macos-focus: 0 0 0 2px rgba(10, 132, 255, 0.35);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--macos-focus);
+}
+
+/* --- Traffic lights (macOS title bar) --- */
+.traffic-lights {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  -webkit-app-region: drag;
+}
+.dash-screen .traffic-lights,
+#screen-dashboard .traffic-lights { height: 52px; }
+.traffic-lights > * { -webkit-app-region: no-drag; }
+
+/* --- Landing hero --- */
+.land-hero-title .grad {
+  background: var(--hero-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: saturate(1.15);
+}
+
+@keyframes heroFloat {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.85; }
+  50%      { transform: translate(-50%, -52%) scale(1.06); opacity: 1; }
+}
+.land-hero-glow {
+  animation: heroFloat 8s ease-in-out infinite;
+  filter: blur(60px);
+}
+
+/* --- Download buttons --- */
+.dl-btn {
+  border-radius: var(--radius-btn);
+  box-shadow:
+    0 8px 24px rgba(0,0,0,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  transition: transform 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+}
+.dl-btn:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 28px rgba(0,0,0,0.36),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.dl-btn:active { transform: translateY(0); }
+
+/* --- Dashboard --- */
+.dash-sidebar {
+  background: var(--surface-2);
+  border-right: 1px solid var(--border-light);
+}
+.stat-card,
+.dash-panel {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.22);
+}
+.nav-item {
+  transition: background 0.18s var(--ease-std), color 0.18s var(--ease-std);
+  border-radius: 10px;
+}
+.nav-item:hover:not(.active) { background: var(--surface-3); }
+.nav-item.active {
+  background: rgba(10, 132, 255, 0.16);
+  color: var(--primary-light);
+}
+
+/* --- Chat overlay: frosted glass --- */
+.chat-backdrop {
+  background: var(--backdrop-glass);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+.chat-panel {
+  background: var(--surface-glass);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border-left: 1px solid var(--border-light);
+}
+
+.chat-history-sidebar {
+  background: var(--surface-2);
+  border-right: 1px solid var(--border-light);
+}
+
+/* --- History items (Apple Messages style) --- */
+.chat-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s var(--ease-std), border-color 0.15s var(--ease-std);
+}
+.chat-history-item:hover { background: var(--surface-3); }
+.chat-history-item.active {
+  background: rgba(10, 132, 255, 0.15);
+  border-color: rgba(10, 132, 255, 0.35);
+}
+.chat-history-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.chat-history-delete {
+  opacity: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 6px;
+  transition: opacity 0.15s var(--ease-std), background 0.15s var(--ease-std), color 0.15s var(--ease-std);
+}
+.chat-history-item:hover .chat-history-delete { opacity: 1; }
+.chat-history-delete:hover {
+  background: rgba(255, 69, 58, 0.18);
+  color: #FF453A;
+}
+
+/* --- Chat bubbles (iMessage-style) --- */
+.chat-msg.user {
+  display: flex;
+  justify-content: flex-end;
+}
+.chat-msg.user .chat-answer,
+.chat-msg.user > div:not(.chat-answer) {
+  background: var(--primary-grad);
+  color: #fff;
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 14px;
+  max-width: 72%;
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.25);
+}
+.chat-msg.assistant .chat-answer {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-radius: 18px 18px 18px 4px;
+  padding: 10px 14px;
+  max-width: 80%;
+  border: 1px solid var(--border-light);
+}
+.chat-msg.system {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  margin: 4px auto;
+  background: rgba(255,255,255,0.04);
+  border-radius: 999px;
+  width: fit-content;
+  max-width: 80%;
+}

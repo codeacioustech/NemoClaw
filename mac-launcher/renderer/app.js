@@ -106,24 +106,16 @@ const app = (() => {
     if (!dot || !info) return;
 
     try {
-      const res = await fetch("http://127.0.0.1:11434/api/tags");
-      if (res.ok) {
-        const data = await res.json();
-        const models = data.models || [];
-        dot.classList.remove("offline");
-        if (models.length > 0) {
-          const m = models[0];
-          info.textContent = `${m.name} · Running`;
-          const sizeMB = m.size ? (m.size / 1e9).toFixed(1) + " GB" : "";
-          detail.textContent = `Local${sizeMB ? " · " + sizeMB : ""}`;
-        } else {
-          info.textContent = "Ollama · Running";
-          detail.textContent = "No models loaded";
-        }
+      const models = await window.launcher.getModels();
+      dot.classList.remove("offline");
+      if (models.length > 0) {
+        const m = models[0];
+        info.textContent = `${m.name} · Running`;
+        const sizeMB = m.size ? (m.size / 1e9).toFixed(1) + " GB" : "";
+        detail.textContent = `Local${sizeMB ? " · " + sizeMB : ""}`;
       } else {
-        dot.classList.add("offline");
-        info.textContent = "Ollama · Offline";
-        detail.textContent = "Not responding";
+        info.textContent = "Ollama · Running";
+        detail.textContent = "No models loaded";
       }
     } catch {
       dot.classList.add("offline");
@@ -306,18 +298,36 @@ const app = (() => {
 
   async function refreshSettings() {
     // Model
-    const modelEl = $(".settings-model");
-    if (modelEl) {
+    const modelSelect = $("#model-selector");
+    if (modelSelect) {
       try {
-        const res = await fetch("http://127.0.0.1:11434/api/tags");
-        if (res.ok) {
-          const data = await res.json();
-          modelEl.textContent = data.models?.[0]?.name || "No models loaded";
+        const models = await window.launcher.getModels();
+        const currentConfig = await window.launcher.getConfig();
+        const activeModel = currentConfig.ollama_model || (models.length ? models[0].name : "");
+
+        modelSelect.innerHTML = "";
+        if (models.length === 0) {
+          const opt = document.createElement("option");
+          opt.textContent = "No models loaded";
+          modelSelect.appendChild(opt);
         } else {
-          modelEl.textContent = "Ollama offline";
+          for (const m of models) {
+             const opt = document.createElement("option");
+             opt.value = m.name;
+             opt.textContent = m.name;
+             if (m.name === activeModel) opt.selected = true;
+             modelSelect.appendChild(opt);
+          }
         }
-      } catch {
-        modelEl.textContent = "Ollama offline";
+        
+        if (!modelSelect.dataset.handled) {
+          modelSelect.dataset.handled = "true";
+          modelSelect.addEventListener("change", (e) => {
+             window.launcher.setModel(e.target.value);
+          });
+        }
+      } catch (e) {
+        modelSelect.innerHTML = "<option>Ollama offline</option>";
       }
     }
     // Gateway port

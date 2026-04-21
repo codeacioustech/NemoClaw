@@ -6,11 +6,11 @@
   "scripts": {
     "prestart": "test -f ../nemoclaw/dist/index.js || (cd ../nemoclaw && npm install --ignore-scripts && npx tsc)",
     "start": "electron .",
+    "rebuild": "electron-rebuild -f -v 37.0.0",
+    "postinstall": "electron-rebuild",
     "dist": "electron-builder"
   },
   "dependencies": {
-    "openclaw": "2026.4.14",
-    "nemoclaw": "file:../nemoclaw",
     "@agentclientprotocol/sdk": "0.17.1",
     "@anthropic-ai/vertex-sdk": "^0.14.4",
     "@aws-sdk/client-bedrock": "3.1020.0",
@@ -34,6 +34,7 @@
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "*",
     "ajv": "^8.18.0",
+    "better-sqlite3": "^12.9.0",
     "chalk": "^5.6.2",
     "chokidar": "^5.0.0",
     "cli-highlight": "^2.1.11",
@@ -55,8 +56,10 @@
     "long": "^5.3.2",
     "markdown-it": "^14.1.1",
     "matrix-js-sdk": "41.3.0-rc.0",
+    "nemoclaw": "file:../nemoclaw",
     "node-edge-tts": "^1.2.10",
     "openai": "*",
+    "openclaw": "2026.4.14",
     "osc-progress": "^0.3.0",
     "p-queue": "*",
     "pdfjs-dist": "^5.6.205",
@@ -73,6 +76,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
     "electron": "^37.0.0",
     "electron-builder": "^26.0.0"
   },

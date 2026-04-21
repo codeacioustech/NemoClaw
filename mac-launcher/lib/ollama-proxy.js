@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const { NEMOCLAW_DIR } = require("./config-seeder");
+const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -89,6 +93,45 @@ function deriveSessionId(headers, parsedBody) {
 function startProxy(onListening) {
   const server = http.createServer((clientReq, clientRes) => {
     console.log(`[ollama-proxy] ${clientReq.method} ${clientReq.url} content-length=${clientReq.headers["content-length"] || "none"}`);
+
+    // Renderer-triggered reset: wipe proxy-side session store so a new chat
+    // starts with zero prior messages regardless of static bearer token.
+    if (clientReq.method === "POST" && clientReq.url === "/session/reset") {
+      _sessionStore.clear();
+      console.log("[ollama-proxy] /session/reset — cleared all session state");
+      clientRes.writeHead(200, { "Content-Type": "application/json" });
+      clientRes.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Prime the proxy's session anchor with historical messages so the model
+    // sees full prior context on the next /api/chat even though the gateway
+    // only sends the new user turn.
+    if (clientReq.method === "POST" && clientReq.url === "/session/prime") {
+      const chunks = [];
+      clientReq.on("data", (c) => chunks.push(c));
+      clientReq.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+          const msgs = Array.isArray(body.messages) ? body.messages : [];
+          const clean = msgs
+            .filter((m) => m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
+            .map((m) => ({ role: m.role, content: m.content }));
+          _sessionStore.set("auth-ollama-local", {
+            messages: clean,
+            toolsJson: null,
+            primed: true,
+          });
+          console.log(`[ollama-proxy] /session/prime — primed ${clean.length} messages`);
+          clientRes.writeHead(200, { "Content-Type": "application/json" });
+          clientRes.end(JSON.stringify({ ok: true, count: clean.length }));
+        } catch (e) {
+          clientRes.writeHead(400);
+          clientRes.end(JSON.stringify({ ok: false, error: e.message }));
+        }
+      });
+      return;
+    }
 
     const isChatEndpoint =
       clientReq.method === "POST" && clientReq.url === "/api/chat";
@@ -207,8 +250,15 @@ function startProxy(onListening) {
             }
 
             if (!cacheHit) {
-              // Fresh session or prefix diverged: safe fallback to tail slice.
-              if (chatHistory.length > MAX_HISTORY) {
+              // If the session was primed from a historical DB load, prepend
+              // the primed anchor so the model sees full prior context on
+              // the very first turn of this restored chat. Consumed once.
+              if (session.primed && Array.isArray(session.messages) && session.messages.length) {
+                chatHistory = [...session.messages, ...chatHistory];
+                session.primed = false;
+                console.log(`[ollama-proxy] primed anchor merged (${session.messages.length} prior msgs)`);
+              } else if (chatHistory.length > MAX_HISTORY) {
+                // Fresh session or prefix diverged: safe fallback to tail slice.
                 chatHistory = chatHistory.slice(-MAX_HISTORY);
               }
             }
@@ -236,6 +286,15 @@ function startProxy(onListening) {
 
           // Constrain context window for faster prompt eval.
           parsed.options = { ...(parsed.options || {}), num_ctx: 8192 };
+
+          try {
+            const config = JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
+            if (config.ollama_model) {
+              parsed.model = config.ollama_model;
+            }
+          } catch (e) {
+            // fallback
+          }
 
           // gemma4:e4b supports native reasoning/thinking mode.
           // Force think=true regardless of what the client sends — OpenClaw

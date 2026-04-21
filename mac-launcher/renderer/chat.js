@@ -8,6 +8,7 @@
 
 const chat = (() => {
   let _sessionKey = null;
+  let _dbSessionId = null;
   let _streaming = false;
   let _currentAssistantEl = null;   // outer .chat-msg.assistant bubble
   let _currentThinkEl = null;       // <details> reasoning block inside bubble
@@ -120,7 +121,94 @@ const chat = (() => {
 
   // --- Session management ---
 
+  async function loadHistoryList() {
+    const list = $("#chat-history-list");
+    if (!list) return;
+    const sessions = await window.launcher.db.getSessions();
+    list.innerHTML = "";
+    for (const s of sessions) {
+      const el = document.createElement("div");
+      el.className = "chat-history-item" + (s.id === _dbSessionId ? " active" : "");
+      const title = document.createElement("span");
+      title.className = "chat-history-title";
+      title.textContent = s.title;
+      const delBtn = document.createElement("button");
+      delBtn.className = "chat-history-delete";
+      delBtn.setAttribute("aria-label", "Delete chat");
+      delBtn.textContent = "×";
+      delBtn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (!confirm("Delete this chat?")) return;
+        try {
+          await window.launcher.db.deleteSession(s.id);
+        } catch (e) {
+          appendSystemMessage("Failed to delete chat: " + e.message);
+          return;
+        }
+        if (s.id === _dbSessionId) {
+          await newChat();
+        } else {
+          loadHistoryList();
+        }
+      });
+      el.appendChild(title);
+      el.appendChild(delBtn);
+      el.addEventListener("click", () => loadHistoricalSession(s.id));
+      list.appendChild(el);
+    }
+  }
+
+  async function loadHistoricalSession(id) {
+    if (_streaming) return;
+    _dbSessionId = id;
+    try {
+      await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
+    } catch {}
+    const msgs = await window.launcher.db.getMessages(id);
+    try {
+      await fetch("http://127.0.0.1:11435/session/prime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: msgs.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+    } catch {}
+    try {
+      const res = await gateway.createSession("open-coot Chat");
+      _sessionKey = res.key;
+    } catch {
+       _sessionKey = null;
+    }
+
+    clearMessages();
+    const container = $(".chat-messages");
+    if (!container) return;
+    const empty = container.querySelector(".chat-empty");
+    if (empty) empty.remove();
+    
+    for (const m of msgs) {
+      const el = document.createElement("div");
+      el.className = `chat-msg ${m.role}`;
+      const answerDiv = document.createElement("div");
+      if (m.role === 'assistant') {
+         answerDiv.className = "chat-answer";
+      }
+      answerDiv.textContent = m.content;
+      el.appendChild(answerDiv);
+      container.appendChild(el);
+    }
+    scrollToBottom();
+    appendSystemMessage("Historical session loaded. Context restored.");
+    loadHistoryList();
+  }
+
   async function ensureSession() {
+    if (!_dbSessionId) {
+      const s = await window.launcher.db.createSession("New Chat");
+      _dbSessionId = s.id;
+      loadHistoryList();
+    }
     if (_sessionKey) return _sessionKey;
 
     try {
@@ -145,13 +233,33 @@ const chat = (() => {
   }
 
   async function newChat() {
+    // If a generation is in flight, cancel it first so we don't leak state.
+    if (_streaming) {
+      await stopGeneration();
+    }
+    // Tear down the old gateway session so the LLM context is fresh.
+    const oldKey = _sessionKey;
+    _sessionKey = null;
+    if (oldKey) {
+      try { await gateway.deleteSession(oldKey); } catch {}
+    }
+    try {
+      await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
+    } catch {}
+    clearMessages();
+    try {
+      const s = await window.launcher.db.createSession("New Chat");
+      _dbSessionId = s.id;
+    } catch (e) {
+      appendSystemMessage("Failed to create DB session: " + e.message);
+    }
     try {
       const res = await gateway.createSession("open-coot Chat");
       _sessionKey = res.key;
-      clearMessages();
     } catch (e) {
-      appendSystemMessage("Failed to create new chat: " + e.message);
+      appendSystemMessage("Failed to create gateway session: " + e.message);
     }
+    loadHistoryList();
   }
 
   // --- Slash command handler ---
@@ -245,6 +353,23 @@ const chat = (() => {
 
     const key = await ensureSession();
     if (!key) return;
+    
+    if (_dbSessionId) {
+       await window.launcher.db.saveMessage(_dbSessionId, "user", text);
+
+       // Auto-title the session from the first user message.
+       const priorMsgs = await window.launcher.db.getMessages(_dbSessionId);
+       const userCount = priorMsgs.filter((m) => m.role === "user").length;
+       if (userCount === 1) {
+         const title = text.replace(/\s+/g, " ").trim().slice(0, 60);
+         try {
+           await window.launcher.db.updateSessionTitle(_dbSessionId, title);
+           loadHistoryList();
+         } catch (e) {
+           console.warn("[chat] updateSessionTitle failed:", e.message);
+         }
+       }
+    }
 
     const isFirstMsg = document.querySelectorAll(".chat-bubble.user").length === 1;
     if (isFirstMsg) {
@@ -384,6 +509,10 @@ const chat = (() => {
         const answerDiv = _currentAssistantEl.querySelector(".chat-answer");
         if (answerDiv) answerDiv.textContent = text;
       }
+      
+      if (state === "final" && text && _dbSessionId) {
+         window.launcher.db.saveMessage(_dbSessionId, "assistant", text);
+      }
 
       if (state === "error") {
         const errMsg = payload.error?.message || "Response failed";
@@ -471,10 +600,13 @@ const chat = (() => {
             let content = await window.launcher.readFile(args.path);
             if (args.edits && Array.isArray(args.edits)) {
               for (const edit of args.edits) {
-                if (content.includes(edit.oldText)) {
-                  content = content.replace(edit.oldText, edit.newText);
+                const occurrences = content.split(edit.oldText).length - 1;
+                if (occurrences === 0) {
+                  throw new Error(`oldText not found in file.`);
+                } else if (occurrences > 1) {
+                  throw new Error(`oldText matches multiple locations. Please provide more context to make oldText unique.`);
                 } else {
-                  throw new Error(`Target text block not found in file.`);
+                  content = content.replace(edit.oldText, edit.newText);
                 }
               }
             }
@@ -503,12 +635,47 @@ const chat = (() => {
     }
   }
 
+  async function stopGeneration() {
+     if (!_streaming) return;
+     _streaming = false;
+     const oldKey = _sessionKey;
+     // Null out immediately so any in-flight deltas are ignored by handleChatEvent
+     _sessionKey = null;
+     _currentAssistantEl = null;
+     _currentThinkEl = null;
+     _currentThinkBody = null;
+     _thinkingActive = false;
+     _accumulatedText = "";
+     hideTyping();
+     updateSendButton();
+     appendSystemMessage("Generation stopped by user.");
+
+     // Abort the live generation by deleting the old session, then make a fresh one
+     if (oldKey) {
+       try { await gateway.deleteSession(oldKey); } catch (e) { console.warn("[chat] deleteSession:", e.message); }
+     }
+     try {
+       await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
+     } catch {}
+     try {
+       const res = await gateway.createSession("open-coot Chat");
+       _sessionKey = res.key;
+     } catch (e) {
+       console.error("[chat] createSession after stop failed:", e.message);
+     }
+  }
+
+  function handleSendClick() {
+     if (_streaming) stopGeneration();
+     else send();
+  }
+
   function updateSendButton() {
     const btn = $(".chat-send");
     if (!btn) return;
-    btn.disabled = _streaming;
+    btn.disabled = false;
     if (_streaming) {
-       btn.innerHTML = `<span class="icon icon-md spinner" style="animation: spin 1s linear infinite;"><svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg></span>`;
+       btn.innerHTML = `<span class="icon icon-md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg></span>`;
     } else {
        btn.innerHTML = `<span class="icon icon-md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg></span>`;
     }
@@ -520,8 +687,10 @@ const chat = (() => {
     // Wire send button
     const sendBtn = $(".chat-send");
     if (sendBtn) {
-      sendBtn.addEventListener("click", send);
+      sendBtn.addEventListener("click", handleSendClick);
     }
+    
+    loadHistoryList();
 
     // Wire input: Enter to send, Shift+Enter for newline
     const input = $(".chat-input");

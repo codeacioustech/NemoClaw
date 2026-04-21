@@ -13,6 +13,7 @@ const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-see
 const { startGateway, waitForGateway } = require("./lib/gateway");
 const { startProxy, waitForProxy, warmUpModel } = require("./lib/ollama-proxy");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
+const db = require("./lib/db");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -487,6 +488,36 @@ ipcMain.handle("get-gateway-port", () => GATEWAY_PORT);
 
 ipcMain.handle("get-config", () => readLauncherConfig());
 
+ipcMain.handle("db-create-session", (_, title) => db.createSession(title));
+ipcMain.handle("db-get-sessions", () => db.getSessions());
+ipcMain.handle("db-save-message", (_, sessionId, role, content) => db.saveMessage(sessionId, role, content));
+ipcMain.handle("db-get-messages", (_, sessionId) => db.getMessages(sessionId));
+ipcMain.handle("db-update-session-title", (_, sessionId, title) => db.updateSessionTitle(sessionId, title));
+ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
+
+ipcMain.handle("get-ollama-models", () => {
+  return new Promise((resolve) => {
+    http.get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(data).models || []);
+        } catch { resolve([]); }
+      });
+    }).on("error", () => resolve([]));
+  });
+});
+
+ipcMain.handle("set-ollama-model", (_, modelName) => {
+  const existing = readLauncherConfig();
+  writeLauncherConfig({
+    ...existing,
+    ollama_model: modelName
+  });
+  return true;
+});
+
 ipcMain.handle("is-first-run", () => {
   const config = readLauncherConfig();
   return !config.onboarding_complete;
@@ -517,25 +548,42 @@ ipcMain.handle("mark-onboarding-complete", (_event, data) => {
 // File system IPC — folder mounting & sandboxed file access
 // ---------------------------------------------------------------------------
 
-function getMountedFolderForPath(filePath) {
+async function getMountedFolderForPath(resolvedPath) {
   const folders = readLauncherConfig().mountedFolders || [];
-  const resolved = path.resolve(filePath);
   for (const folder of folders) {
-    const root = path.resolve(folder.path);
-    if (resolved === root || resolved.startsWith(root + path.sep)) {
+    let root;
+    try {
+      root = await fs.promises.realpath(folder.path);
+    } catch {
+      root = path.resolve(folder.path);
+    }
+    if (resolvedPath === root || resolvedPath.startsWith(root + path.sep)) {
       return folder;
     }
   }
   return null;
 }
 
-function validatePathInMountedFolders(filePath) {
-  const resolved = path.resolve(filePath);
+async function validatePathInMountedFolders(filePath) {
   // Block path traversal attempts
   if (filePath.includes("..")) {
     throw new Error("Path traversal not allowed");
   }
-  const folder = getMountedFolderForPath(resolved);
+
+  let resolved;
+  try {
+    resolved = await fs.promises.realpath(filePath);
+  } catch (err) {
+    // If file doesn't exist, validate its real parent directory path
+    try {
+      const parentDir = await fs.promises.realpath(path.dirname(filePath));
+      resolved = path.join(parentDir, path.basename(filePath));
+    } catch (e) {
+      resolved = path.resolve(filePath);
+    }
+  }
+
+  const folder = await getMountedFolderForPath(resolved);
   if (!folder) {
     throw new Error("Path is not within a mounted folder");
   }
@@ -543,7 +591,7 @@ function validatePathInMountedFolders(filePath) {
 }
 
 async function withBookmarkAccess(filePath, fn) {
-  const folder = validatePathInMountedFolders(filePath);
+  const folder = await validatePathInMountedFolders(filePath);
   let stopAccess = null;
   if (folder.bookmark) {
     stopAccess = app.startAccessingSecurityScopedResource(folder.bookmark);
