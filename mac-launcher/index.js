@@ -633,7 +633,21 @@ ipcMain.handle("fs-read-file", async (_, filePath) => {
   await ensureFileApproval(filePath);
 
   // Finally, read with bookmark access
-  return withBookmarkAccess(filePath, () => fs.promises.readFile(filePath, "utf-8"));
+  return withBookmarkAccess(filePath, async () => {
+    // Auto-detect: if path is a directory, list contents instead of error
+    const stat = await fs.promises.stat(filePath);
+    if (stat.isDirectory()) {
+      const entries = await fs.promises.readdir(filePath, { withFileTypes: true });
+      return JSON.stringify({
+        type: "directory",
+        path: filePath,
+        contents: entries.map((e) => ({ name: e.name, isDir: e.isDirectory() }))
+      });
+    }
+
+    // Regular file read
+    return fs.promises.readFile(filePath, "utf-8");
+  });
 });
 
 ipcMain.handle("fs-write-file", async (_, filePath, content) => {
