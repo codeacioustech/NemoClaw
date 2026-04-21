@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("launcher", {
   getMountedFolders: () => ipcRenderer.invoke("get-mounted-folders"),
   mountFolder: (data) => ipcRenderer.invoke("mount-folder", data),
   unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
+  runTerminalCommand: (cmd, path) => ipcRenderer.invoke("run-terminal-command", cmd, path),
 
   // Database channels
   db: {

@@ -18,6 +18,7 @@ const SYSTEM_INSTRUCTION =
   "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
   "- `edit`: to modify existing files.\n" +
   "- `write`: to create or completely overwrite files.\n" +
+  "- `execute_terminal`: to execute a bash/terminal command locally. Requires a `command` and a `directory`.\n" +
   "ALWAYS wait for the tool result before replying. " +
   "For non-file questions, answer in plain text.";
 
@@ -192,8 +193,27 @@ function startProxy(onListening) {
             // Filter to only the core file tools so we don't blow up Ollama's VRAM
             parsed.tools = parsed.tools.filter(t => {
               const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return /(read|edit|write|ls|list|dir)/i.test(name);
+              return /(read|edit|write|ls|list|dir|execute_terminal)/i.test(name);
             });
+
+            // Ensure execute_terminal schema exists
+            if (!parsed.tools.some(t => (t?.function?.name || t?.name) === "execute_terminal")) {
+              parsed.tools.push({
+                type: "function",
+                function: {
+                  name: "execute_terminal",
+                  description: "Execute a bash or terminal command natively. Used for running scripts, diagnostics, starting servers, etc.",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      command: { type: "string", description: "The shell command to run (e.g. 'ls -la', 'npm install')" },
+                      directory: { type: "string", description: "The folder path to execute the command within. If omitted, uses current workspace." }
+                    },
+                    required: ["command"]
+                  }
+                }
+              });
+            }
 
             // Freeze: serialise tools once per session so the JSON bytes are
             // identical across turns (same token sequence → cache hit).

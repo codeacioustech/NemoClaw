@@ -619,6 +619,30 @@ const chat = (() => {
           }
           break;
         }
+        case "execute_terminal": {
+          appendToolMessage("💻", `Terminal: ${args.command}`, "pending");
+          let targetPath = args.directory || '.';
+          if (targetPath === '.' || targetPath === './' || targetPath === '') {
+            try {
+              const folders = await window.launcher.getMountedFolders();
+              if (folders && folders.length > 0) targetPath = folders[0].path;
+            } catch (e) { /* silent fallback */ }
+          }
+          try {
+            const execResult = await window.launcher.runTerminalCommand(args.command, targetPath);
+            if (execResult.success) {
+              result = { success: true, stdout: execResult.stdout, stderr: execResult.stderr };
+              appendToolMessage("✅", `Executed terminal command`, "success");
+            } else {
+              result = { success: false, error: execResult.error, stdout: execResult.stdout, stderr: execResult.stderr };
+              appendToolMessage("❌", `Command failed or rejected: ${execResult.error}`, "error");
+            }
+          } catch(e) {
+            result = { success: false, error: e.message };
+            appendToolMessage("❌", `Failed to run command: ${e.message}`, "error");
+          }
+          break;
+        }
         default:
           result = { success: false, error: `Unknown tool: ${name}` };
           appendToolMessage("❌", `Unknown tool: ${name}`, "error");

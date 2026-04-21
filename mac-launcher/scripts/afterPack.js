@@ -108,7 +108,7 @@ exports.default = async function (context) {
       walkDeps(depDir);
     }
   }
-
+5
   // Verify critical module
   const carbonCheck = path.join(destModules, "@buape", "carbon", "package.json");
   console.log(`[afterPack] @buape/carbon present: ${fs.existsSync(carbonCheck)}`);

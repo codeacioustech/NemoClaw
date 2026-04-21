@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const { spawn } = require("child_process");
+const { spawn, exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
@@ -588,6 +588,51 @@ ipcMain.handle("fs-write-file", async (_, filePath, content) => {
   } catch (err) {
     console.error(`[fs-write-file] failed ${filePath}: ${err.message}`);
     throw err;
+  }
+});
+
+ipcMain.handle("run-terminal-command", async (_, cmd, targetPath) => {
+  try {
+    const folder = await validatePathInMountedFolders(targetPath);
+    if (!folder) throw new Error("Path is not within a mounted folder");
+
+    if (/sudo\s/i.test(cmd)) {
+      throw new Error("Illegal command: 'sudo' is not allowed");
+    }
+
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: "Terminal Confirmation",
+      message: "The AI agent wants to execute the following terminal command. Only approve if you trust this action.",
+      detail: cmd,
+      buttons: ["Execute", "Cancel"],
+      defaultId: 1,
+      cancelId: 1
+    });
+
+    if (response !== 0) {
+      return { success: false, error: "User rejected the execution." };
+    }
+
+    return await withBookmarkAccess(folder.path, () => {
+      return new Promise((resolve) => {
+        exec(cmd, { cwd: targetPath }, (error, stdout, stderr) => {
+          if (error) {
+            resolve({ success: false, error: error.message, stdout, stderr });
+          } else {
+            resolve({ success: true, stdout, stderr });
+          }
+        });
+      });
+    });
+
+  } catch (err) {
+    await dialog.showMessageBox(mainWindow, {
+      type: "error",
+      title: "Illegal Command",
+      message: err.message
+    });
+    return { success: false, error: err.message };
   }
 });
 
