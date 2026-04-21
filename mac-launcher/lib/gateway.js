@@ -3,6 +3,8 @@
 
 const { spawn } = require("child_process");
 const http = require("http");
+const path = require("path");
+const os = require("os");
 const paths = require("./paths");
 const { GATEWAY_PORT } = require("./config-seeder");
 
@@ -38,7 +40,7 @@ function startGateway(onStdout, onStderr) {
       ELECTRON_RUN_AS_NODE: "1",
       OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
       NODE_OPTIONS: "",
-      FILE_ACCESS_SCRIPT: "/Users/codeacious/Desktop/NemoClaw/mac-launcher/bin/file-access.sh",
+      FILE_ACCESS_SCRIPT: path.join(__dirname, "..", "bin", "file-access.sh"),
     },
     cwd: openclawDir,
     stdio: ["ignore", "pipe", "pipe"],

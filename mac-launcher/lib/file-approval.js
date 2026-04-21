@@ -87,20 +87,55 @@ class FileApprovalManager {
   }
 
   /**
-   * Add approval for a file
+   * Add approval for a file with scope and permissions
    */
-  addApproval(filePath, scope) {
+  addApproval(filePath, scope, permissions = "read") {
     const cacheKey = this.getCacheKey(filePath);
 
     this.cache[cacheKey] = {
       path: filePath,
       scope, // "per-session" or "per-chat"
+      permissions, // "read", "write", or "read+write"
       sessionId: this.currentSessionId,
       chatId: this.currentChatId,
       approvedAt: new Date().toISOString(),
     };
 
     this.saveApprovals();
+  }
+
+  /**
+   * Check if file access is allowed for specific operation
+   */
+  canAccessFile(filePath, operation = "read") {
+    const cacheKey = this.getCacheKey(filePath);
+    const approval = this.cache[cacheKey];
+
+    if (!approval) {
+      return { allowed: false, reason: "NOT_APPROVED" };
+    }
+
+    // Check scope expiration
+    if (approval.scope === "per-session") {
+      if (approval.sessionId !== this.currentSessionId) {
+        return { allowed: false, reason: "SESSION_EXPIRED" };
+      }
+    } else if (approval.scope === "per-chat") {
+      if (approval.chatId !== this.currentChatId) {
+        return { allowed: false, reason: "CHAT_CHANGED" };
+      }
+    }
+
+    // Check permission level
+    const permissions = approval.permissions || "read";
+    if (operation === "write" && !permissions.includes("write")) {
+      return { allowed: false, reason: "WRITE_NOT_APPROVED" };
+    }
+    if (operation === "read" && !permissions.includes("read")) {
+      return { allowed: false, reason: "READ_NOT_APPROVED" };
+    }
+
+    return { allowed: true, reason: "APPROVED", scope: approval.scope, permissions };
   }
 
   /**

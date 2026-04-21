@@ -580,9 +580,9 @@ ipcMain.handle("select-folder", async () => {
 });
 
 /**
- * Helper: Request approval for file access
+ * Helper: Request approval for file access with scope and permissions
  */
-async function requestFileApproval(filePath) {
+async function requestFileApproval(filePath, requestedOperation = "read") {
   if (!mainWindow || mainWindow.isDestroyed()) {
     throw new Error("Main window not available");
   }
@@ -590,39 +590,63 @@ async function requestFileApproval(filePath) {
   const fileName = path.basename(filePath);
   const folderName = path.dirname(filePath);
 
-  const result = await dialog.showMessageBox(mainWindow, {
+  // Step 1: Ask for scope
+  const scopeResult = await dialog.showMessageBox(mainWindow, {
     type: "question",
-    buttons: ["Allow (this session)", "Allow (this chat)", "Deny"],
-    title: "File Access Request",
-    message: `Allow agent to access this file?`,
-    detail: `File: ${fileName}\nPath: ${folderName}`,
+    buttons: ["Per Session (until app restart)", "Per Chat (until chat change)", "Cancel"],
+    title: "Choose Approval Scope",
+    message: `File Access Request: ${fileName}`,
+    detail: `Choose how long this approval should last:\n\nPath: ${folderName}`,
     defaultId: 0,
     cancelId: 2,
   });
 
-  // Button indices: 0 = session, 1 = chat, 2 = deny
-  if (result.response === 2) {
+  if (scopeResult.response === 2) {
     throw new Error("File access denied by user");
   }
 
-  const scope = result.response === 0 ? "per-session" : "per-chat";
-  fileApprovalManager.addApproval(filePath, scope);
-  return scope;
+  const scope = scopeResult.response === 0 ? "per-session" : "per-chat";
+
+  // Step 2: Ask for permissions
+  const permissionResult = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    buttons: ["Read Only", "Write Only", "Read & Write", "Cancel"],
+    title: "Choose Permissions",
+    message: `What permissions to grant?`,
+    detail: `File: ${fileName}\nPath: ${folderName}\n\nScope: ${scope}`,
+    defaultId: 2, // Read & Write by default
+    cancelId: 3,
+  });
+
+  if (permissionResult.response === 3) {
+    throw new Error("File access denied by user");
+  }
+
+  let permissions = "read";
+  if (permissionResult.response === 1) {
+    permissions = "write";
+  } else if (permissionResult.response === 2) {
+    permissions = "read+write";
+  }
+
+  fileApprovalManager.addApproval(filePath, scope, permissions);
+  return { scope, permissions };
 }
 
 /**
- * Helper: Check if file access is approved, request if needed
+ * Helper: Check if file access is approved for operation, request if needed
  */
-async function ensureFileApproval(filePath) {
-  const check = fileApprovalManager.isFileApproved(filePath);
+async function ensureFileApproval(filePath, operation = "read") {
+  const check = fileApprovalManager.canAccessFile(filePath, operation);
 
-  if (check.approved) {
+  if (check.allowed) {
     return;
   }
 
   // File is in mounted folder but not approved — ask user
-  if (check.reason === "NOT_APPROVED" || check.reason === "SESSION_EXPIRED" || check.reason === "CHAT_CHANGED") {
-    await requestFileApproval(filePath);
+  if (check.reason === "NOT_APPROVED" || check.reason === "SESSION_EXPIRED" || check.reason === "CHAT_CHANGED" ||
+      check.reason === "READ_NOT_APPROVED" || check.reason === "WRITE_NOT_APPROVED") {
+    await requestFileApproval(filePath, operation);
   }
 }
 
@@ -630,8 +654,8 @@ ipcMain.handle("fs-read-file", async (_, filePath) => {
   // First, validate it's in a mounted folder
   await validatePathInMountedFolders(filePath);
 
-  // Then, check approval
-  await ensureFileApproval(filePath);
+  // Then, check approval for read operation
+  await ensureFileApproval(filePath, "read");
 
   // Finally, read with bookmark access
   return withBookmarkAccess(filePath, async () => {
@@ -658,8 +682,8 @@ ipcMain.handle("fs-write-file", async (_, filePath, content) => {
     // First, validate it's in a mounted folder
     await validatePathInMountedFolders(filePath);
 
-    // Then, check approval
-    await ensureFileApproval(filePath);
+    // Then, check approval for write operation
+    await ensureFileApproval(filePath, "write");
 
     // Finally, write with bookmark access
     const result = await withBookmarkAccess(filePath, async () => {
@@ -680,8 +704,8 @@ ipcMain.handle("fs-list-dir", async (_, dirPath) => {
   // First, validate it's in a mounted folder
   await validatePathInMountedFolders(dirPath);
 
-  // Then, check approval
-  await ensureFileApproval(dirPath);
+  // Then, check approval for read operation
+  await ensureFileApproval(dirPath, "read");
 
   // Finally, list with bookmark access
   return withBookmarkAccess(dirPath, async () => {
@@ -787,7 +811,7 @@ function startFileAccessAPI() {
 
     try {
       await validatePathInMountedFolders(filePath);
-      await ensureFileApproval(filePath);
+      await ensureFileApproval(filePath, "read");
 
       const content = await withBookmarkAccess(filePath, async () => {
         const stat = await fs.promises.stat(filePath);
@@ -817,7 +841,7 @@ function startFileAccessAPI() {
 
     try {
       await validatePathInMountedFolders(filePath);
-      await ensureFileApproval(filePath);
+      await ensureFileApproval(filePath, "write");
 
       await withBookmarkAccess(filePath, async () => {
         const dir = path.dirname(filePath);
@@ -840,7 +864,7 @@ function startFileAccessAPI() {
 
     try {
       await validatePathInMountedFolders(dirPath);
-      await ensureFileApproval(dirPath);
+      await ensureFileApproval(dirPath, "read");
 
       const entries = await withBookmarkAccess(dirPath, async () => {
         const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
