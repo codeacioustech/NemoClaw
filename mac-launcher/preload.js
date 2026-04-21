@@ -25,14 +25,24 @@ contextBridge.exposeInMainWorld("launcher", {
   unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
   reauthorizeFolder: (folderPath) => ipcRenderer.invoke("reauthorize-folder", folderPath),
 
+  // File access approval management
+  setCurrentChatId: (chatId) => ipcRenderer.invoke("set-current-chat-id", chatId),
+  getSessionInfo: () => ipcRenderer.invoke("get-session-info"),
+  getFileApprovals: () => ipcRenderer.invoke("get-file-approvals"),
+  revokeFileApproval: (filePath) => ipcRenderer.invoke("revoke-file-approval", filePath),
+  clearFileApprovals: () => ipcRenderer.invoke("clear-file-approvals"),
+  clearExpiredApprovals: () => ipcRenderer.invoke("clear-expired-approvals"),
+
   // Database channels
   db: {
     createSession: (title) => ipcRenderer.invoke("db-create-session", title),
     getSessions: () => ipcRenderer.invoke("db-get-sessions"),
-    saveMessage: (sessionId, role, content) => ipcRenderer.invoke("db-save-message", sessionId, role, content),
+    saveMessage: (sessionId, role, content) =>
+      ipcRenderer.invoke("db-save-message", sessionId, role, content),
     getMessages: (sessionId) => ipcRenderer.invoke("db-get-messages", sessionId),
-    updateSessionTitle: (sessionId, title) => ipcRenderer.invoke("db-update-session-title", sessionId, title),
-    deleteSession: (id) => ipcRenderer.invoke("db-delete-session", id)
+    updateSessionTitle: (sessionId, title) =>
+      ipcRenderer.invoke("db-update-session-title", sessionId, title),
+    deleteSession: (id) => ipcRenderer.invoke("db-delete-session", id),
   },
 
   // Workflows
@@ -45,7 +55,8 @@ contextBridge.exposeInMainWorld("launcher", {
     stepAdd: (workflowId, step) => ipcRenderer.invoke("wf-step-add", workflowId, step),
     stepUpdate: (stepId, patch) => ipcRenderer.invoke("wf-step-update", stepId, patch),
     stepDelete: (stepId) => ipcRenderer.invoke("wf-step-delete", stepId),
-    stepReorder: (workflowId, orderedIds) => ipcRenderer.invoke("wf-step-reorder", workflowId, orderedIds),
+    stepReorder: (workflowId, orderedIds) =>
+      ipcRenderer.invoke("wf-step-reorder", workflowId, orderedIds),
     run: (workflowId) => ipcRenderer.invoke("wf-run", workflowId),
     runsList: (workflowId) => ipcRenderer.invoke("wf-runs-list", workflowId),
     runGet: (runId) => ipcRenderer.invoke("wf-run-get", runId),
@@ -60,5 +71,12 @@ contextBridge.exposeInMainWorld("launcher", {
   saveCredential: (key, value) => ipcRenderer.invoke("save-credential", key, value),
   deleteCredential: (key) => ipcRenderer.invoke("delete-credential", key),
   hasCredential: (key) => ipcRenderer.invoke("has-credential", key),
-  listCredentialKeys: () => ipcRenderer.invoke("list-credential-keys")
+  listCredentialKeys: () => ipcRenderer.invoke("list-credential-keys"),
+
+  // Update system
+  getCurrentVersion: () => ipcRenderer.invoke("get-current-version"),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  applyUpdate: (severity) => ipcRenderer.invoke("apply-update", severity),
+  updateComplete: (success, version) => ipcRenderer.invoke("update-complete", success, version),
+  onUpdateProgress: (cb) => ipcRenderer.on("update-progress", (_e, data) => cb(data)),
 });

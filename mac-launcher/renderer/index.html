@@ -1,17 +1,22 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com;">
-  <title>open-coot</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-
-<!-- ═══════════════════════════════════════════════════
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src ws://127.0.0.1:* http://127.0.0.1:*; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com;"
+    />
+    <title>open-coot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ═══════════════════════════════════════════════════
      SCREEN 1 · ONBOARDING — STEP 1: Setup
 ════════════════════════════════════════════════════ -->
 <div id="screen-1" class="screen">
@@ -22,10 +27,32 @@
       <div class="ob-progress" role="progressbar" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100" aria-label="Setup progress">
         <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:25%"></div></div>
         <span class="ob-step">Step 1 of 4</span>
+    <div id="screen-1" class="screen">
+      <div class="window-chrome">
+        <div class="traffic-lights">
+          <div class="tl tl-red"></div>
+          <div class="tl tl-yellow"></div>
+          <div class="tl tl-green"></div>
+        </div>
+        <div class="window-title">open-coot — First Launch Setup</div>
+        <div style="width: 52px"></div>
       </div>
 
-      <h2 class="ob-heading">Tell us about your workspace</h2>
-      <p class="ob-sub">We'll tailor open-coot so it feels right from day one. You can always change this later.</p>
+      <div class="ob-body">
+        <div class="ob-card">
+          <div
+            class="ob-progress"
+            role="progressbar"
+            aria-valuenow="25"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-label="Setup progress"
+          >
+            <div class="ob-progress-bar">
+              <div class="ob-progress-fill" style="width: 25%"></div>
+            </div>
+            <span class="ob-step">Step 1 of 4</span>
+          </div>
 
       <!-- Purpose -->
       <div class="ob-section-label">What's the main purpose?</div>
@@ -77,19 +104,237 @@
           <div class="size-num">20+</div><div class="size-label">Organization</div>
         </div>
       </div>
+          <h2 class="ob-heading">Tell us about your workspace</h2>
+          <p class="ob-sub">
+            We'll tailor open-coot so it feels right from day one. You can always change this later.
+          </p>
 
-      <div class="ob-actions">
-        <div></div>
-        <button class="btn-primary" data-action="go" data-step="2">Continue
-          <span class="icon icon-sm" style="margin-left:2px;"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-        </button>
+          <!-- Purpose -->
+          <div class="ob-section-label">What's the main purpose?</div>
+          <div class="purpose-grid">
+            <div
+              class="purpose-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="purpose-card"
+            >
+              <div class="purpose-top">
+                <span class="purpose-icon icon icon-lg"
+                  ><svg viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" /></svg></span
+                ><span class="purpose-label">Personal productivity</span>
+              </div>
+              <div class="purpose-desc">
+                Just you. Automate your own tools, notes, and workflows.
+              </div>
+            </div>
+            <div
+              class="purpose-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="purpose-card"
+            >
+              <div class="purpose-top">
+                <span class="purpose-icon icon icon-lg"
+                  ><svg viewBox="0 0 24 24">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" /></svg></span
+                ><span class="purpose-label">Family coordination</span>
+              </div>
+              <div class="purpose-desc">Shared tasks, calendars, budgets — for the household.</div>
+            </div>
+            <div
+              class="purpose-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="purpose-card"
+            >
+              <div class="purpose-top">
+                <span class="purpose-icon icon icon-lg"
+                  ><svg viewBox="0 0 24 24">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg></span
+                ><span class="purpose-label">Team collaboration</span>
+              </div>
+              <div class="purpose-desc">A workspace for your startup, agency, or department.</div>
+            </div>
+            <div
+              class="purpose-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="purpose-card"
+            >
+              <div class="purpose-top">
+                <span class="purpose-icon icon icon-lg"
+                  ><svg viewBox="0 0 24 24">
+                    <path
+                      d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
+                    /></svg></span
+                ><span class="purpose-label">Custom / developer</span>
+              </div>
+              <div class="purpose-desc">I know what I'm doing — give me full control.</div>
+            </div>
+          </div>
+
+          <!-- Tech familiarity -->
+          <div class="ob-section-label">Have you used any of these before?</div>
+          <div class="tech-pills" style="margin-bottom: 28px">
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              n8n
+            </div>
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              Zapier
+            </div>
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              Notion
+            </div>
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              Make (Integromat)
+            </div>
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              Local AI / Ollama
+            </div>
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              Google Drive
+            </div>
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              Slack
+            </div>
+            <div
+              class="tech-pill"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="tech-pill-dot"></div>
+              None of these
+            </div>
+          </div>
+
+          <!-- Workspace size -->
+          <div class="ob-section-label">How many people in your workspace?</div>
+          <div class="size-grid">
+            <div
+              class="size-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="size-card"
+            >
+              <div class="size-num">1</div>
+              <div class="size-label">Just me</div>
+            </div>
+            <div
+              class="size-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="size-card"
+            >
+              <div class="size-num">2–5</div>
+              <div class="size-label">Family / small team</div>
+            </div>
+            <div
+              class="size-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="size-card"
+            >
+              <div class="size-num">6–20</div>
+              <div class="size-label">Team</div>
+            </div>
+            <div
+              class="size-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="single"
+              data-group="size-card"
+            >
+              <div class="size-num">20+</div>
+              <div class="size-label">Organization</div>
+            </div>
+          </div>
+
+          <div class="ob-actions">
+            <div></div>
+            <button class="btn-primary" data-action="go" data-step="2">
+              Continue
+              <span class="icon icon-sm" style="margin-left: 2px"
+                ><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg
+              ></span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</div>
 
-
-<!-- ═══════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════
      SCREEN 2 · ONBOARDING — STEP 2: Invite
 ════════════════════════════════════════════════════ -->
 <div id="screen-2" class="screen">
@@ -100,57 +345,108 @@
       <div class="ob-progress" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" aria-label="Setup progress">
         <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:50%"></div></div>
         <span class="ob-step">Step 2 of 4</span>
+    <div id="screen-2" class="screen">
+      <div class="window-chrome">
+        <div class="traffic-lights">
+          <div class="tl tl-red"></div>
+          <div class="tl tl-yellow"></div>
+          <div class="tl tl-green"></div>
+        </div>
+        <div class="window-title">open-coot — Setup</div>
+        <div style="width: 52px"></div>
       </div>
 
-      <h2 class="ob-heading">Invite your people</h2>
-      <p class="ob-sub">Add team or family members now, or skip and do it later from Settings.</p>
+      <div class="ob-body">
+        <div class="ob-card">
+          <div
+            class="ob-progress"
+            role="progressbar"
+            aria-valuenow="50"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-label="Setup progress"
+          >
+            <div class="ob-progress-bar">
+              <div class="ob-progress-fill" style="width: 50%"></div>
+            </div>
+            <span class="ob-step">Step 2 of 4</span>
+          </div>
 
-      <!-- Invite inputs -->
-      <div class="ob-section-label">Send invitations</div>
-      <div class="invite-row">
-        <input class="input" type="email" placeholder="colleague@email.com" aria-label="Email address" style="flex:1;">
-        <select class="role-select" aria-label="Role">
-          <option>Admin</option>
-          <option selected>Member</option>
-          <option>Viewer</option>
-        </select>
-        <button class="btn-secondary" data-action="add-invite-row">+ Add</button>
-      </div>
-      <div class="invite-row">
-        <input class="input" type="email" placeholder="another@email.com" aria-label="Email address" style="flex:1;">
-        <select class="role-select" aria-label="Role">
-          <option>Admin</option>
-          <option>Member</option>
-          <option selected>Viewer</option>
-        </select>
-        <button class="btn-secondary" data-action="add-invite-row">+ Add</button>
-      </div>
+          <h2 class="ob-heading">Invite your people</h2>
+          <p class="ob-sub">
+            Add team or family members now, or skip and do it later from Settings.
+          </p>
 
-      <!-- Role legend -->
-      <div class="role-legend" style="margin-top:24px;">
-        <div class="role-legend-item"><span class="badge badge-danger">Admin</span> Full access, can manage members &amp; settings</div>
-        <div class="role-legend-item"><span class="badge badge-primary">Member</span> Can create &amp; edit workflows and connectors</div>
-        <div class="role-legend-item"><span class="badge badge-muted">Viewer</span> Read-only access across the workspace</div>
-      </div>
+          <!-- Invite inputs -->
+          <div class="ob-section-label">Send invitations</div>
+          <div class="invite-row">
+            <input
+              class="input"
+              type="email"
+              placeholder="colleague@email.com"
+              aria-label="Email address"
+              style="flex: 1"
+            />
+            <select class="role-select" aria-label="Role">
+              <option>Admin</option>
+              <option selected>Member</option>
+              <option>Viewer</option>
+            </select>
+            <button class="btn-secondary" data-action="add-invite-row">+ Add</button>
+          </div>
+          <div class="invite-row">
+            <input
+              class="input"
+              type="email"
+              placeholder="another@email.com"
+              aria-label="Email address"
+              style="flex: 1"
+            />
+            <select class="role-select" aria-label="Role">
+              <option>Admin</option>
+              <option>Member</option>
+              <option selected>Viewer</option>
+            </select>
+            <button class="btn-secondary" data-action="add-invite-row">+ Add</button>
+          </div>
 
-      <div class="ob-actions">
-        <button class="btn-ghost" data-action="go" data-step="1">
-          <span class="icon icon-sm" style="margin-right:2px;"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></span>
-          Back
-        </button>
-        <div class="ob-actions-right">
-          <button class="btn-ghost" data-action="go" data-step="3">Skip for now</button>
-          <button class="btn-primary" data-action="go" data-step="3">Continue
-            <span class="icon icon-sm" style="margin-left:2px;"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-          </button>
+          <!-- Role legend -->
+          <div class="role-legend" style="margin-top: 24px">
+            <div class="role-legend-item">
+              <span class="badge badge-danger">Admin</span> Full access, can manage members &amp;
+              settings
+            </div>
+            <div class="role-legend-item">
+              <span class="badge badge-primary">Member</span> Can create &amp; edit workflows and
+              connectors
+            </div>
+            <div class="role-legend-item">
+              <span class="badge badge-muted">Viewer</span> Read-only access across the workspace
+            </div>
+          </div>
+
+          <div class="ob-actions">
+            <button class="btn-ghost" data-action="go" data-step="1">
+              <span class="icon icon-sm" style="margin-right: 2px"
+                ><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg
+              ></span>
+              Back
+            </button>
+            <div class="ob-actions-right">
+              <button class="btn-ghost" data-action="go" data-step="3">Skip for now</button>
+              <button class="btn-primary" data-action="go" data-step="3">
+                Continue
+                <span class="icon icon-sm" style="margin-left: 2px"
+                  ><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg
+                ></span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-</div>
 
-
-<!-- ═══════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════
      SCREEN 3 · ONBOARDING — STEP 3: Connectors
 ════════════════════════════════════════════════════ -->
 <div id="screen-3" class="screen">
@@ -161,27 +457,165 @@
       <div class="ob-progress" role="progressbar" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100" aria-label="Setup progress">
         <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:75%"></div></div>
         <span class="ob-step">Step 3 of 4</span>
+    <div id="screen-3" class="screen">
+      <div class="window-chrome">
+        <div class="traffic-lights">
+          <div class="tl tl-red"></div>
+          <div class="tl tl-yellow"></div>
+          <div class="tl tl-green"></div>
+        </div>
+        <div class="window-title">open-coot — Setup</div>
+        <div style="width: 52px"></div>
       </div>
 
-      <h2 class="ob-heading">Connect your knowledge sources</h2>
-      <p class="ob-sub">Choose where your data lives. open-coot reads, syncs, and learns from your connected sources. Connect what you need now — more can be added anytime.</p>
+      <div class="ob-body" style="align-items: flex-start; padding-top: 32px">
+        <div class="ob-card ob-card-wide">
+          <div
+            class="ob-progress"
+            role="progressbar"
+            aria-valuenow="75"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-label="Setup progress"
+          >
+            <div class="ob-progress-bar">
+              <div class="ob-progress-fill" style="width: 75%"></div>
+            </div>
+            <span class="ob-step">Step 3 of 4</span>
+          </div>
 
-      <!-- Connectors -->
-      <div class="ob-section-label">Available connectors</div>
-      <div class="connectors-grid">
+          <h2 class="ob-heading">Connect your knowledge sources</h2>
+          <p class="ob-sub">
+            Choose where your data lives. open-coot reads, syncs, and learns from your connected
+            sources. Connect what you need now — more can be added anytime.
+          </p>
 
         <div class="conn-card" id="local-files-connector" data-connector-id="local-files">
           <div class="conn-card-top">
             <div class="conn-logo icon icon-xl"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
             <div class="conn-status local-files-status" style="color:var(--text-muted);">
               <span class="status-dot inactive"></span> No folders mounted
+          <!-- Connectors -->
+          <div class="ob-section-label">Available connectors</div>
+          <div class="connectors-grid">
+            <div class="conn-card" id="local-files-connector">
+              <div class="conn-card-top">
+                <div class="conn-logo icon icon-xl">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                    />
+                  </svg>
+                </div>
+                <div class="conn-status local-files-status" style="color: var(--text-muted)">
+                  <span class="status-dot inactive"></span> No folders mounted
+                </div>
+              </div>
+              <div class="conn-name">Local Files</div>
+              <div class="conn-desc">
+                Mount folders to give the AI read/write access to your files.
+              </div>
+              <button class="conn-btn idle" data-action="mount-local-folder">Mount a Folder</button>
+              <div class="mounted-folders-list"></div>
+            </div>
+
+            <div class="conn-card">
+              <div class="conn-card-top">
+                <div class="conn-logo icon icon-xl">
+                  <svg viewBox="0 0 24 24">
+                    <ellipse cx="12" cy="5" rx="9" ry="3" />
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                  </svg>
+                </div>
+                <div class="conn-status" style="color: var(--text-muted)">
+                  <span class="status-dot inactive"></span> Not connected
+                </div>
+              </div>
+              <div class="conn-name">Google Drive</div>
+              <div class="conn-desc">
+                Docs, Sheets, and Slides from your Google Workspace account.
+              </div>
+              <button class="conn-btn idle" data-action="toggle-connector">
+                Connect Google Drive
+              </button>
+            </div>
+
+            <div class="conn-card">
+              <div class="conn-card-top">
+                <div class="conn-logo icon icon-xl">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                </div>
+                <div class="conn-status" style="color: var(--text-muted)">
+                  <span class="status-dot inactive"></span> Not connected
+                </div>
+              </div>
+              <div class="conn-name">Slack</div>
+              <div class="conn-desc">
+                Read channels, send messages, and trigger workflows from Slack events.
+              </div>
+              <button class="conn-btn idle" data-action="toggle-connector">Connect Slack</button>
+            </div>
+
+            <div class="conn-card">
+              <div class="conn-card-top">
+                <div class="conn-logo icon icon-xl">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                  </svg>
+                </div>
+                <div class="conn-status" style="color: var(--text-muted)">
+                  <span class="status-dot inactive"></span> Not connected
+                </div>
+              </div>
+              <div class="conn-name">Notion</div>
+              <div class="conn-desc">
+                Sync pages, databases, and knowledge bases from your Notion workspace.
+              </div>
+              <button class="conn-btn idle" data-action="toggle-connector">Connect Notion</button>
+            </div>
+
+            <div class="conn-card">
+              <div class="conn-card-top">
+                <div class="conn-logo icon icon-xl">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"
+                    />
+                  </svg>
+                </div>
+                <div class="conn-status" style="color: var(--text-muted)">
+                  <span class="status-dot inactive"></span> Not connected
+                </div>
+              </div>
+              <div class="conn-name">GitHub</div>
+              <div class="conn-desc">
+                Repos, issues, and PRs — trigger actions from code events automatically.
+              </div>
+              <button class="conn-btn idle" data-action="toggle-connector">Connect GitHub</button>
+            </div>
+
+            <div class="conn-card">
+              <div class="conn-card-top">
+                <div class="conn-logo icon icon-xl">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+                  </svg>
+                </div>
+                <div class="conn-status" style="color: var(--text-muted)">
+                  <span class="status-dot inactive"></span> Not connected
+                </div>
+              </div>
+              <div class="conn-name">OneDrive</div>
+              <div class="conn-desc">
+                Microsoft 365 files, SharePoint documents, and Teams content.
+              </div>
+              <button class="conn-btn idle" data-action="toggle-connector">Connect OneDrive</button>
             </div>
           </div>
-          <div class="conn-name">Local Files</div>
-          <div class="conn-desc">Mount folders to give the AI read/write access to your files.</div>
-          <button class="conn-btn idle" data-action="mount-local-folder">Mount a Folder</button>
-          <div class="mounted-folders-list"></div>
-        </div>
 
         <div class="conn-card" data-connector-id="google-drive">
           <div class="conn-card-top">
@@ -189,10 +623,20 @@
             <div class="conn-status" style="color:var(--text-muted);">
               <span class="status-dot inactive"></span> Not connected
             </div>
+          <div class="ob-actions">
+            <button class="btn-ghost" data-action="go" data-step="2">
+              <span class="icon icon-sm" style="margin-right: 2px"
+                ><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg
+              ></span>
+              Back
+            </button>
+            <button class="btn-primary" data-action="go" data-step="4">
+              Continue
+              <span class="icon icon-sm" style="margin-left: 2px"
+                ><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg
+              ></span>
+            </button>
           </div>
-          <div class="conn-name">Google Drive</div>
-          <div class="conn-desc">Docs, Sheets, and Slides from your Google Workspace account.</div>
-          <button class="conn-btn idle" data-action="toggle-connector">Connect Google Drive</button>
         </div>
 
         <div class="conn-card" data-connector-id="slack">
@@ -255,11 +699,8 @@
         </button>
       </div>
     </div>
-  </div>
-</div>
 
-
-<!-- ═══════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════
      SCREEN 4 · ONBOARDING — STEP 4: Microapps
 ════════════════════════════════════════════════════ -->
 <div id="screen-4" class="screen">
@@ -270,13 +711,38 @@
       <div class="ob-progress" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Setup progress">
         <div class="ob-progress-bar"><div class="ob-progress-fill" style="width:100%"></div></div>
         <span class="ob-step">Step 4 of 4</span>
+    <div id="screen-4" class="screen">
+      <div class="window-chrome">
+        <div class="traffic-lights">
+          <div class="tl tl-red"></div>
+          <div class="tl tl-yellow"></div>
+          <div class="tl tl-green"></div>
+        </div>
+        <div class="window-title">open-coot — Setup</div>
+        <div style="width: 52px"></div>
       </div>
 
-      <h2 class="ob-heading">Initialize your microapps</h2>
-      <p class="ob-sub">Microapps are purpose-built modules that live inside your workspace. Select the ones that fit — you can add, remove, or build custom ones anytime.</p>
+      <div class="ob-body" style="align-items: flex-start; padding-top: 32px">
+        <div class="ob-card ob-card-wide">
+          <div
+            class="ob-progress"
+            role="progressbar"
+            aria-valuenow="100"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-label="Setup progress"
+          >
+            <div class="ob-progress-bar">
+              <div class="ob-progress-fill" style="width: 100%"></div>
+            </div>
+            <span class="ob-step">Step 4 of 4</span>
+          </div>
 
-      <div class="ob-section-label">Choose your microapps</div>
-      <div class="microapps-grid">
+          <h2 class="ob-heading">Initialize your microapps</h2>
+          <p class="ob-sub">
+            Microapps are purpose-built modules that live inside your workspace. Select the ones
+            that fit — you can add, remove, or build custom ones anytime.
+          </p>
 
         <div class="ma-card sel" role="button" tabindex="0" aria-selected="true" data-action="toggle" data-microapp-id="finance">
           <div class="ma-recommended">Recommended</div>
@@ -333,13 +799,194 @@
           Launch open-coot
           <span class="icon icon-sm" style="margin-left:4px;"><svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span>
         </button>
+          <div class="ob-section-label">Choose your microapps</div>
+          <div class="microapps-grid">
+            <div
+              class="ma-card sel"
+              role="button"
+              tabindex="0"
+              aria-selected="true"
+              data-action="toggle"
+            >
+              <div class="ma-recommended">Recommended</div>
+              <div class="ma-icon icon icon-2xl" style="background: var(--warning-muted)">
+                <svg viewBox="0 0 24 24">
+                  <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+                  <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+                  <path d="M18 12a2 2 0 0 0 0 4h4v-4z" />
+                </svg>
+              </div>
+              <div class="ma-name">Finance Tracker</div>
+              <div class="ma-desc">
+                Budgets, expenses, and reports connected to your bank feeds and spreadsheets.
+              </div>
+              <div class="ma-check">
+                <span class="icon icon-sm"
+                  ><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg
+                ></span>
+              </div>
+            </div>
+
+            <div
+              class="ma-card sel"
+              role="button"
+              tabindex="0"
+              aria-selected="true"
+              data-action="toggle"
+            >
+              <div class="ma-recommended">Recommended</div>
+              <div class="ma-icon icon icon-2xl" style="background: var(--primary-muted)">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"
+                  />
+                  <path
+                    d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"
+                  />
+                </svg>
+              </div>
+              <div class="ma-name">Knowledge Base</div>
+              <div class="ma-desc">
+                AI-powered search and Q&amp;A across all your connected docs, notes, and files.
+              </div>
+              <div class="ma-check">
+                <span class="icon icon-sm"
+                  ><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg
+                ></span>
+              </div>
+            </div>
+
+            <div
+              class="ma-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="ma-icon icon icon-2xl" style="background: var(--success-muted)">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                  />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                  <path d="M9 14l2 2 4-4" />
+                </svg>
+              </div>
+              <div class="ma-name">Project Manager</div>
+              <div class="ma-desc">
+                Tasks, milestones, and timelines with automated workflow triggers on status changes.
+              </div>
+              <div class="ma-check">
+                <span class="icon icon-sm"
+                  ><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg
+                ></span>
+              </div>
+            </div>
+
+            <div
+              class="ma-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="ma-icon icon icon-2xl" style="background: rgba(79, 70, 229, 0.15)">
+                <svg viewBox="0 0 24 24">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </div>
+              <div class="ma-name">HR Assistant</div>
+              <div class="ma-desc">
+                Onboarding checklists, leave requests, and team directory — built for small teams.
+              </div>
+              <div class="ma-check">
+                <span class="icon icon-sm"
+                  ><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg
+                ></span>
+              </div>
+            </div>
+
+            <div
+              class="ma-card"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="ma-icon icon icon-2xl" style="background: rgba(20, 184, 166, 0.12)">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                  />
+                </svg>
+              </div>
+              <div class="ma-name">Customer Support</div>
+              <div class="ma-desc">
+                AI-assisted ticket routing, canned responses, and escalation workflows for your
+                team.
+              </div>
+              <div class="ma-check">
+                <span class="icon icon-sm"
+                  ><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg
+                ></span>
+              </div>
+            </div>
+
+            <div
+              class="ma-card dashed"
+              role="button"
+              tabindex="0"
+              aria-selected="false"
+              data-action="toggle"
+            >
+              <div class="ma-icon icon icon-2xl" style="background: var(--surface-2)">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="3" />
+                  <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                  />
+                </svg>
+              </div>
+              <div class="ma-name">Custom Microapp</div>
+              <div class="ma-desc">
+                Build your own microapp from a template or from scratch using the open-coot SDK.
+              </div>
+              <div class="ma-check">
+                <span class="icon icon-sm"
+                  ><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg
+                ></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ob-actions" style="margin-top: 32px">
+            <button class="btn-ghost" data-action="go" data-step="3">
+              <span class="icon icon-sm" style="margin-right: 2px"
+                ><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg
+              ></span>
+              Back
+            </button>
+            <button
+              class="btn-primary"
+              data-action="app-launch"
+              style="background: var(--success); font-size: 15px; padding: 13px 32px"
+            >
+              Launch open-coot
+              <span class="icon icon-sm" style="margin-left: 4px"
+                ><svg viewBox="0 0 24 24">
+                  <path d="M22 2L11 13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" /></svg
+              ></span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</div>
 
-
-<!-- ═══════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════
      SCREEN 5 · DASHBOARD
 ════════════════════════════════════════════════════ -->
 <div id="screen-5" class="screen">
@@ -354,7 +1001,15 @@
         <div class="sidebar-logo-text">
           <h3>open-coot</h3>
           <p>powered by nemoclaw</p>
+    <div id="screen-5" class="screen">
+      <div class="window-chrome">
+        <div class="traffic-lights">
+          <div class="tl tl-red"></div>
+          <div class="tl tl-yellow"></div>
+          <div class="tl tl-green"></div>
         </div>
+        <div class="window-title">open-coot</div>
+        <div style="width: 52px"></div>
       </div>
 
       <nav class="sidebar-nav" aria-label="Main navigation">
@@ -439,32 +1094,496 @@
             </div>
             <div style="padding:40px 18px; text-align:center; color:var(--text-muted); font-size:13px;">
               No workflows yet. Click <strong>+ New Workflow</strong> to get started.
+      <div class="dash-wrap">
+        <!-- Sidebar -->
+        <aside class="dash-sidebar">
+          <div class="sidebar-logo">
+            <div class="sidebar-logo-mark">OC</div>
+            <div class="sidebar-logo-text">
+              <h3>open-coot</h3>
+              <p>powered by nemoclaw</p>
             </div>
           </div>
 
-          <!-- Right column -->
-          <div style="display:flex; flex-direction:column; gap:16px;">
-
-            <!-- Connectors -->
-            <div class="dash-panel">
-              <div class="panel-header">
-                <span class="panel-title">Connectors</span>
-                <span class="panel-link" data-action="navigate" data-target="Connectors">Manage
-                  <span class="icon icon-sm" style="vertical-align:-2px;"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></span>
-                </span>
+          <nav class="sidebar-nav" aria-label="Main navigation">
+            <div class="nav-group">
+              <div class="nav-group-label">Workspace</div>
+              <div
+                class="nav-item active"
+                tabindex="0"
+                role="button"
+                aria-current="page"
+                data-action="navigate"
+                data-target="Dashboard"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" /></svg
+                ></span>
+                Dashboard
               </div>
-              <div class="cp-row">
-                <span class="cp-icon icon icon-lg"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-                <div class="cp-info">
-                  <div class="cp-name">Local Files</div>
-                  <div class="cp-meta local-files-dash-meta">No folders mounted</div>
-                </div>
-                <span class="cp-badge" style="color:var(--success);">
-                  <span class="status-dot running" style="width:6px;height:6px;margin-right:4px;vertical-align:1px;"></span>Active
-                </span>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Workflows"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <line x1="6" y1="3" x2="6" y2="15" />
+                    <circle cx="18" cy="6" r="3" />
+                    <circle cx="6" cy="18" r="3" />
+                    <path d="M18 9a9 9 0 0 1-9 9" /></svg
+                ></span>
+                Workflows <span class="nav-badge">12</span>
+              </div>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Runs"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg
+                ></span>
+                Runs
+              </div>
+            </div>
+            <div class="nav-group">
+              <div class="nav-group-label">Sources</div>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Connectors"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <path
+                      d="M12 2v6m0 12v2m4.93-14.93l1.41-1.41M4.93 19.07l1.41-1.41M22 12h-2M4 12H2m14.93 7.07l1.41 1.41M4.93 4.93l1.41 1.41"
+                    />
+                    <circle cx="12" cy="12" r="4" /></svg
+                ></span>
+                Connectors
+              </div>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Knowledge"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <path
+                      d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"
+                    />
+                    <path
+                      d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"
+                    /></svg
+                ></span>
+                Knowledge
+              </div>
+            </div>
+            <div class="nav-group">
+              <div class="nav-group-label">Microapps</div>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Finance"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+                    <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+                    <path d="M18 12a2 2 0 0 0 0 4h4v-4z" /></svg
+                ></span>
+                Finance
+              </div>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Projects"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <path
+                      d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                    />
+                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                    <path d="M9 14l2 2 4-4" /></svg
+                ></span>
+                Projects
+              </div>
+            </div>
+            <div class="nav-group">
+              <div class="nav-group-label">People</div>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Team"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg
+                ></span>
+                Team
+              </div>
+              <div
+                class="nav-item"
+                tabindex="0"
+                role="button"
+                data-action="navigate"
+                data-target="Settings"
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                      d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                    /></svg
+                ></span>
+                Settings
+              </div>
+            </div>
+          </nav>
+
+          <div class="sidebar-llm" role="status" aria-label="Model status">
+            <div class="llm-dot"></div>
+            <div class="llm-info">
+              <h4>Checking model...</h4>
+              <p>Local inference</p>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Main content -->
+        <div class="dash-main">
+          <div class="dash-topbar">
+            <div class="dash-topbar-title">Dashboard</div>
+            <div class="dash-topbar-actions">
+              <button
+                class="topbar-btn"
+                data-action="open-chat"
+                style="
+                  background: var(--surface);
+                  border: 1px solid var(--border);
+                  color: var(--text-primary);
+                "
+              >
+                <span class="icon icon-md"
+                  ><svg viewBox="0 0 24 24">
+                    <path
+                      d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                    /></svg
+                ></span>
+                Chat with AI
+              </button>
+              <button class="topbar-btn" data-action="new-workflow">+ New Workflow</button>
+              <div
+                class="topbar-avatar"
+                data-action="toggle-avatar-menu"
+                role="button"
+                tabindex="0"
+                aria-label="User menu"
+                aria-haspopup="true"
+              >
+                U
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Dashboard">
+            <!-- Stats -->
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-accent" style="background: var(--primary)"></div>
+                <div class="stat-value">0</div>
+                <div class="stat-label">Active Workflows</div>
+                <div class="stat-trend" style="color: var(--primary-light)">Get started below</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-accent" style="background: var(--success)"></div>
+                <div class="stat-value">0</div>
+                <div class="stat-label">Runs Today</div>
+                <div class="stat-trend" style="color: var(--text-muted)">No runs yet</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-accent" style="background: var(--warning)"></div>
+                <div class="stat-value">1</div>
+                <div class="stat-label">Connectors</div>
+                <div class="stat-trend" style="color: var(--success)">Local Files active</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-accent" style="background: var(--purple)"></div>
+                <div class="stat-value">1</div>
+                <div class="stat-label">Team Members</div>
+                <div class="stat-trend" style="color: var(--purple)">You</div>
               </div>
             </div>
 
+            <!-- Two-column grid -->
+            <div class="dash-grid">
+              <!-- Workflows panel -->
+              <div class="dash-panel">
+                <div class="panel-header">
+                  <span class="panel-title">Recent Workflows</span>
+                  <span class="panel-link" data-action="navigate" data-target="Workflows"
+                    >View all
+                    <span class="icon icon-sm" style="vertical-align: -2px"
+                      ><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg
+                    ></span>
+                  </span>
+                </div>
+                <div
+                  style="
+                    padding: 40px 18px;
+                    text-align: center;
+                    color: var(--text-muted);
+                    font-size: 13px;
+                  "
+                >
+                  No workflows yet. Click <strong>+ New Workflow</strong> to get started.
+                </div>
+              </div>
+
+              <!-- Right column -->
+              <div style="display: flex; flex-direction: column; gap: 16px">
+                <!-- Connectors -->
+                <div class="dash-panel">
+                  <div class="panel-header">
+                    <span class="panel-title">Connectors</span>
+                    <span class="panel-link" data-action="navigate" data-target="Connectors"
+                      >Manage
+                      <span class="icon icon-sm" style="vertical-align: -2px"
+                        ><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg
+                      ></span>
+                    </span>
+                  </div>
+                  <div class="cp-row">
+                    <span class="cp-icon icon icon-lg"
+                      ><svg viewBox="0 0 24 24">
+                        <path
+                          d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                        /></svg
+                    ></span>
+                    <div class="cp-info">
+                      <div class="cp-name">Local Files</div>
+                      <div class="cp-meta local-files-dash-meta">No folders mounted</div>
+                    </div>
+                    <span class="cp-badge" style="color: var(--success)">
+                      <span
+                        class="status-dot running"
+                        style="width: 6px; height: 6px; margin-right: 4px; vertical-align: 1px"
+                      ></span
+                      >Active
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Active microapps -->
+                <div class="dash-panel">
+                  <div class="panel-header">
+                    <span class="panel-title">Active Microapps</span>
+                    <span class="panel-link" data-action="navigate" data-target="Finance"
+                      >Browse all
+                      <span class="icon icon-sm" style="vertical-align: -2px"
+                        ><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg
+                      ></span>
+                    </span>
+                  </div>
+                  <div class="cp-row">
+                    <span class="cp-icon icon icon-lg"
+                      ><svg viewBox="0 0 24 24">
+                        <path
+                          d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z"
+                        />
+                        <path
+                          d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z"
+                        /></svg
+                    ></span>
+                    <div class="cp-info">
+                      <div class="cp-name">Knowledge Base</div>
+                      <div class="cp-meta">AI search across your docs</div>
+                    </div>
+                    <span class="badge badge-success">Active</span>
+                  </div>
+                  <div class="cp-row">
+                    <span class="cp-icon icon icon-lg"
+                      ><svg viewBox="0 0 24 24">
+                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+                        <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+                        <path d="M18 12a2 2 0 0 0 0 4h4v-4z" /></svg
+                    ></span>
+                    <div class="cp-info">
+                      <div class="cp-name">Finance Tracker</div>
+                      <div class="cp-meta">Budgets &amp; expenses</div>
+                    </div>
+                    <span class="badge badge-success">Active</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ───────── Additional dashboard sections ───────── -->
+          <div class="dash-content dash-section" data-section="Workflows" hidden>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Workflows</span></div>
+              <div class="section-empty">
+                No workflows yet. Click <strong>+ New Workflow</strong> in the topbar to describe
+                one in chat and get help building it.
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Runs" hidden>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Runs</span></div>
+              <div class="section-empty">
+                No runs recorded yet. Workflow executions will appear here.
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Connectors" hidden>
+            <div class="dash-panel">
+              <div class="panel-header">
+                <span class="panel-title">Local Files</span>
+                <button class="btn-secondary" data-action="mount-local-folder">
+                  Mount a Folder
+                </button>
+              </div>
+              <div class="section-desc">
+                Mounted folders are the only locations where AI tools (<code>create_file</code>,
+                <code>read_file</code>, <code>list_directory</code>) are allowed to read or write.
+              </div>
+              <div class="connectors-mounted-list mounted-folders-list"></div>
+            </div>
+
+            <div class="dash-panel">
+              <div class="panel-header">
+                <span class="panel-title">Third-party Integrations</span>
+              </div>
+              <div class="section-empty">
+                Google Drive, Slack, Notion, GitHub, and OneDrive integrations are not yet
+                available. For now, use Local Files.
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Knowledge" hidden>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Knowledge Base</span></div>
+              <div class="section-empty">
+                Your AI can answer questions about files in mounted folders. Mount a folder under
+                <strong>Connectors</strong> to get started.
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Finance" hidden>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Finance Tracker</span></div>
+              <div class="section-empty">No finance data yet. Microapp coming soon.</div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Projects" hidden>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Projects</span></div>
+              <div class="section-empty">No projects yet. Microapp coming soon.</div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Team" hidden>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Team</span></div>
+              <div class="section-empty">
+                You are the only member. Team collaboration is not yet available in the local build.
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-content dash-section" data-section="Settings" hidden>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Configuration</span></div>
+              <dl class="settings-list">
+                <dt>Local model</dt>
+                <dd>
+                  <select
+                    id="model-selector"
+                    class="input"
+                    style="max-width: 200px; padding: 4px"
+                  ></select>
+                </dd>
+                <dt>Ollama endpoint</dt>
+                <dd>http://127.0.0.1:11434 (via proxy 11435)</dd>
+                <dt>Gateway port</dt>
+                <dd class="settings-gateway-port">—</dd>
+                <dt>Mounted folders</dt>
+                <dd class="settings-folder-count">—</dd>
+              </dl>
+            </div>
+            <div class="dash-panel" id="update-panel">
+              <div class="panel-header">
+                <span class="panel-title">Updates</span>
+                <span class="update-version" style="font-size: 12px; color: var(--text-muted)"
+                  >v—</span
+                >
+              </div>
+              <div class="update-status" style="margin-bottom: 12px">
+                <span class="update-status-text">Checking...</span>
+              </div>
+              <div class="update-actions" style="display: flex; gap: 8px; margin-bottom: 12px">
+                <button class="btn-secondary" id="btn-check-updates" disabled>
+                  Check for Updates
+                </button>
+                <button class="btn-primary" id="btn-apply-update" disabled style="display: none">
+                  Update
+                </button>
+              </div>
+              <div class="update-progress" style="display: none; margin-bottom: 12px">
+                <div
+                  class="progress-bar"
+                  style="height: 4px; background: var(--surface-2); border-radius: 2px"
+                >
+                  <div
+                    class="progress-fill"
+                    style="height: 100%; background: var(--primary); border-radius: 2px; width: 0%"
+                  ></div>
+                </div>
+                <div
+                  class="progress-text"
+                  style="font-size: 11px; color: var(--text-muted); margin-top: 4px"
+                ></div>
+              </div>
+              <div class="update-changes" style="font-size: 12px; color: var(--text-muted)"></div>
+            </div>
+            <div class="dash-panel">
+              <div class="panel-header"><span class="panel-title">Reset</span></div>
+              <div class="section-desc">
+                Clear your onboarding answers and return to Screen 1 on next launch. Mounted folders
+                and chat history are kept.
+              </div>
+              <button class="btn-secondary" data-action="reset-onboarding">Reset Onboarding</button>
+            </div>
           </div>
         </div>
       </div>
@@ -535,11 +1654,7 @@
 
     </div>
 
-  </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════
      CHAT PANEL (slide-out overlay)
 ════════════════════════════════════════════════════ -->
 <div class="chat-overlay">
@@ -561,28 +1676,97 @@
         <div class="chat-empty-icon icon" style="width:48px;height:48px;"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
         <div class="chat-empty-text">
           Send a message to start chatting<br>with your local AI.
+    <div class="chat-overlay">
+      <div class="chat-backdrop"></div>
+      <div
+        class="chat-history-sidebar"
+        style="
+          position: absolute;
+          right: 400px;
+          top: 0;
+          bottom: 0;
+          width: 240px;
+          background: var(--surface);
+          border-left: 1px solid var(--border);
+          border-right: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+        "
+      >
+        <div
+          style="
+            padding: 16px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+          "
+        >
+          Chat History
+        </div>
+        <div
+          id="chat-history-list"
+          style="
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          "
+        ></div>
+      </div>
+      <div class="chat-panel" role="dialog" aria-label="Chat with AI">
+        <div class="chat-header">
+          <div class="chat-header-title">Chat with AI</div>
+          <button class="chat-header-btn chat-new-btn">+ New Chat</button>
+          <button class="chat-close" aria-label="Close chat">
+            <span class="icon icon-md"
+              ><svg viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" /></svg
+            ></span>
+          </button>
+        </div>
+        <div class="chat-messages">
+          <div class="chat-empty">
+            <div class="chat-empty-icon icon" style="width: 48px; height: 48px">
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                />
+              </svg>
+            </div>
+            <div class="chat-empty-text">
+              Send a message to start chatting<br />with your local AI.
+            </div>
+          </div>
+        </div>
+        <div class="chat-typing">
+          <div class="chat-typing-dot"></div>
+          <div class="chat-typing-dot"></div>
+          <div class="chat-typing-dot"></div>
+        </div>
+        <div class="chat-input-wrap">
+          <textarea
+            class="chat-input"
+            placeholder="Type a message..."
+            rows="1"
+            aria-label="Chat message"
+          ></textarea>
+          <button class="chat-send" aria-label="Send message">
+            <span class="icon icon-md"
+              ><svg viewBox="0 0 24 24">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" /></svg
+            ></span>
+          </button>
         </div>
       </div>
     </div>
-    <div class="chat-typing">
-      <div class="chat-typing-dot"></div>
-      <div class="chat-typing-dot"></div>
-      <div class="chat-typing-dot"></div>
-    </div>
-    <div class="chat-input-wrap">
-      <textarea class="chat-input" placeholder="Type a message..." rows="1" aria-label="Chat message"></textarea>
-      <button class="chat-send" aria-label="Send message">
-        <span class="icon icon-md"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span>
-      </button>
-    </div>
-  </div>
-</div>
 
-
-<!-- Scripts -->
-<script src="gateway-client.js"></script>
-<script src="chat.js"></script>
-<script src="app.js"></script>
-
-</body>
+    <!-- Scripts -->
+    <script src="gateway-client.js"></script>
+    <script src="chat.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

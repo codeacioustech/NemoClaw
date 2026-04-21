@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const os = require("os");
+const express = require("express");
 
 const paths = require("./lib/paths");
 const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-seeder");
@@ -16,6 +17,14 @@ const wfDb = require("./lib/workflow-db");
 const { runWorkflow, startRunsSSE } = require("./lib/workflow-runner");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 const db = require("./lib/db");
+const FileApprovalManager = require("./lib/file-approval");
+const fileApprovalManager = new FileApprovalManager();
+const updateCheck = require("./lib/update-check");
+
+updateCheck._setPaths(
+  path.join(NEMOCLAW_DIR, "components"),
+  path.join(NEMOCLAW_DIR, "components", "manifest.json"),
+);
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -165,79 +174,6 @@ function sendProgress(data) {
 // Ollama management
 // ---------------------------------------------------------------------------
 
-const OLLAMA_URL = "https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz";
-const OLLAMA_DEST = path.join(os.homedir(), ".nemoclaw", "ollama-mac");
-
-function downloadOllama() {
-  fs.mkdirSync(OLLAMA_DEST, { recursive: true });
-  const tgzPath = path.join(OLLAMA_DEST, "ollama-darwin.tgz");
-
-  return new Promise((resolve, reject) => {
-    function followRedirects(url, redirects) {
-      if (redirects > 5) return reject(new Error("Too many redirects"));
-      const mod = url.startsWith("https") ? require("https") : http;
-      mod.get(url, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume();
-          return followRedirects(res.headers.location, redirects + 1);
-        }
-        if (res.statusCode !== 200) {
-          res.resume();
-          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
-        }
-
-        const total = parseInt(res.headers["content-length"] || "0", 10);
-        let downloaded = 0;
-        const fileStream = fs.createWriteStream(tgzPath);
-
-        res.on("data", (chunk) => {
-          downloaded += chunk.length;
-          if (total > 0) {
-            sendProgress({ completed: downloaded, total });
-          }
-        });
-
-        res.pipe(fileStream);
-        fileStream.on("finish", () => {
-          fileStream.close(() => {
-            try {
-              require("child_process").execSync(
-                `tar -xzf "${tgzPath}" -C "${OLLAMA_DEST}"`,
-                { stdio: "pipe" }
-              );
-              fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
-              fs.unlinkSync(tgzPath);
-              resolve();
-            } catch (err) {
-              reject(new Error(`Extract failed: ${err.message}`));
-            }
-          });
-        });
-        fileStream.on("error", reject);
-      }).on("error", reject);
-    }
-
-    followRedirects(OLLAMA_URL, 0);
-  });
-}
-
-function checkModelExists(model) {
-  return new Promise((resolve) => {
-    const req = http.get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
-        try {
-          const { models = [] } = JSON.parse(data);
-          resolve(models.some((m) => m.name === model || m.name === `${model}:latest`));
-        } catch { resolve(false); }
-      });
-    });
-    req.on("error", () => resolve(false));
-    req.setTimeout(5000, () => { req.destroy(); resolve(false); });
-  });
-}
-
 function spawnOllama() {
   const ollamaPath = paths.resolveOllama();
   if (!ollamaPath) throw new Error("Ollama binary not found");
@@ -310,7 +246,7 @@ function pullModel() {
         });
         res.on("end", () => resolve());
         res.on("error", reject);
-      }
+      },
     );
     req.on("error", reject);
     req.write(body);
@@ -498,7 +434,7 @@ async function bootstrap() {
         api: "ollama",
         models: [{
           id: MODEL,
-          name: "Gemma 4 E4B",
+          name: "Qwen 2.5 3B",
           reasoning: false,
           input: ["text"],
           cost: { input: 0, output: 0 },
@@ -558,7 +494,7 @@ async function bootstrap() {
     },
     (err) => {
       console.error("[gateway stderr]", err);
-    }
+    },
   );
   trackProcess("gateway", gatewayChild);
 
@@ -637,6 +573,43 @@ ipcMain.handle("set-ollama-model", (_, modelName) => {
   return true;
 });
 
+ipcMain.handle("db-create-session", (_, title) => db.createSession(title));
+ipcMain.handle("db-get-sessions", () => db.getSessions());
+ipcMain.handle("db-save-message", (_, sessionId, role, content) =>
+  db.saveMessage(sessionId, role, content),
+);
+ipcMain.handle("db-get-messages", (_, sessionId) => db.getMessages(sessionId));
+ipcMain.handle("db-update-session-title", (_, sessionId, title) =>
+  db.updateSessionTitle(sessionId, title),
+);
+ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
+
+ipcMain.handle("get-ollama-models", () => {
+  return new Promise((resolve) => {
+    http
+      .get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data).models || []);
+          } catch {
+            resolve([]);
+          }
+        });
+      })
+      .on("error", () => resolve([]));
+  });
+});
+
+ipcMain.handle("set-ollama-model", (_, modelName) => {
+  const existing = readLauncherConfig();
+  writeLauncherConfig({
+    ...existing,
+    ollama_model: modelName,
+  });
+  return true;
+});
 ipcMain.handle("is-first-run", () => {
   const config = readLauncherConfig();
   return !config.onboarding_complete;
@@ -726,22 +699,91 @@ ipcMain.handle("select-folder", async () => {
   return { path: filePaths[0], bookmark: (bookmarks && bookmarks[0]) || null };
 });
 
-ipcMain.handle("fs-read-file", async (_, filePath) => {
-  return withBookmarkAccess(filePath, async () => {
-    const st = await fs.promises.stat(filePath);
-    if (st.isDirectory()) {
-      const entries = await fs.promises.readdir(filePath, { withFileTypes: true });
-      return entries
-        .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
-        .sort()
-        .join("\n");
-    }
-    return fs.promises.readFile(filePath, "utf-8");
+/**
+ * Helper: Request approval for file access with scope and permissions
+ */
+async function requestFileApproval(filePath, requestedOperation = "read") {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error("Main window not available");
+  }
+
+  const fileName = path.basename(filePath);
+  const folderName = path.dirname(filePath);
+
+  // Step 1: Ask for scope
+  const scopeResult = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    buttons: ["Per Session (until app restart)", "Per Chat (until chat change)", "Cancel"],
+    title: "Choose Approval Scope",
+    message: `File Access Request: ${fileName}`,
+    detail: `Choose how long this approval should last:\n\nPath: ${folderName}`,
+    defaultId: 0,
+    cancelId: 2,
   });
+
+  if (scopeResult.response === 2) {
+    throw new Error("File access denied by user");
+  }
+
+  const scope = scopeResult.response === 0 ? "per-session" : "per-chat";
+
+  // Step 2: Ask for permissions
+  const permissionResult = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    buttons: ["Read Only", "Write Only", "Read & Write", "Cancel"],
+    title: "Choose Permissions",
+    message: `What permissions to grant?`,
+    detail: `File: ${fileName}\nPath: ${folderName}\n\nScope: ${scope}`,
+    defaultId: 2, // Read & Write by default
+    cancelId: 3,
+  });
+
+  if (permissionResult.response === 3) {
+    throw new Error("File access denied by user");
+  }
+
+  let permissions = "read";
+  if (permissionResult.response === 1) {
+    permissions = "write";
+  } else if (permissionResult.response === 2) {
+    permissions = "read+write";
+  }
+
+  fileApprovalManager.addApproval(filePath, scope, permissions);
+  return { scope, permissions };
+}
+
+/**
+ * Helper: Check if file access is approved for operation, request if needed
+ */
+async function ensureFileApproval(filePath, operation = "read") {
+  const check = fileApprovalManager.canAccessFile(filePath, operation);
+
+  if (check.allowed) {
+    return;
+  }
+
+  // File is in mounted folder but not approved — ask user
+  if (
+    check.reason === "NOT_APPROVED" ||
+    check.reason === "SESSION_EXPIRED" ||
+    check.reason === "CHAT_CHANGED" ||
+    check.reason === "READ_NOT_APPROVED" ||
+    check.reason === "WRITE_NOT_APPROVED"
+  ) {
+    await requestFileApproval(filePath, operation);
+  }
+}
+
+ipcMain.handle("fs-read-file", async (_, filePath) => {
+  return withBookmarkAccess(filePath, () => fs.promises.readFile(filePath, "utf-8"));
 });
 
 ipcMain.handle("fs-write-file", async (_, filePath, content) => {
-  console.log(`[fs-write-file] request path=${filePath} bytes=${content ? Buffer.byteLength(content) : 0}`);
+  console.log(
+    `[fs-write-file] request path=${filePath} bytes=${content ? Buffer.byteLength(content) : 0}`,
+  );
+
   try {
     const result = await withBookmarkAccess(filePath, async () => {
       const dir = path.dirname(filePath);
@@ -799,36 +841,15 @@ ipcMain.handle("unmount-folder", (_, folderPath) => {
   return { ok: true };
 });
 
-ipcMain.handle("reauthorize-folder", async (_, folderPath) => {
-  if (!mainWindow) return { ok: false, error: "no window" };
-  const { canceled, filePaths, bookmarks } = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openDirectory"],
-    defaultPath: folderPath,
-    securityScopedBookmarks: true,
-  });
-  if (canceled || !filePaths.length) return { ok: false, canceled: true };
-  const cfg = readLauncherConfig();
-  cfg.mountedFolders = cfg.mountedFolders || [];
-  const entry = cfg.mountedFolders.find((f) => f.path === folderPath);
-  const newPath = filePaths[0];
-  const newBookmark = (bookmarks && bookmarks[0]) || null;
-  if (entry) {
-    entry.path = newPath;
-    entry.bookmark = newBookmark;
-    delete entry.stale;
-  } else {
-    cfg.mountedFolders.push({ path: newPath, bookmark: newBookmark, addedAt: Date.now() });
-  }
-  writeLauncherConfig(cfg);
-  return { ok: true, path: newPath };
-});
-
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
   hookElectronLifecycle(app);
+
+  startUpdateLoop();
+
   bootstrap().catch((err) => {
     console.error("Bootstrap failed:", err);
     sendError(err.message);

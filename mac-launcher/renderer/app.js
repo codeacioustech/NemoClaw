@@ -163,7 +163,10 @@ const app = (() => {
       const text = item.textContent.trim().replace(/\d+$/, "").trim();
       if ((dt && dt === label) || (!dt && text === label)) target = item;
     });
-    items.forEach((i) => { i.classList.remove("active"); i.removeAttribute("aria-current"); });
+    items.forEach((i) => {
+      i.classList.remove("active");
+      i.removeAttribute("aria-current");
+    });
     if (target) {
       target.classList.add("active");
       target.setAttribute("aria-current", "page");
@@ -310,6 +313,13 @@ const app = (() => {
     } catch {
       // listCredentialKeys isn't available pre-app-ready — silently ignore.
     }
+    // OAuth integrations (Google Drive, Slack, Notion, GitHub, OneDrive)
+    // aren't wired to any real provider yet. Don't paint a fake
+    // "Connected" state — be honest so users aren't surprised when
+    // their assistant can't actually reach these services.
+    appendToast(
+      `${name} integration is not yet available. For local file access, use Mount a Folder.`,
+    );
   }
 
   // --- Toast helper ---
@@ -325,8 +335,12 @@ const app = (() => {
     toast.className = "toast";
     toast.textContent = msg;
     container.appendChild(toast);
-    setTimeout(() => { toast.classList.add("fade-out"); }, 3500);
-    setTimeout(() => { toast.remove(); }, 4000);
+    setTimeout(() => {
+      toast.classList.add("fade-out");
+    }, 3500);
+    setTimeout(() => {
+      toast.remove();
+    }, 4000);
   }
 
   // --- Local Files / Folder mounting ---
@@ -399,6 +413,27 @@ const app = (() => {
       item.appendChild(removeBtn);
       return item;
     }));
+    listEl.replaceChildren(
+      ...folders.map((f) => {
+        const name = f.path.split("/").pop() || f.path;
+        const item = document.createElement("div");
+        item.className = "mounted-folder-item";
+
+        const nameEl = document.createElement("span");
+        nameEl.className = "mounted-folder-name";
+        nameEl.title = f.path;
+        nameEl.textContent = name;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "mounted-folder-remove";
+        removeBtn.dataset.action = "unmount-local-folder";
+        removeBtn.dataset.path = f.path;
+        removeBtn.textContent = "✕";
+
+        item.append(nameEl, removeBtn);
+        return item;
+      }),
+    );
   }
 
   async function refreshSettings() {
@@ -448,6 +483,8 @@ const app = (() => {
         countEl.textContent = "unavailable";
       }
     }
+    // Update panel
+    await refreshUpdatePanel();
   }
 
   async function resetOnboarding() {
@@ -460,6 +497,171 @@ const app = (() => {
       appendToast("Reset failed: " + e.message);
     }
   }
+
+  // --- Update panel state machine ---
+
+  let _updateState = "idle-current";
+  let _updateAvailable = null;
+
+  function getUpdateBtnLabel(severity) {
+    if (severity === "critical") return "Update & Restart App";
+    if (severity === "major") return "Update & Reload Service";
+    return "Update";
+  }
+
+  async function refreshUpdatePanel() {
+    const panel = $("#update-panel");
+    if (!panel) return;
+
+    const statusText = $(".update-status-text");
+    const checkBtn = $("#btn-check-updates");
+    const applyBtn = $("#btn-apply-update");
+    const progress = $(".update-progress");
+    const progressFill = $(".progress-fill");
+    const progressText = $(".progress-text");
+    const changesEl = $(".update-changes");
+    const versionEl = $(".update-version");
+
+    if (!statusText || !checkBtn || !applyBtn || !progress || !changesEl || !versionEl) return;
+
+    try {
+      const currentVersion = await window.launcher.getCurrentVersion();
+      versionEl.textContent = `v${currentVersion}`;
+    } catch {
+      versionEl.textContent = "v—";
+    }
+
+    applyBtn.style.display = "none";
+    progress.style.display = "none";
+    changesEl.innerHTML = "";
+
+    checkBtn.disabled = !_updateState.startsWith("idle");
+  }
+
+  async function checkForUpdates() {
+    const panel = $("#update-panel");
+    if (!panel) return;
+
+    const statusText = $(".update-status-text");
+    const checkBtn = $("#btn-check-updates");
+    const applyBtn = $("#btn-apply-update");
+    const changesEl = $(".update-changes");
+
+    if (!statusText || !checkBtn || !applyBtn) return;
+
+    statusText.textContent = "Checking...";
+    checkBtn.disabled = true;
+    applyBtn.style.display = "none";
+    changesEl.innerHTML = "";
+
+    try {
+      const result = await window.launcher.checkForUpdates();
+      _updateState = result.state;
+
+      if (result.error) {
+        statusText.textContent = result.error;
+        checkBtn.disabled = false;
+        return;
+      }
+
+      if (result.current) {
+        statusText.textContent = `You're up to date (v${result.version})`;
+        checkBtn.disabled = false;
+        _updateAvailable = null;
+        return;
+      }
+
+      _updateAvailable = { version: result.version, severity: result.severity };
+      statusText.textContent = `v${result.version} available (${(result.totalSize / 1e6).toFixed(0)} MB)`;
+      checkBtn.disabled = false;
+
+      if (result.severity) {
+        applyBtn.textContent = getUpdateBtnLabel(result.severity);
+        applyBtn.style.display = "inline-block";
+        applyBtn.disabled = false;
+      }
+
+      if (result.changes && result.changes.length > 0) {
+        changesEl.innerHTML = result.changes
+          .map(
+            (c) =>
+              `<div>• ${c.component}: <span class="${c.severity === "critical" ? "text-danger" : c.severity === "major" ? "text-warning" : ""}">${c.severity}</span> — ${c.reason}</div>`,
+          )
+          .join("");
+      }
+    } catch (e) {
+      statusText.textContent = "Check failed: " + e.message;
+      checkBtn.disabled = false;
+    }
+  }
+
+  async function applyUpdate() {
+    if (!_updateAvailable) return;
+
+    const panel = $("#update-panel");
+    const statusText = $(".update-status-text");
+    const checkBtn = $("#btn-check-updates");
+    const applyBtn = $("#btn-apply-update");
+    const progress = $(".update-progress");
+    const progressFill = $(".progress-fill");
+    const progressText = $(".progress-text");
+
+    statusText.textContent = "Applying update...";
+    checkBtn.disabled = true;
+    applyBtn.disabled = true;
+    progress.style.display = "block";
+
+    try {
+      const { stage, severity } = await window.launcher.applyUpdate(_updateAvailable.severity);
+
+      if (stage === "restart") {
+        statusText.textContent = "Installing update, app will relaunch...";
+      } else if (stage === "restart-service") {
+        statusText.textContent = "Restarting inference service...";
+      } else {
+        statusText.textContent = "Reloading model...";
+      }
+
+      for (let i = 0; i <= 100; i += 10) {
+        progressFill.style.width = i + "%";
+        progressText.textContent = i + "%";
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      const success = true;
+      const finalState = await window.launcher.updateComplete(success, _updateAvailable.version);
+      _updateState = finalState.state;
+
+      if (success) {
+        statusText.textContent = `You're up to date (v${_updateAvailable.version})`;
+        _updateAvailable = null;
+      } else {
+        statusText.textContent = "Update failed — reverted to previous version";
+      }
+    } catch (e) {
+      statusText.textContent = "Update failed: " + e.message;
+      await window.launcher.updateComplete(false, "");
+    }
+  }
+
+  function initUpdatePanel() {
+    const panel = $("#update-panel");
+    if (!panel) return;
+
+    const checkBtn = $("#btn-check-updates");
+    const applyBtn = $("#btn-apply-update");
+
+    if (checkBtn) {
+      checkBtn.addEventListener("click", checkForUpdates);
+    }
+    if (applyBtn) {
+      applyBtn.addEventListener("click", applyUpdate);
+    }
+
+    refreshUpdatePanel();
+  }
+
+  // --- Mounted folders ---
 
   async function refreshMountedFolders() {
     try {
@@ -481,7 +683,10 @@ const app = (() => {
 
       if (folders.length > 0) {
         card.classList.add("connected");
-        if (dot) { dot.classList.remove("inactive"); dot.classList.add("running"); }
+        if (dot) {
+          dot.classList.remove("inactive");
+          dot.classList.add("running");
+        }
         if (status) {
           status.style.color = "var(--success)";
           status.innerHTML = `<span class="status-dot running"></span> ${folders.length} folder${folders.length > 1 ? "s" : ""} mounted`;
@@ -525,10 +730,34 @@ const app = (() => {
 
             return item;
           }));
+          list.replaceChildren(
+            ...folders.map((f) => {
+              const name = f.path.split("/").pop() || f.path;
+              const item = document.createElement("div");
+              item.className = "mounted-folder-item";
+
+              const nameEl = document.createElement("span");
+              nameEl.className = "mounted-folder-name";
+              nameEl.title = f.path;
+              nameEl.textContent = name;
+
+              const btn = document.createElement("button");
+              btn.className = "mounted-folder-remove";
+              btn.dataset.action = "unmount-local-folder";
+              btn.dataset.path = f.path;
+              btn.textContent = "✕";
+
+              item.append(nameEl, btn);
+              return item;
+            }),
+          );
         }
       } else {
         card.classList.remove("connected");
-        if (dot) { dot.classList.remove("running"); dot.classList.add("inactive"); }
+        if (dot) {
+          dot.classList.remove("running");
+          dot.classList.add("inactive");
+        }
         if (status) {
           status.style.color = "var(--text-muted)";
           status.innerHTML = `<span class="status-dot inactive"></span> No folders mounted`;
@@ -543,9 +772,10 @@ const app = (() => {
       // Update dashboard meta
       const dashMeta = $(".local-files-dash-meta");
       if (dashMeta) {
-        dashMeta.textContent = folders.length > 0
-          ? `${folders.length} folder${folders.length > 1 ? "s" : ""} mounted`
-          : "No folders mounted";
+        dashMeta.textContent =
+          folders.length > 0
+            ? `${folders.length} folder${folders.length > 1 ? "s" : ""} mounted`
+            : "No folders mounted";
       }
     } catch (e) {
       console.warn("[app] failed to refresh mounted folders:", e.message);
@@ -612,6 +842,10 @@ const app = (() => {
       const onConn = () => resolve();
       gateway.on("connected", onConn);
       setTimeout(() => { gateway.off("connected", onConn); resolve(); }, 8000);
+      setTimeout(() => {
+        gateway.off("connected", onConn);
+        resolve();
+      }, 8000);
     });
 
     if (!gateway.connected) {
@@ -629,6 +863,12 @@ const app = (() => {
       // Defensive: OpenClaw may return key or sessionKey
       warmupKey = sess.key ?? sess.sessionKey ?? null;
       console.log("[warmup] session created, key =", warmupKey, "| full response:", JSON.stringify(sess));
+      console.log(
+        "[warmup] session created, key =",
+        warmupKey,
+        "| full response:",
+        JSON.stringify(sess),
+      );
     } catch (e) {
       console.warn("[warmup] createSession failed:", e.message);
       setReady();
@@ -657,6 +897,7 @@ const app = (() => {
           frame.payload?.key ??
           frame.payload?.session?.key ??
           null;
+          frame.payload?.sessionKey ?? frame.payload?.key ?? frame.payload?.session?.key ?? null;
         console.log("[warmup] event:", frame.event, "| key in payload:", key);
         if (key && key === warmupKey) {
           clearTimeout(timeout);
@@ -824,12 +1065,62 @@ const app = (() => {
         case "navigate":             navigateTo(el.dataset.target); break;
         case "logout":               logout(); break;
         case "reset-onboarding":     resetOnboarding(); break;
+        case "single":
+          single(el, "." + el.dataset.group);
+          break;
+        case "toggle":
+          toggle(el);
+          break;
+        case "go":
+          go(Number(el.dataset.step));
+          break;
+        case "add-invite-row":
+          addInviteRow();
+          break;
+        case "remove-invite-row":
+          removeInviteRow(el);
+          break;
+        case "mount-local-folder":
+          mountLocalFolder();
+          break;
+        case "unmount-local-folder":
+          unmountLocalFolder(el.dataset.path);
+          break;
+        case "toggle-connector":
+          toggleConnector(el);
+          break;
+        case "app-launch":
+          launch();
+          break;
+        case "open-chat":
+          if (!el.disabled) chat.open();
+          break;
+        case "new-workflow":
+          newWorkflow();
+          break;
+        case "toggle-avatar-menu":
+          toggleAvatarMenu();
+          break;
+        case "navigate":
+          navigateTo(el.dataset.target);
+          break;
+        case "avatar-settings":
+          navigateTo("Settings");
+          closeAvatarMenu();
+          break;
+        case "logout":
+          logout();
+          break;
+        case "reset-onboarding":
+          resetOnboarding();
+          break;
       }
     });
 
     // Init sub-modules
     chat.init();
     initKeyboardNav();
+    initUpdatePanel();
 
     // Check if already onboarded
     let firstRun = true;
