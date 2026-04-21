@@ -13,8 +13,7 @@ ACTION=$1
 FILEPATH=$2
 CONTENT=$3
 
-case $ACTION 
-
+case $ACTION in
   read|list)
     curl -s -X POST http://127.0.0.1:3001/api/files/read \
       -H "Content-Type: application/json" \

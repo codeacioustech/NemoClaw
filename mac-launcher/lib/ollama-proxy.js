@@ -15,24 +15,36 @@ const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the r
 
 const FILE_ACCESS_SCRIPT = path.join(__dirname, "..", "bin", "file-access.sh");
 
+function getMountedFolders() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
+    return (cfg.mountedFolders || []).map(f => f.path);
+  } catch {
+    return [];
+  }
+}
+
 function getSystemInstruction() {
-  const scriptPath = FILE_ACCESS_SCRIPT.replace(/^\/Users\/[^/]+/, os.homedir());
+  const scriptPath = FILE_ACCESS_SCRIPT;
+  const mounted = getMountedFolders();
+  const mountedList = mounted.length > 0
+    ? "MOUNTED FOLDERS (you have access to these):\n" + mounted.map(p => `- ${p}`).join("\n") + "\n\n"
+    : "No folders are currently mounted. Tell the user to mount a folder first.\n\n";
+
   return (
-    "You are a helpful assistant running inside the NemoClaw desktop app. " +
-    "For ALL file operations (reading files, listing directories, writing files), you MUST use the `exec` tool to run bash commands with the file-access script.\n\n" +
+    "You are a helpful assistant running inside the NemoClaw desktop app.\n\n" +
+    mountedList +
+    "For ALL file operations (reading files, listing directories, writing files), you MUST use the `exec` tool to run bash commands.\n\n" +
     "FILE ACCESS COMMANDS:\n" +
-    '- List/read files: exec({"command": "bash ' +
-    scriptPath +
-    ' read <PATH>"})\n' +
-    '- Write files: exec({"command": "bash ' +
-    scriptPath +
-    " write <PATH> '<CONTENT>'\"})\n\n" +
-    "IMPORTANT RULES:\n" +
-    "- NEVER use the `read` tool directly for files — it will fail with EISDIR errors.\n" +
-    "- ALWAYS use absolute paths (starting with /).\n" +
-    "- The script returns JSON. Parse it and present results clearly to the user.\n" +
-    "- First access to a folder will show an approval dialog to the user. Wait for the result.\n" +
-    "- When user asks 'which files do you have access to', list the mounted folders using the file-access script.\n" +
+    `- List/read: exec({"command": "bash ${scriptPath} read <ABSOLUTE_PATH>"})\n` +
+    `- Write: exec({"command": "bash ${scriptPath} write <ABSOLUTE_PATH> '<CONTENT>'"})\n\n` +
+    "CRITICAL RULES:\n" +
+    "- NEVER use the `read` tool directly — it fails with EISDIR errors.\n" +
+    "- ALWAYS use the exec tool with the bash command above.\n" +
+    "- ALWAYS use the ABSOLUTE paths from the MOUNTED FOLDERS list above.\n" +
+    "- The script returns JSON. Parse it and present file names clearly.\n" +
+    "- First access shows an approval dialog. Wait for the result.\n" +
+    "- When user asks 'which files do you have access to', run the script on each mounted folder.\n" +
     "- For non-file questions, answer in plain text.\n" +
     "ALWAYS wait for the tool result before replying."
   );
@@ -156,8 +168,6 @@ function startProxy(onListening) {
 
     const isChatEndpoint =
       clientReq.method === "POST" && clientReq.url === "/api/chat";
-    const isChatEndpoint = clientReq.method === "POST" && clientReq.url === "/api/chat";
-
     const bodyChunks = [];
     clientReq.on("data", (chunk) => bodyChunks.push(chunk));
     clientReq.on("end", () => {
