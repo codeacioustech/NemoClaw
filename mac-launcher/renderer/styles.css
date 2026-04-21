@@ -49,6 +49,12 @@
 
   /* Focus */
   --focus-ring: 0 0 0 2px rgba(129,140,248,0.6);
+
+  /* Lavender accent (selected/hover) */
+  --accent-selected:        #A78BFA;
+  --accent-selected-bg:     rgba(167,139,250,0.14);
+  --accent-selected-bg-soft:rgba(167,139,250,0.08);
+  --accent-selected-border: rgba(167,139,250,0.45);
 }
 
 /* ===================================================
@@ -270,12 +276,12 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
   display: flex; flex-direction: column; gap: 5px;
 }
 .purpose-card:hover  { border-color: var(--border-light); background: var(--surface-2); }
-.purpose-card.sel    { border-color: var(--primary); background: var(--primary-muted); }
+.purpose-card.sel    { border-color: var(--accent-selected-border); background: var(--accent-selected-bg); }
 .purpose-card:active { transform: scale(0.98); }
 .purpose-card:focus-visible { box-shadow: var(--focus-ring); }
 .purpose-top { display: flex; align-items: center; gap: 10px; }
 .purpose-icon  { color: var(--text-secondary); display: flex; align-items: center; }
-.purpose-card.sel .purpose-icon { color: var(--primary-light); }
+.purpose-card.sel .purpose-icon { color: var(--accent-selected); }
 .purpose-label { font-size: 14px; font-weight: 600; }
 .purpose-desc  { font-size: 12px; color: var(--text-secondary); padding-left: 30px; line-height: 1.5; }
 
@@ -288,11 +294,11 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
   color: var(--text-secondary); transition: all var(--dur-fast) var(--ease-std);
 }
 .tech-pill:hover { border-color: var(--border-light); color: var(--text-primary); }
-.tech-pill.sel   { border-color: var(--primary); background: var(--primary-muted); color: var(--primary-light); }
+.tech-pill.sel   { border-color: var(--accent-selected-border); background: var(--accent-selected-bg); color: var(--accent-selected); }
 .tech-pill:active { transform: scale(0.96); }
 .tech-pill:focus-visible { box-shadow: var(--focus-ring); }
 .tech-pill-dot   { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background var(--dur-fast); flex-shrink: 0; }
-.tech-pill.sel .tech-pill-dot { background: var(--primary-light); }
+.tech-pill.sel .tech-pill-dot { background: var(--accent-selected); }
 
 .size-grid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
@@ -303,7 +309,7 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
   cursor: pointer; text-align: center; transition: all var(--dur-fast) var(--ease-std);
 }
 .size-card:hover { border-color: var(--border-light); background: var(--surface-2); }
-.size-card.sel   { border-color: var(--primary); background: var(--primary-muted); }
+.size-card.sel   { border-color: var(--accent-selected-border); background: var(--accent-selected-bg); }
 .size-card:active { transform: scale(0.97); }
 .size-card:focus-visible { box-shadow: var(--focus-ring); }
 .size-num   { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
@@ -416,7 +422,7 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
   cursor: pointer; transition: all var(--dur-norm) var(--ease-out); position: relative;
 }
 .ma-card:hover   { transform: translateY(-2px); border-color: var(--border-light); box-shadow: var(--shadow-md); }
-.ma-card.sel     { border-color: var(--primary); background: var(--primary-muted); }
+.ma-card.sel     { border-color: var(--accent-selected-border); background: var(--accent-selected-bg); }
 .ma-card:active  { transform: translateY(0) scale(0.98); }
 .ma-card:focus-visible { box-shadow: var(--focus-ring); }
 .ma-card.dashed  { border-style: dashed; }
@@ -430,7 +436,7 @@ button, input, textarea, select, a { -webkit-app-region: no-drag; }
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 14px; color: var(--text-secondary);
 }
-.ma-card.sel .ma-icon { color: var(--primary-light); }
+.ma-card.sel .ma-icon { color: var(--accent-selected); }
 .ma-name  { font-size: 14px; font-weight: 600; margin-bottom: 5px; }
 .ma-desc  { font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
 .ma-check {
@@ -1066,49 +1072,27 @@ textarea:focus-visible {
 }
 
 /* ===================================================
-   GLASSMORPHISM LAYER
-   Translucent surfaces + ambient color, layered over
-   the macOS polish. Dark-mode tuned.
+   SURFACE LAYER (was glassmorphism)
+   Solid dark surfaces, no aurora, lavender accent.
 ==================================================== */
 :root {
-  --glass-bg:        rgba(28, 30, 40, 0.55);
-  --glass-bg-strong: rgba(28, 30, 40, 0.72);
-  --glass-bg-soft:   rgba(40, 44, 58, 0.38);
-  --glass-border:    rgba(255, 255, 255, 0.08);
-  --glass-border-strong: rgba(255, 255, 255, 0.14);
-  --glass-highlight: rgba(255, 255, 255, 0.06);
-  --glass-shadow:    0 20px 60px rgba(0, 0, 0, 0.45),
-                     0 2px 12px rgba(0, 0, 0, 0.35),
-                     inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --glass-blur:      saturate(180%) blur(24px);
-  --glass-blur-sm:   saturate(140%) blur(14px);
+  --glass-bg:            var(--surface);
+  --glass-bg-strong:     var(--surface-2);
+  --glass-bg-soft:       var(--surface);
+  --glass-border:        var(--border);
+  --glass-border-strong: var(--border-light);
+  --glass-highlight:     rgba(255,255,255,0.03);
+  --glass-shadow:        0 8px 24px rgba(0,0,0,0.45);
+  --glass-blur:          none;
+  --glass-blur-sm:       none;
 }
 
-/* Global ambient background — subtle aurora gradient behind the whole app */
-body::before {
-  content: "";
-  position: fixed;
-  inset: -20%;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(40rem 30rem at 15% 10%, rgba(10,132,255,0.22), transparent 60%),
-    radial-gradient(36rem 28rem at 90% 20%, rgba(191,90,242,0.18), transparent 60%),
-    radial-gradient(44rem 34rem at 60% 95%, rgba(94,92,230,0.22), transparent 60%),
-    radial-gradient(30rem 24rem at 20% 85%, rgba(255,55,95,0.10), transparent 65%);
-  filter: blur(40px) saturate(120%);
-  animation: ambientDrift 24s ease-in-out infinite alternate;
-}
-@keyframes ambientDrift {
-  0%   { transform: translate3d(0,0,0) scale(1); }
-  100% { transform: translate3d(2%, -2%, 0) scale(1.06); }
-}
+/* Kill the aurora and enforce a solid dark page */
+html, body { background: var(--bg); }
+.screen    { background: var(--bg); }
+body::before { content: none; display: none; }
 
-/* Slightly translucent app surface so the aurora peeks through */
-html, body { background: transparent; }
-.screen { background: transparent; }
-
-/* Panels, cards, sidebars → frosted glass */
+/* Panels, cards, sidebars → solid dark */
 .chat-panel,
 .chat-backdrop,
 .chat-history-sidebar,
@@ -1120,90 +1104,82 @@ html, body { background: transparent; }
 .dialog,
 .card,
 .settings-panel {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
+  background: var(--surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--border);
   box-shadow: var(--glass-shadow);
 }
 
 .chat-panel {
-  background: var(--glass-bg-strong);
-  border-left: 1px solid var(--glass-border-strong);
+  background: var(--surface-2);
+  border-left: 1px solid var(--border-light);
 }
 .chat-backdrop {
-  background: rgba(0, 0, 0, 0.32);
-  backdrop-filter: saturate(140%) blur(22px);
-  -webkit-backdrop-filter: saturate(140%) blur(22px);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .chat-history-sidebar {
-  background: var(--glass-bg-soft);
-  backdrop-filter: var(--glass-blur-sm);
-  -webkit-backdrop-filter: var(--glass-blur-sm);
-  border-right: 1px solid var(--glass-border);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 .dash-sidebar {
-  background: var(--glass-bg-soft);
-  backdrop-filter: var(--glass-blur-sm);
-  -webkit-backdrop-filter: var(--glass-blur-sm);
-  border-right: 1px solid var(--glass-border);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 
-/* Cards get a subtle highlight edge for that glass-pane feel */
+/* Cards flat, dark, lavender hover border */
 .stat-card,
 .dash-panel {
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background: linear-gradient(
-      180deg,
-      rgba(255,255,255,0.04) 0%,
-      rgba(255,255,255,0) 60%
-    ),
-    var(--glass-bg);
-  box-shadow:
-    0 10px 32px rgba(0,0,0,0.32),
-    inset 0 1px 0 rgba(255,255,255,0.07);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.32);
   transition: transform 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out), border-color 0.22s var(--ease-out);
 }
 .stat-card:hover,
 .dash-panel:hover {
   transform: translateY(-2px);
-  border-color: var(--glass-border-strong);
-  box-shadow:
-    0 16px 40px rgba(0,0,0,0.42),
-    inset 0 1px 0 rgba(255,255,255,0.1);
+  border-color: var(--accent-selected-border);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.42);
 }
 
-/* Nav items: smooth frosted hover */
+/* Nav items: lavender accent */
 .nav-item {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.nav-item:hover {
+  background: var(--accent-selected-bg-soft);
+  color: var(--text-primary);
 }
 .nav-item.active {
-  background: linear-gradient(135deg, rgba(10,132,255,0.28), rgba(94,92,230,0.22));
-  border: 1px solid rgba(10,132,255,0.35);
-  color: #fff;
-  box-shadow: 0 4px 18px rgba(10,132,255,0.28);
+  background: var(--accent-selected-bg);
+  border: 1px solid var(--accent-selected-border);
+  color: var(--accent-selected);
+  box-shadow: 0 4px 18px rgba(167,139,250,0.22);
 }
 
-/* Inputs → glassy */
+/* Inputs → solid dark */
 input, select, textarea, .input, .search-input {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-radius: 10px;
   color: var(--text-primary);
   transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
 }
 input:hover, select:hover, textarea:hover {
-  background: rgba(255,255,255,0.06);
-  border-color: var(--glass-border-strong);
+  background: var(--surface-3);
+  border-color: var(--border-light);
 }
 input:focus, select:focus, textarea:focus {
-  background: rgba(255,255,255,0.08);
-  border-color: rgba(10,132,255,0.5);
-  box-shadow: var(--macos-focus);
+  background: var(--surface-3);
+  border-color: var(--accent-selected);
+  box-shadow: 0 0 0 2px var(--accent-selected-bg);
   outline: none;
 }
 
@@ -1228,18 +1204,18 @@ input:focus, select:focus, textarea:focus {
 }
 .btn-primary:active, .dl-btn-primary:active, .send-btn:active { transform: translateY(0); }
 
-/* Secondary / ghost buttons — glass chip */
+/* Secondary / ghost buttons — solid dark chip */
 .btn-secondary, .btn-ghost, .dl-btn-secondary {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   color: var(--text-primary);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
 .btn-secondary:hover, .btn-ghost:hover, .dl-btn-secondary:hover {
-  background: rgba(255,255,255,0.1);
-  border-color: var(--glass-border-strong);
+  background: var(--surface-3);
+  border-color: var(--accent-selected-border);
   transform: translateY(-1px);
 }
 
@@ -1269,14 +1245,14 @@ input:focus, select:focus, textarea:focus {
   transition: background 0.18s, border-color 0.18s, backdrop-filter 0.18s;
 }
 .chat-history-item:hover {
-  background: rgba(255,255,255,0.06);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--accent-selected-bg-soft);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .chat-history-item.active {
-  background: linear-gradient(135deg, rgba(10,132,255,0.22), rgba(94,92,230,0.18));
-  border-color: rgba(10,132,255,0.42);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  background: var(--accent-selected-bg);
+  border-color: var(--accent-selected-border);
+  color: var(--accent-selected);
 }
 
 /* Landing hero glow — boost and richer */
@@ -1298,12 +1274,12 @@ input:focus, select:focus, textarea:focus {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
+  background: var(--border-light);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-selected-border); background-clip: padding-box; border: 2px solid transparent; }
 
 /* Typing indicator dots polish */
 .chat-typing .dot {
