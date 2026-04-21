@@ -28,7 +28,7 @@ let proxyServer = null;
 // Launcher config persistence
 // ---------------------------------------------------------------------------
 
-const CONFIG_VERSION = 2;
+const CONFIG_VERSION = 3;
 
 function migrateConfig(config) {
   const v = config.configVersion || 0;
@@ -60,6 +60,14 @@ function migrateConfig(config) {
       config.onboarding_complete = !!hasOnboardingData;
     }
     config.configVersion = 2;
+  }
+
+  if (v < 3) {
+    // v2 → v3: credential storage moved from plaintext
+    // {OPENAI_API_KEY: "ollama"} to encrypted entry format in
+    // credentials.json (handled by migrateToEncrypted() at bootstrap).
+    config.credentialsEncryptionMigratedAt = new Date().toISOString();
+    config.configVersion = 3;
   }
 
   return config;
@@ -335,8 +343,26 @@ async function bootstrap() {
       launcher_setup_complete: true,
       ollama_model: MODEL,
       gateway_port: GATEWAY_PORT,
+      connector_proxy_port: 11437,
       setupCompletedAt: new Date().toISOString(),
     });
+  }
+
+  // Step 5b — Upgrade any plaintext credentials to safeStorage-encrypted
+  // format. Runs BEFORE the gateway spawns so the agent subprocess never
+  // sees a plaintext token on disk.
+  try {
+    const secureCreds = require("./lib/secure-credentials");
+    if (secureCreds.isAvailable()) {
+      const result = secureCreds.migrateToEncrypted();
+      if (result.migrated > 0) {
+        console.log(`[bootstrap] encrypted ${result.migrated} credential(s) via safeStorage`);
+      }
+    } else {
+      console.warn("[bootstrap] safeStorage unavailable — credentials remain plaintext on disk");
+    }
+  } catch (e) {
+    console.warn(`[bootstrap] credential migration failed: ${e.code || e.message}`);
   }
 
   // Ensure gateway config has required settings
@@ -443,6 +469,15 @@ async function bootstrap() {
   // sends their first message. Non-blocking — we don't await it.
   warmUpModel(MODEL);
 
+  // 5c. Start connector proxy (third-party API calls on behalf of agent)
+  try {
+    const { startConnectorProxy } = require("./lib/connector-proxy");
+    const connectorServer = startConnectorProxy();
+    trackServer(connectorServer);
+  } catch (e) {
+    console.error(`[bootstrap] connector proxy failed to start: ${e.message}`);
+  }
+
   // 6. Start gateway
   sendStatus("Starting gateway...");
   const gatewayChild = startGateway(
@@ -542,6 +577,47 @@ ipcMain.handle("mark-onboarding-complete", (_event, data) => {
     gateway_port: GATEWAY_PORT,
   });
   return true;
+});
+
+// ---------------------------------------------------------------------------
+// Credential IPC — main-process-only custody of third-party API tokens.
+// Never expose decrypted values to the renderer; it only needs to know
+// which credentials exist. Decryption happens only inside the connector
+// proxy at request time.
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("save-credential", (_event, key, value) => {
+  try {
+    require("./lib/secure-credentials").writeCredential(key, value);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, code: e.code || "SAVE_FAILED" };
+  }
+});
+
+ipcMain.handle("delete-credential", (_event, key) => {
+  try {
+    require("./lib/secure-credentials").deleteCredential(key);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, code: e.code || "DELETE_FAILED" };
+  }
+});
+
+ipcMain.handle("has-credential", (_event, key) => {
+  try {
+    return require("./lib/secure-credentials").hasCredential(key);
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle("list-credential-keys", () => {
+  try {
+    return require("./lib/secure-credentials").listCredentialKeys();
+  } catch {
+    return [];
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -217,15 +217,98 @@ const app = (() => {
 
   // --- Connector toggle (Screen 3) ---
 
-  function toggleConnector(btn) {
+  // Maps a connector card's data-connector-id to the credential key used
+  // by the connector proxy (lib/connector-proxy.js). IDs not listed here
+  // (e.g., local-files) are handled by their own flow and fall through
+  // to the legacy toast.
+  const CONNECTOR_KEY_MAP = {
+    slack: "slack_token",
+    gmail: "gmail_token",
+    gdrive: "gdrive_token",
+    notion: "notion_token",
+    github: "github_token",
+    onedrive: "onedrive_token",
+  };
+
+  function setConnectorConnectedUI(card, connected) {
+    if (!card) return;
+    card.classList.toggle("connected", connected);
+    const btn = card.querySelector(".conn-btn");
+    if (btn) {
+      btn.className = connected ? "conn-btn active" : "conn-btn idle";
+      btn.textContent = connected ? "Disconnect" : "Connect";
+    }
+    const dot = card.querySelector(".status-dot");
+    if (dot) {
+      dot.classList.toggle("running", connected);
+      dot.classList.toggle("inactive", !connected);
+    }
+  }
+
+  async function toggleConnector(btn) {
     const card = btn.closest(".conn-card");
     if (!card) return;
+    const id = card.dataset.connectorId;
+    const key = id ? CONNECTOR_KEY_MAP[id] : null;
     const name = card.querySelector(".conn-name")?.textContent?.trim() || "This connector";
-    // OAuth integrations (Google Drive, Slack, Notion, GitHub, OneDrive)
-    // aren't wired to any real provider yet. Don't paint a fake
-    // "Connected" state — be honest so users aren't surprised when
-    // their assistant can't actually reach these services.
-    appendToast(`${name} integration is not yet available. For local file access, use Mount a Folder.`);
+
+    if (!key) {
+      appendToast(`${name} integration is not yet available. For local file access, use Mount a Folder.`);
+      return;
+    }
+
+    let alreadyConnected = false;
+    try {
+      alreadyConnected = await window.launcher.hasCredential(key);
+    } catch {
+      alreadyConnected = card.classList.contains("connected");
+    }
+
+    if (alreadyConnected) {
+      // Disconnect
+      const ok = window.confirm(`Disconnect ${name}? The stored token will be removed.`);
+      if (!ok) return;
+      try {
+        const res = await window.launcher.deleteCredential(key);
+        if (res && res.ok === false) throw new Error(res.code || "delete_failed");
+        setConnectorConnectedUI(card, false);
+        appendToast(`${name} disconnected.`);
+      } catch (e) {
+        appendToast(`Failed to disconnect ${name}.`);
+      }
+      return;
+    }
+
+    // Connect — placeholder UX (OAuth lands later). Prompt for the token
+    // inline; never persist it anywhere other than the encrypted store.
+    const token = window.prompt(
+      `Enter your ${name} API token.\nIt will be encrypted via the macOS Keychain (safeStorage).`,
+      ""
+    );
+    if (!token) return;
+    try {
+      const res = await window.launcher.saveCredential(key, token);
+      if (res && res.ok === false) throw new Error(res.code || "save_failed");
+      setConnectorConnectedUI(card, true);
+      appendToast(`${name} connected.`);
+    } catch (e) {
+      appendToast(`Failed to save ${name} credential.`);
+    }
+  }
+
+  async function hydrateConnectorStates() {
+    try {
+      const keys = await window.launcher.listCredentialKeys();
+      const saved = new Set(keys || []);
+      $$(".conn-card").forEach((card) => {
+        const id = card.dataset.connectorId;
+        const key = id ? CONNECTOR_KEY_MAP[id] : null;
+        if (!key) return;
+        setConnectorConnectedUI(card, saved.has(key));
+      });
+    } catch {
+      // listCredentialKeys isn't available pre-app-ready — silently ignore.
+    }
   }
 
   // --- Toast helper ---
@@ -777,6 +860,11 @@ const app = (() => {
       connectGateway();
       refreshMountedFolders();
     }
+
+    // Mark connector cards connected/disconnected based on saved
+    // credentials so returning users see the correct state on both
+    // the onboarding Connectors step and the dashboard Connectors section.
+    hydrateConnectorStates();
   }
 
   return { init, go, launch };

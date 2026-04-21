@@ -19,7 +19,11 @@ const SYSTEM_INSTRUCTION =
   "- `edit`: to modify existing files.\n" +
   "- `write`: to create or completely overwrite files.\n" +
   "ALWAYS wait for the tool result before replying. " +
-  "For non-file questions, answer in plain text.";
+  "For non-file questions, answer in plain text. " +
+  "Never read, list, edit, or write any file under `~/.nemoclaw/` or `~/.openclaw/`. " +
+  "Those directories hold system credentials and launcher config; the user does " +
+  "not want them accessed. If a user request requires credentials, inform them " +
+  "that connector integrations are managed through the launcher UI.";
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;

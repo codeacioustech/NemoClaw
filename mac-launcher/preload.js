@@ -36,5 +36,12 @@ contextBridge.exposeInMainWorld("launcher", {
 
   // Model selection
   getModels: () => ipcRenderer.invoke("get-ollama-models"),
-  setModel: (modelName) => ipcRenderer.invoke("set-ollama-model", modelName)
+  setModel: (modelName) => ipcRenderer.invoke("set-ollama-model", modelName),
+
+  // Credential management — main process holds decrypted values; the
+  // renderer can only check existence and save/delete. No getter.
+  saveCredential: (key, value) => ipcRenderer.invoke("save-credential", key, value),
+  deleteCredential: (key) => ipcRenderer.invoke("delete-credential", key),
+  hasCredential: (key) => ipcRenderer.invoke("has-credential", key),
+  listCredentialKeys: () => ipcRenderer.invoke("list-credential-keys")
 });
