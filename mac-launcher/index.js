@@ -12,6 +12,8 @@ const paths = require("./lib/paths");
 const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-seeder");
 const { startGateway, waitForGateway } = require("./lib/gateway");
 const { startProxy, waitForProxy, warmUpModel } = require("./lib/ollama-proxy");
+const wfDb = require("./lib/workflow-db");
+const { runWorkflow, startRunsSSE } = require("./lib/workflow-runner");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 const db = require("./lib/db");
 
@@ -387,6 +389,7 @@ async function bootstrap() {
   sendStatus("Starting inference proxy...");
   proxyServer = startProxy();
   trackServer(proxyServer);
+  try { trackServer(startRunsSSE()); } catch (e) { console.error("[wf] startRunsSSE failed:", e.message); }
 
   try {
     await waitForProxy();
@@ -450,6 +453,20 @@ ipcMain.handle("db-save-message", (_, sessionId, role, content) => db.saveMessag
 ipcMain.handle("db-get-messages", (_, sessionId) => db.getMessages(sessionId));
 ipcMain.handle("db-update-session-title", (_, sessionId, title) => db.updateSessionTitle(sessionId, title));
 ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
+
+// Workflow IPC
+ipcMain.handle("wf-list", () => wfDb.listWorkflows());
+ipcMain.handle("wf-get", (_, id) => wfDb.getWorkflow(id));
+ipcMain.handle("wf-create", (_, input) => wfDb.createWorkflow(input || {}));
+ipcMain.handle("wf-update", (_, id, patch) => wfDb.updateWorkflow(id, patch || {}));
+ipcMain.handle("wf-delete", (_, id) => wfDb.deleteWorkflow(id));
+ipcMain.handle("wf-step-add", (_, workflowId, step) => wfDb.addStep(workflowId, step || {}));
+ipcMain.handle("wf-step-update", (_, stepId, patch) => wfDb.updateStep(stepId, patch || {}));
+ipcMain.handle("wf-step-delete", (_, stepId) => wfDb.deleteStep(stepId));
+ipcMain.handle("wf-step-reorder", (_, workflowId, orderedIds) => wfDb.reorderSteps(workflowId, orderedIds || []));
+ipcMain.handle("wf-run", async (_, workflowId) => runWorkflow(workflowId));
+ipcMain.handle("wf-runs-list", (_, workflowId) => wfDb.listRuns(workflowId));
+ipcMain.handle("wf-run-get", (_, runId) => wfDb.getRun(runId));
 
 ipcMain.handle("get-ollama-models", () => {
   return new Promise((resolve) => {

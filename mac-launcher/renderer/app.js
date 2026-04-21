@@ -145,6 +145,7 @@ const app = (() => {
     // Lazy-populate section-specific content.
     if (label === "Connectors") refreshMountedFolders();
     else if (label === "Settings") refreshSettings();
+    else if (label === "Chat") { try { chat.open(); } catch {} }
   }
 
   // --- Keyboard navigation for role="button" elements ---
@@ -423,53 +424,9 @@ const app = (() => {
     }
   }
 
-  // --- Avatar menu (Dashboard) ---
-
-  function toggleAvatarMenu() {
-    let menu = $(".avatar-menu");
-    if (menu) {
-      menu.remove();
-      return;
-    }
-    const avatar = $(".topbar-avatar");
-    if (!avatar) return;
-    menu = document.createElement("div");
-    menu.className = "avatar-menu";
-
-    const settingsItem = document.createElement("div");
-    settingsItem.className = "avatar-menu-item";
-    settingsItem.dataset.action = "avatar-settings";
-    settingsItem.textContent = "Settings";
-
-    const logoutItem = document.createElement("div");
-    logoutItem.className = "avatar-menu-item danger";
-    logoutItem.dataset.action = "logout";
-    logoutItem.textContent = "Log out";
-
-    menu.append(settingsItem, logoutItem);
-    avatar.style.position = "relative";
-    avatar.appendChild(menu);
-
-    // Close on outside click
-    setTimeout(() => {
-      document.addEventListener("click", _avatarOutsideClick, { once: true });
-    }, 0);
-  }
-
-  function _avatarOutsideClick(e) {
-    const menu = $(".avatar-menu");
-    if (menu && !menu.contains(e.target) && !$(".topbar-avatar").contains(e.target)) {
-      menu.remove();
-    }
-  }
-
-  function closeAvatarMenu() {
-    const menu = $(".avatar-menu");
-    if (menu) menu.remove();
-  }
+  // Avatar menu removed — Settings lives in sidebar nav.
 
   function logout() {
-    closeAvatarMenu();
     localStorage.removeItem("opencoot_onboarded");
     localStorage.removeItem("opencoot_onboarding");
     stopLlmPolling();
@@ -636,9 +593,7 @@ const app = (() => {
         case "app-launch":           launch(); break;
         case "open-chat":            if (!el.disabled) chat.open(); break;
         case "new-workflow":         newWorkflow(); break;
-        case "toggle-avatar-menu":   toggleAvatarMenu(); break;
         case "navigate":             navigateTo(el.dataset.target); break;
-        case "avatar-settings":      navigateTo("Settings"); closeAvatarMenu(); break;
         case "logout":               logout(); break;
         case "reset-onboarding":     resetOnboarding(); break;
       }
