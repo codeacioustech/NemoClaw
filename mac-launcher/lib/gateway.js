@@ -38,6 +38,7 @@ function startGateway(onStdout, onStderr) {
       ELECTRON_RUN_AS_NODE: "1",
       OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
       NODE_OPTIONS: "",
+      FILE_ACCESS_SCRIPT: "/Users/codeacious/Desktop/NemoClaw/mac-launcher/bin/file-access.sh",
     },
     cwd: openclawDir,
     stdio: ["ignore", "pipe", "pipe"],

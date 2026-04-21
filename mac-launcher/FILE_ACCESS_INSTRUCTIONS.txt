@@ -1,0 +1,35 @@
+FILE ACCESS INSTRUCTIONS FOR AGENT
+
+When user asks about file access, mounted folders, or listing files:
+
+USE THIS BASH SCRIPT:
+/Users/codeacious/Desktop/NemoClaw/mac-launcher/bin/file-access.sh
+
+SYNTAX:
+bash /Users/codeacious/Desktop/NemoClaw/mac-launcher/bin/file-access.sh <action> <path>
+
+ACTIONS:
+- read:  List directory contents or read file
+- write: Write file (requires 3 arguments: action, path, content)
+- list:  List directory contents
+
+EXAMPLES:
+1. List files in mounted folder:
+   bash /Users/codeacious/Desktop/NemoClaw/mac-launcher/bin/file-access.sh read /Users/codeacious/Desktop/NemoClaw
+
+2. Write to file:
+   bash /Users/codeacious/Desktop/NemoClaw/mac-launcher/bin/file-access.sh write /path/to/file.txt "file content here"
+
+3. Check what files user has access to:
+   bash /Users/codeacious/Desktop/NemoClaw/mac-launcher/bin/file-access.sh read <mounted-folder-path>
+
+APPROVAL DIALOGS:
+- First access to mounted folder: Approval dialog appears on screen
+- User chooses: "Allow (this session)" or "Allow (this chat)"
+- Subsequent accesses: No dialog (cached based on scope)
+
+IMPORTANT:
+- Always use absolute paths (starting with /)
+- Script returns JSON format
+- First access requires user approval
+- Use this script for ALL file operations
