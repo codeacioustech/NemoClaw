@@ -14,6 +14,7 @@ const { startGateway, waitForGateway } = require("./lib/gateway");
 const { startProxy, waitForProxy, warmUpModel } = require("./lib/ollama-proxy");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 const db = require("./lib/db");
+const FileApprovalManager = require("./lib/file-approval");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -23,6 +24,7 @@ const OPENCLAW_CONFIG = path.join(os.homedir(), ".openclaw", "openclaw.json");
 let splashWindow = null;
 let mainWindow = null;
 let proxyServer = null;
+let fileApprovalManager = null;
 
 // ---------------------------------------------------------------------------
 // Launcher config persistence
@@ -243,6 +245,9 @@ async function ensureSplash() {
 }
 
 async function bootstrap() {
+  // Initialize file approval manager
+  fileApprovalManager = new FileApprovalManager();
+
   const config = readLauncherConfig();
   const isFirstRun = !config.launcher_setup_complete;
 
@@ -573,13 +578,75 @@ ipcMain.handle("select-folder", async () => {
   return { path: filePaths[0], bookmark: (bookmarks && bookmarks[0]) || null };
 });
 
+/**
+ * Helper: Request approval for file access
+ */
+async function requestFileApproval(filePath) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error("Main window not available");
+  }
+
+  const fileName = path.basename(filePath);
+  const folderName = path.dirname(filePath);
+
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    buttons: ["Allow (this session)", "Allow (this chat)", "Deny"],
+    title: "File Access Request",
+    message: `Allow agent to access this file?`,
+    detail: `File: ${fileName}\nPath: ${folderName}`,
+    defaultId: 0,
+    cancelId: 2,
+  });
+
+  // Button indices: 0 = session, 1 = chat, 2 = deny
+  if (result.response === 2) {
+    throw new Error("File access denied by user");
+  }
+
+  const scope = result.response === 0 ? "per-session" : "per-chat";
+  fileApprovalManager.addApproval(filePath, scope);
+  return scope;
+}
+
+/**
+ * Helper: Check if file access is approved, request if needed
+ */
+async function ensureFileApproval(filePath) {
+  const check = fileApprovalManager.isFileApproved(filePath);
+
+  if (check.approved) {
+    return;
+  }
+
+  // File is in mounted folder but not approved — ask user
+  if (check.reason === "NOT_APPROVED" || check.reason === "SESSION_EXPIRED" || check.reason === "CHAT_CHANGED") {
+    await requestFileApproval(filePath);
+  }
+}
+
 ipcMain.handle("fs-read-file", async (_, filePath) => {
+  // First, validate it's in a mounted folder
+  await validatePathInMountedFolders(filePath);
+
+  // Then, check approval
+  await ensureFileApproval(filePath);
+
+  // Finally, read with bookmark access
   return withBookmarkAccess(filePath, () => fs.promises.readFile(filePath, "utf-8"));
 });
 
 ipcMain.handle("fs-write-file", async (_, filePath, content) => {
   console.log(`[fs-write-file] request path=${filePath} bytes=${content ? Buffer.byteLength(content) : 0}`);
+
   try {
+    // First, validate it's in a mounted folder
+    await validatePathInMountedFolders(filePath);
+
+    // Then, check approval
+    await ensureFileApproval(filePath);
+
+    // Finally, write with bookmark access
     const result = await withBookmarkAccess(filePath, async () => {
       const dir = path.dirname(filePath);
       await fs.promises.mkdir(dir, { recursive: true });
@@ -595,6 +662,13 @@ ipcMain.handle("fs-write-file", async (_, filePath, content) => {
 });
 
 ipcMain.handle("fs-list-dir", async (_, dirPath) => {
+  // First, validate it's in a mounted folder
+  await validatePathInMountedFolders(dirPath);
+
+  // Then, check approval
+  await ensureFileApproval(dirPath);
+
+  // Finally, list with bookmark access
   return withBookmarkAccess(dirPath, async () => {
     const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
     return entries.map((e) => ({ name: e.name, isDir: e.isDirectory() }));
@@ -626,6 +700,59 @@ ipcMain.handle("unmount-folder", (_, folderPath) => {
   cfg.mountedFolders = (cfg.mountedFolders || []).filter((f) => f.path !== folderPath);
   writeLauncherConfig(cfg);
   return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// File access approval management
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("set-current-chat-id", (_, chatId) => {
+  if (fileApprovalManager) {
+    fileApprovalManager.setCurrentChatId(chatId);
+    return { ok: true, chatId };
+  }
+  return { ok: false };
+});
+
+ipcMain.handle("get-session-info", () => {
+  if (fileApprovalManager) {
+    return {
+      sessionId: fileApprovalManager.currentSessionId,
+      chatId: fileApprovalManager.currentChatId,
+    };
+  }
+  return { sessionId: null, chatId: null };
+});
+
+ipcMain.handle("get-file-approvals", () => {
+  if (fileApprovalManager) {
+    return fileApprovalManager.getAllApprovals();
+  }
+  return [];
+});
+
+ipcMain.handle("revoke-file-approval", (_, filePath) => {
+  if (fileApprovalManager) {
+    const revoked = fileApprovalManager.revokeApproval(filePath);
+    return { ok: true, revoked };
+  }
+  return { ok: false, revoked: false };
+});
+
+ipcMain.handle("clear-file-approvals", () => {
+  if (fileApprovalManager) {
+    fileApprovalManager.clearAllApprovals();
+    return { ok: true };
+  }
+  return { ok: false };
+});
+
+ipcMain.handle("clear-expired-approvals", () => {
+  if (fileApprovalManager) {
+    fileApprovalManager.clearExpiredApprovals();
+    return { ok: true };
+  }
+  return { ok: false };
 });
 
 // ---------------------------------------------------------------------------

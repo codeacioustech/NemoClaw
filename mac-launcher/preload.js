@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld("launcher", {
   mountFolder: (data) => ipcRenderer.invoke("mount-folder", data),
   unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
 
+  // File access approval management
+  setCurrentChatId: (chatId) => ipcRenderer.invoke("set-current-chat-id", chatId),
+  getSessionInfo: () => ipcRenderer.invoke("get-session-info"),
+  getFileApprovals: () => ipcRenderer.invoke("get-file-approvals"),
+  revokeFileApproval: (filePath) => ipcRenderer.invoke("revoke-file-approval", filePath),
+  clearFileApprovals: () => ipcRenderer.invoke("clear-file-approvals"),
+  clearExpiredApprovals: () => ipcRenderer.invoke("clear-expired-approvals"),
+
   // Database channels
   db: {
     createSession: (title) => ipcRenderer.invoke("db-create-session", title),

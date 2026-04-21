@@ -18,17 +18,6 @@ import {
   loadOnboardConfig,
 } from "./onboard/config.js";
 import { scanForSecrets, isMemoryPath } from "./security/secret-scanner.js";
-import { checkAccess, resolvePathForSandbox } from "./commands/file-access-matcher.js";
-import {
-  commandGrant,
-  commandRevoke,
-  commandList,
-  commandDeny,
-  commandCleanup,
-} from "./commands/file-access.js";
-import { ensureFileAccess } from "./commands/file-access-agent-api.js";
-import { addPermission } from "./commands/file-access-store.js";
-import type { FileAction } from "./commands/file-access-types.js";
 
 // ---------------------------------------------------------------------------
 // OpenClaw Plugin SDK compatible types (mirrors openclaw/plugin-sdk)
@@ -264,35 +253,6 @@ export function getPluginConfig(api: OpenClawPluginApi): NemoClawConfig {
 /** Tool names that can write/modify files and should be scanned for secrets. */
 const WRITE_TOOL_NAMES = new Set(["write", "edit", "apply_patch", "notebook_edit"]);
 
-/** Tool names that access the filesystem */
-const FILE_TOOL_NAMES = new Set([
-  "read",
-  "str_replace_editor",
-  "write",
-  "edit",
-  "apply_patch",
-  "notebook_edit",
-  "bash",
-  "executec",
-  "executep",
-  "glob",
-  "grep",
-  "ls",
-]);
-
-/** Auto-retry cache: tracks approved-for-retry requests */
-const approvedForRetry = new Set<string>();
-
-/**
- * Create a cache key for a tool call (for deferred retry).
- * Hash of (toolName + params) to identify exact request.
- */
-function createRequestCacheKey(toolName: string, params: Record<string, unknown>): string {
-  const key = `${toolName}:${JSON.stringify(params)}`;
-  // Simple hash: just use string length + first chars (good enough for same-request detection)
-  return `${toolName}_${Object.keys(params).join(",")}_${String(params["file_path"]).slice(0, 30)}`;
-}
-
 export default function register(api: OpenClawPluginApi): void {
   // 1. Register /nemoclaw slash command (chat interface)
   api.registerCommand({
@@ -300,83 +260,6 @@ export default function register(api: OpenClawPluginApi): void {
     description: "NemoClaw sandbox management (status, eject).",
     acceptsArgs: true,
     handler: (ctx) => handleSlashCommand(ctx, api),
-  });
-
-  // 2. Register /file-access slash command (file permission management)
-  api.registerCommand({
-    name: "file-access",
-    description: "Manage file access permissions (grant, revoke, list, deny, cleanup).",
-    acceptsArgs: true,
-    handler: (ctx) => {
-      const args = ctx.args?.trim().split(/\s+/) ?? [];
-      const subcommand = args[0] ?? "";
-      const sandboxName = (ctx.config["sandboxName"] as string) ?? "default";
-
-      try {
-        switch (subcommand) {
-          case "grant": {
-            const pathPattern = args[1] ?? "";
-            const actions = args[2] ?? "r";
-            const scope = args[3] ?? "session";
-            if (!pathPattern) {
-              return { text: "Usage: /file-access grant <path> <r|rw|rwx> [session|persistent]" };
-            }
-            commandGrant(sandboxName, pathPattern, actions, scope);
-            return { text: `✓ Granted ${actions} on ${pathPattern} (${scope})` };
-          }
-          case "revoke": {
-            const pattern = args[1] ?? "";
-            if (!pattern) {
-              return { text: "Usage: /file-access revoke <pattern>" };
-            }
-            commandRevoke(sandboxName, pattern);
-            return { text: `✓ Revoked permissions for ${pattern}` };
-          }
-          case "list": {
-            commandList(sandboxName);
-            return { text: "Listed file permissions." };
-          }
-          case "deny": {
-            const pattern = args[1] ?? "";
-            const reason = args.slice(2).join(" ") ?? "Denied via CLI";
-            if (!pattern) {
-              return { text: "Usage: /file-access deny <pattern> [reason]" };
-            }
-            commandDeny(sandboxName, pattern, reason);
-            return { text: `✓ Denied access to ${pattern}` };
-          }
-          case "cleanup": {
-            const removed = commandCleanup(sandboxName);
-            return { text: `✓ Cleaned up ${removed} session permission(s)` };
-          }
-          default:
-            return {
-              text: [
-                "**File Access Management**",
-                "",
-                "Usage: `/file-access <subcommand>`",
-                "",
-                "Subcommands:",
-                "  `grant <path> <r|rw|rwx> [session|persistent]` - Grant permission",
-                "  `revoke <pattern>` - Revoke permission",
-                "  `list` - List all permissions",
-                "  `deny <pattern> [reason]` - Create deny rule",
-                "  `cleanup` - Clean up session permissions",
-                "",
-                "Examples:",
-                "  /file-access grant /sandbox/project rw session",
-                "  /file-access grant /sandbox/project/** r persistent",
-                "  /file-access revoke /sandbox/project",
-                "  /file-access deny /etc/shadow",
-              ].join("\n"),
-            };
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        api.logger.error(`[file-access] Command failed: ${msg}`);
-        return { text: `✗ Error: ${msg}` };
-      }
-    },
   });
 
   // 2. Register nvidia-nim provider — use onboard config if available
@@ -431,124 +314,6 @@ export default function register(api: OpenClawPluginApi): void {
   } catch (err) {
     api.logger.warn(
       `[SECURITY] Could not register secret scanner hook: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  // 4. Register before_tool_call hook for file access permission checks
-  const sandboxName = (api.config["sandboxName"] as string) ?? "default";
-  try {
-    api.on("before_tool_call", (...args: unknown[]): BeforeToolCallResult | undefined => {
-      const event = args[0] as Partial<BeforeToolCallEvent> | undefined;
-      if (!event?.toolName || !event.params) return undefined;
-
-      const toolName = event.toolName.toLowerCase();
-      if (!FILE_TOOL_NAMES.has(toolName)) return undefined;
-
-      // Determine action type based on tool
-      let action: FileAction = "read";
-      if (
-        toolName === "write" ||
-        toolName === "edit" ||
-        toolName === "apply_patch" ||
-        toolName === "notebook_edit"
-      ) {
-        action = "write";
-      } else if (toolName === "bash" || toolName === "executec" || toolName === "glob") {
-        action = "execute";
-      }
-
-      // Get file path from various tool param names
-      const rawPath =
-        event.params["file_path"] ??
-        event.params["path"] ??
-        event.params["file"] ??
-        event.params["command"];
-      if (typeof rawPath !== "string" || rawPath.length === 0) return undefined;
-
-      // Resolve and normalize path
-      const filePath = api.resolvePath(rawPath);
-
-      // Map host paths to sandbox paths
-      const resolvedPath = resolvePathForSandbox(filePath);
-
-      // Check if path is directory (for Read tool) - only block clear directory cases
-      const isReadTool = toolName === "read";
-      const isDirectoryPath =
-        resolvedPath === "." || resolvedPath === "/sandbox" || resolvedPath.endsWith("/");
-
-      if (isReadTool && isDirectoryPath) {
-        return {
-          block: true,
-          blockReason:
-            `❌ **Cannot read directory as file**\n\n` +
-            `Path: \`${resolvedPath}\`\n\n` +
-            `**Use "Glob" tool instead of "Read"** to list files.\n` +
-            `Example: use Glob with path \`${resolvedPath}/*\`\n\n` +
-            `Or ask me: "List files in ${resolvedPath}"`,
-        };
-      }
-
-      // Check if this exact request was already approved for retry
-      const cacheKey = createRequestCacheKey(toolName, event.params as Record<string, unknown>);
-      if (approvedForRetry.has(cacheKey)) {
-        approvedForRetry.delete(cacheKey);
-        api.logger.info(`[file-access] Auto-retry approved for ${action} on ${resolvedPath}`);
-        return undefined;
-      }
-
-      // Check permission (deny-first, cached)
-      const hasAccess = checkAccess(resolvedPath, action, sandboxName);
-      if (!hasAccess.allowed) {
-        api.logger.warn(`[file-access] Blocked ${action} on ${resolvedPath} — no permission`);
-        const actionFlag = action === "write" ? "rw" : "r";
-
-        // Trigger interactive approval in background (fire-and-forget)
-        // Hook returns immediately with block=true (blocks this tool call)
-        // TUI runs async, user can approve, permission cached for next invocation
-        ensureFileAccess(
-          {
-            path: resolvedPath,
-            action,
-            reason: `Agent requesting ${action} access to ${resolvedPath}`,
-          },
-          sandboxName,
-          (pattern, actions, scope, reason) => {
-            addPermission({
-              pattern,
-              actions,
-              scope,
-              reason: reason || `Interactive approval: ${action} on ${resolvedPath}`,
-              sandbox: sandboxName,
-              grantedBy: "tui-approval",
-            });
-            // Mark this request as approved-for-next-invocation (cache for manual retry)
-            approvedForRetry.add(cacheKey);
-            api.logger.info(`[file-access] Approval cached for next invocation: ${cacheKey}`);
-          }
-        ).catch((err) => {
-          api.logger.warn(`[file-access] Approval failed: ${err instanceof Error ? err.message : String(err)}`);
-        });
-
-        return {
-          block: true,
-          blockReason:
-            `🔐 **File Access Denied**\n\n` +
-            `Path: \`${resolvedPath}\`\n` +
-            `Action: ${action.toUpperCase()}\n\n` +
-            `An interactive approval prompt has been shown.\n` +
-            `Select an option (1–5) to grant access.\n\n` +
-            `After you approve, you can retry this command and it will be automatically allowed.\n\n` +
-            `To retry: Re-run the same command (e.g., Read("${resolvedPath}"))\n\n` +
-            `Or grant permanently via:\n` +
-            `  /file-access grant ${resolvedPath} ${actionFlag} persistent`,
-        };
-      }
-
-      return undefined;
-    });
-  } catch (err) {
-    api.logger.warn(
-      `[file-access] Could not register file access hook: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
