@@ -23,6 +23,7 @@ function readLauncherConfig() {
 async function getMountedFolderForPath(resolvedPath) {
   const folders = readLauncherConfig().mountedFolders || [];
   for (const folder of folders) {
+    if (folder.stale) continue;
     let root;
     try {
       root = await fs.promises.realpath(folder.path);
@@ -36,7 +37,22 @@ async function getMountedFolderForPath(resolvedPath) {
   return null;
 }
 
+async function findAnyMountedFolderForPath(resolvedPath) {
+  const folders = readLauncherConfig().mountedFolders || [];
+  for (const folder of folders) {
+    let root;
+    try { root = await fs.promises.realpath(folder.path); }
+    catch { root = path.resolve(folder.path); }
+    if (resolvedPath === root || resolvedPath.startsWith(root + path.sep)) {
+      return folder;
+    }
+  }
+  return null;
+}
+
 async function validatePathInMountedFolders(filePath) {
+  if (typeof filePath !== "string" || !filePath) throw new Error("Path required");
+  if (!path.isAbsolute(filePath)) throw new Error(`Absolute path required: ${filePath}`);
   if (filePath.includes("..")) throw new Error("Path traversal not allowed");
   let resolved;
   try {
@@ -50,7 +66,16 @@ async function validatePathInMountedFolders(filePath) {
     }
   }
   const folder = await getMountedFolderForPath(resolved);
-  if (!folder) throw new Error(`Path is not within a mounted folder: ${filePath}`);
+  if (!folder) {
+    const stale = await findAnyMountedFolderForPath(resolved);
+    const mounts = (readLauncherConfig().mountedFolders || []).map((f) => f.path);
+    console.warn(`[bookmarks] DENY ${filePath} (resolved=${resolved}) mounts=${JSON.stringify(mounts)}`);
+    if (stale && stale.stale) {
+      throw new Error(`Mounted folder is stale; re-authorize before reading: ${stale.path}`);
+    }
+    throw new Error(`Path is not within a mounted folder: ${filePath}`);
+  }
+  console.log(`[bookmarks] ALLOW ${filePath} via mount=${folder.path}`);
   return folder;
 }
 
