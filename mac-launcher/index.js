@@ -224,6 +224,9 @@ function createMainWindow() {
       nodeIntegration: false,
     },
   });
+  if (process.platform === "darwin" && typeof mainWindow.setWindowButtonVisibility === "function") {
+    mainWindow.setWindowButtonVisibility(false);
+  }
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   return mainWindow;
 }

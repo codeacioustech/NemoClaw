@@ -204,7 +204,7 @@ button:focus-visible,
   -webkit-app-region: drag;
 }
 .window-chrome button, .window-chrome input { -webkit-app-region: no-drag; }
-.traffic-lights { display: flex; gap: 6px; }
+.traffic-lights { display: none; }
 .tl { width: 12px; height: 12px; border-radius: 50%; }
 .tl-red    { background: #FF5F57; }
 .tl-yellow { background: #FFBD2E; }
