@@ -842,6 +842,461 @@ ipcMain.handle("unmount-folder", (_, folderPath) => {
 });
 
 // ---------------------------------------------------------------------------
+// File access approval management
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("set-current-chat-id", (_, chatId) => {
+  if (fileApprovalManager) {
+    fileApprovalManager.setCurrentChatId(chatId);
+    return { ok: true, chatId };
+  }
+  return { ok: false };
+});
+
+ipcMain.handle("get-session-info", () => {
+  if (fileApprovalManager) {
+    return {
+      sessionId: fileApprovalManager.currentSessionId,
+      chatId: fileApprovalManager.currentChatId,
+    };
+  }
+  return { sessionId: null, chatId: null };
+});
+
+ipcMain.handle("get-file-approvals", () => {
+  if (fileApprovalManager) {
+    return fileApprovalManager.getAllApprovals();
+  }
+  return [];
+});
+
+ipcMain.handle("revoke-file-approval", (_, filePath) => {
+  if (fileApprovalManager) {
+    const revoked = fileApprovalManager.revokeApproval(filePath);
+    return { ok: true, revoked };
+  }
+  return { ok: false, revoked: false };
+});
+
+ipcMain.handle("clear-file-approvals", () => {
+  if (fileApprovalManager) {
+    fileApprovalManager.clearAllApprovals();
+    return { ok: true };
+  }
+  return { ok: false };
+});
+
+ipcMain.handle("clear-expired-approvals", () => {
+  if (fileApprovalManager) {
+    fileApprovalManager.clearExpiredApprovals();
+    return { ok: true };
+  }
+  return { ok: false };
+});
+
+// ---------------------------------------------------------------------------
+// File Access HTTP API (for OpenClaw gateway to call)
+// ---------------------------------------------------------------------------
+
+function startFileAccessAPI() {
+  const fileApp = express();
+  fileApp.use(express.json());
+
+  // POST /api/files/read - Read file or list directory
+  fileApp.post("/api/files/read", async (req, res) => {
+    const { filePath } = req.body;
+    if (!filePath) {
+      return res.status(400).json({ error: "Missing filePath" });
+    }
+
+    try {
+      await validatePathInMountedFolders(filePath);
+      await ensureFileApproval(filePath, "read");
+
+      const content = await withBookmarkAccess(filePath, async () => {
+        const stat = await fs.promises.stat(filePath);
+        if (stat.isDirectory()) {
+          const entries = await fs.promises.readdir(filePath, { withFileTypes: true });
+          return JSON.stringify({
+            type: "directory",
+            path: filePath,
+            contents: entries.map((e) => ({ name: e.name, isDir: e.isDirectory() })),
+          });
+        }
+        return fs.promises.readFile(filePath, "utf-8");
+      });
+
+      res.json({ ok: true, content });
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
+
+  // POST /api/files/write - Write file
+  fileApp.post("/api/files/write", async (req, res) => {
+    const { filePath, content } = req.body;
+    if (!filePath || content === undefined) {
+      return res.status(400).json({ error: "Missing filePath or content" });
+    }
+
+    try {
+      await validatePathInMountedFolders(filePath);
+      await ensureFileApproval(filePath, "write");
+
+      await withBookmarkAccess(filePath, async () => {
+        const dir = path.dirname(filePath);
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(filePath, content, "utf-8");
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
+
+  // POST /api/files/list - List directory
+  fileApp.post("/api/files/list", async (req, res) => {
+    const { dirPath } = req.body;
+    if (!dirPath) {
+      return res.status(400).json({ error: "Missing dirPath" });
+    }
+
+    try {
+      await validatePathInMountedFolders(dirPath);
+      await ensureFileApproval(dirPath, "read");
+
+      const entries = await withBookmarkAccess(dirPath, async () => {
+        const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        return items.map((e) => ({ name: e.name, isDir: e.isDirectory() }));
+      });
+
+      res.json({ ok: true, entries });
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
+
+  fileApp.listen(3001, "127.0.0.1", () => {
+    console.log("[File API] Listening on http://127.0.0.1:3001");
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Update system IPC handlers
+// ---------------------------------------------------------------------------
+
+let updateState = "idle-current";
+let updateCheckInterval = null;
+
+ipcMain.handle("get-update-state", () => updateState);
+
+ipcMain.handle("check-for-updates", async () => {
+  try {
+    const result = await updateCheck.checkForUpdates();
+    if (result.error) {
+      updateState = "check-error";
+      return { state: updateState, error: result.error };
+    }
+    if (!result.available) {
+      updateState = "idle-current";
+      return {
+        state: updateState,
+        version: result.version,
+        current: true,
+      };
+    }
+    const severity = result.severity;
+    if (severity === "critical") {
+      updateState = "idle-available-critical";
+    } else if (severity === "major") {
+      updateState = "idle-available-major";
+    } else {
+      updateState = "idle-available-minor";
+    }
+    return {
+      state: updateState,
+      version: result.version,
+      severity,
+      changes: result.changes,
+      totalSize: result.totalSize,
+    };
+  } catch (err) {
+    updateState = "check-error";
+    return { state: updateState, error: err.message };
+  }
+});
+
+function ollamaHealth(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (Date.now() > deadline) return resolve(false);
+      const req = http.get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
+        res.resume();
+        if (res.statusCode === 200) return resolve(true);
+        setTimeout(tick, 500);
+      });
+      req.on("error", () => setTimeout(tick, 500));
+      req.setTimeout(1500, () => {
+        req.destroy();
+        setTimeout(tick, 500);
+      });
+    };
+    tick();
+  });
+}
+
+function ollamaUnload(model) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ model, prompt: "", stream: false, keep_alive: 0 });
+    const req = http.request(
+      {
+        hostname: OLLAMA_HOST,
+        port: OLLAMA_PORT,
+        path: "/api/generate",
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        res.resume();
+        res.on("end", resolve);
+      },
+    );
+    req.on("error", resolve);
+    req.write(body);
+    req.end();
+  });
+}
+
+function ollamaCanary(model, timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ model, prompt: "hi", stream: false, keep_alive: "10m" });
+    const req = http.request(
+      {
+        hostname: OLLAMA_HOST,
+        port: OLLAMA_PORT,
+        path: "/api/generate",
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          try {
+            const j = JSON.parse(data);
+            resolve(typeof j.response === "string" && j.response.length > 0);
+          } catch {
+            resolve(false);
+          }
+        });
+      },
+    );
+    req.on("error", () => resolve(false));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+let _applyInFlight = false;
+
+function ollamaPull(model, timeoutMs = 600000) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ name: model, stream: true });
+    const req = http.request({
+      hostname: OLLAMA_HOST, port: OLLAMA_PORT, path: "/api/pull", method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+    }, (res) => {
+      let buf = "";
+      res.on("data", (c) => {
+        buf += c.toString();
+        const lines = buf.split("\n"); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const j = JSON.parse(line);
+            if (j.total && mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("update-progress", {
+                phase: "pulling-model", completed: j.completed || 0, total: j.total,
+              });
+            }
+            if (j.status === "success") resolve();
+          } catch {}
+        }
+      });
+      res.on("end", resolve);
+      res.on("error", reject);
+    });
+    req.on("error", reject);
+    req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error("ollama pull timeout")); });
+    req.write(body); req.end();
+  });
+}
+
+function readPendingManifest() {
+  try {
+    return JSON.parse(
+      fs.readFileSync(path.join(NEMOCLAW_DIR, "components", "pending.json"), "utf-8"),
+    );
+  } catch { return null; }
+}
+
+function deriveDesiredModel(pending) {
+  if (!pending) return null;
+  if (pending.ollamaModel) return pending.ollamaModel;
+  const m = (pending.components || []).find((c) => c.kind === "model" || c.name === "model");
+  return m?.ollamaModel || m?.id || null;
+}
+
+function readActiveModel() {
+  try {
+    return JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8")).ollama_model || MODEL;
+  } catch {
+    return MODEL;
+  }
+}
+
+ipcMain.handle("apply-update", async (_, severity) => {
+  if (_applyInFlight) return { ok: false, error: "Update already in progress" };
+  _applyInFlight = true;
+  try {
+    updateState =
+      severity === "critical"
+        ? "applying-critical"
+        : severity === "major"
+          ? "applying-major"
+          : "applying-minor";
+    const stage =
+      severity === "critical" ? "restart" : severity === "major" ? "restart-service" : "hot-reload";
+
+    const sendPhase = (phase) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("update-progress", { phase });
+      }
+    };
+
+    let result = null;
+    const pending = readPendingManifest();
+    const pendingVersion = pending?.version || null;
+    const oldModel = readActiveModel();
+    const desiredModel = deriveDesiredModel(pending) || oldModel;
+
+    try {
+      sendPhase("downloading");
+      result = await updateCheck.applyUpdate((p) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("update-progress", { ...p, phase: "downloading" });
+        }
+      });
+
+      if (severity === "critical") {
+        sendPhase("installing");
+        const { response } = await dialog.showMessageBox(mainWindow, {
+          type: "info",
+          buttons: ["Restart Now", "Later"],
+          defaultId: 0,
+          cancelId: 1,
+          message: `Update ${result.version} ready`,
+          detail: "The app will restart to finish installing.",
+        });
+        if (response === 0) {
+          app.relaunch();
+          app.quit();
+        }
+        updateState = "verifying";
+        return { stage, severity, version: result.version, ok: true };
+      }
+
+      if (severity === "major") {
+        sendPhase("restarting-service");
+        if (desiredModel !== oldModel) {
+          sendPhase("pulling-model");
+          await ollamaPull(desiredModel);
+          writeLauncherConfig({ ...readLauncherConfig(), ollama_model: desiredModel });
+        }
+        await ollamaUnload(oldModel);
+        warmUpModel(desiredModel);
+      } else if (desiredModel !== oldModel) {
+        // minor update but manifest names a new model — update config silently
+        writeLauncherConfig({ ...readLauncherConfig(), ollama_model: desiredModel });
+      }
+
+      sendPhase("verifying");
+      const healthy = await ollamaHealth(30000);
+      if (!healthy) throw new Error("Health check failed after update");
+
+      const canaryOk = await ollamaCanary(desiredModel);
+      if (!canaryOk) throw new Error("Canary inference failed");
+
+      updateState = "idle-current";
+      sendPhase("done");
+      return { stage, severity, version: result.version, ok: true };
+    } catch (err) {
+      sendPhase("rolling-back");
+      try {
+        await updateCheck.rollback();
+      } catch {}
+      if (severity !== "critical") {
+        try {
+          if (readActiveModel() !== oldModel) {
+            writeLauncherConfig({ ...readLauncherConfig(), ollama_model: oldModel });
+          }
+          warmUpModel(oldModel);
+        } catch {}
+      }
+      try {
+        const ver = (result && result.version) || pendingVersion;
+        if (ver) updateCheck.addPoison(ver, err.message);
+      } catch {}
+      updateState = "rolled-back";
+      return { stage, severity, ok: false, error: err.message };
+    }
+  } finally {
+    _applyInFlight = false;
+  }
+});
+
+ipcMain.handle("update-progress", (_, progress) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("update-progress", progress);
+  }
+});
+
+ipcMain.handle("update-complete", (_, success, version) => {
+  if (success) {
+    updateState = "idle-current";
+    const config = readLauncherConfig();
+    config.version = version;
+    writeLauncherConfig(config);
+  } else {
+    updateState = "rolled-back";
+  }
+  return { state: updateState };
+});
+
+function startUpdateLoop() {
+  updateCheckInterval = setInterval(
+    async () => {
+      if (updateState.startsWith("idle")) {
+        try {
+          await updateCheck.checkForUpdates();
+        } catch {}
+      }
+    },
+    30 * 60 * 1000,
+  );
+}
+
+ipcMain.handle("get-current-version", () => {
+  return updateCheck.getCurrentVersion();
+});
+
+// ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 
