@@ -6,7 +6,7 @@
 
 NemoClaw is an **open-source reference stack** by NVIDIA that runs [OpenClaw](https://openclaw.ai) AI agents inside [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) sandboxes. Think of it as a **secure harness** around an autonomous AI assistant:
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────────┐
 │                        User's Machine                            │
 │                                                                  │
@@ -51,7 +51,7 @@ NemoClaw is an **open-source reference stack** by NVIDIA that runs [OpenClaw](ht
 
 ### Runtime Flow (Installation to Execution)
 
-```
+```text
 install.sh → scripts/install.sh → npm install nemoclaw
     │
     ▼
@@ -324,7 +324,7 @@ Schemas for: `blueprint.schema.json`, `sandbox-policy.schema.json`, `onboard-con
 
 ### How They Communicate
 
-```
+```text
 TypeScript CLI ──execFileSync──▶ Bash scripts (install, start)
 TypeScript CLI ──execFileSync──▶ openshell CLI (sandbox management)
 TypeScript CLI ──execFileSync──▶ docker CLI (NIM container management)
@@ -358,7 +358,7 @@ The user picks a provider interactively (or via `--non-interactive` flags), and 
 
 **Inside the sandbox**, OpenClaw reaches the model via an **internal route URL**:
 
-```
+```text
 INFERENCE_ROUTE_URL = "https://inference.local/v1"  (container-internal)
 ```
 
@@ -543,33 +543,33 @@ curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 
 ### Phase 2: Onboard
 
-```
+```bash
 nemoclaw onboard
 ```
 
-6. `src/lib/onboard-command.ts` parses flags, creates onboard session
-7. `src/lib/usage-notice.ts` shows third-party software notice, requires acceptance
-8. **Step 1**: `src/lib/preflight.ts` probes ports 18789, 8080 — exits if in use
-9. **Step 2**: Detects Docker (socket location via `src/lib/platform.ts`), checks RAM (>=8GB), checks swap
-10. **Step 3**: Interactive prompt: "Choose inference provider" → user picks NVIDIA Build
-11. **Step 4**: Prompts for `nvapi-XXXX` API key → validates prefix → saves to `~/.nemoclaw/credentials.json` (mode 0o600)
-12. **Step 5**: Shows model list → user picks `nvidia/nemotron-3-super-120b-a12b`
-13. **Step 6**: Builds sandbox image:
+1. `src/lib/onboard-command.ts` parses flags, creates onboard session
+2. `src/lib/usage-notice.ts` shows third-party software notice, requires acceptance
+3. **Step 1**: `src/lib/preflight.ts` probes ports 18789, 8080 — exits if in use
+4. **Step 2**: Detects Docker (socket location via `src/lib/platform.ts`), checks RAM (>=8GB), checks swap
+5. **Step 3**: Interactive prompt: "Choose inference provider" → user picks NVIDIA Build
+6. **Step 4**: Prompts for `nvapi-XXXX` API key → validates prefix → saves to `~/.nemoclaw/credentials.json` (mode 0o600)
+7. **Step 5**: Shows model list → user picks `nvidia/nemotron-3-super-120b-a12b`
+8. **Step 6**: Builds sandbox image:
     - `openshell gateway start` (creates k3s cluster)
     - Docker builds `Dockerfile.base` (Node 22, Python 3.11, OpenClaw, gosu)
     - Docker builds `Dockerfile` (NemoClaw plugin, blueprint, config generation)
     - `openshell sandbox create` pushes image to cluster
-14. **Step 7**: No GPU detected → skips NIM
-15. **Step 8**: Writes OpenClaw config, starts gateway, health-probes `:18789/`
+9. **Step 7**: No GPU detected → skips NIM
+10. **Step 8**: Writes OpenClaw config, starts gateway, health-probes `:18789/`
 
 ### Phase 3: Configure (inside container)
 
-```
+```bash
 # Inside the sandbox (automatic):
 scripts/nemoclaw-start.sh
 ```
 
-16. `scripts/nemoclaw-start.sh` runs as PID 1:
+1. `scripts/nemoclaw-start.sh` runs as PID 1:
     - `ulimit -u 512` (fork bomb protection)
     - Drops 8 Linux capabilities
     - Locks PATH
@@ -581,17 +581,17 @@ scripts/nemoclaw-start.sh
 
 ### Phase 4: Launch
 
-17. `gosu gateway openclaw gateway run` starts the OpenClaw gateway as the `gateway` user
-18. OpenClaw loads the NemoClaw plugin from `openclaw.plugin.json`
-19. Plugin registers: `/nemoclaw` command, NVIDIA inference provider, secret-scanning hook
-20. Gateway binds to `:18789`, prints dashboard URL
+1. `gosu gateway openclaw gateway run` starts the OpenClaw gateway as the `gateway` user
+2. OpenClaw loads the NemoClaw plugin from `openclaw.plugin.json`
+3. Plugin registers: `/nemoclaw` command, NVIDIA inference provider, secret-scanning hook
+4. Gateway binds to `:18789`, prints dashboard URL
 
 ### Phase 5: Run Agent
 
-21. User visits `http://localhost:18789` (or pairs via CLI)
-22. User sends a message → OpenClaw routes to the configured model (NVIDIA Build API)
-23. Every tool call (file writes, code execution) passes through the NemoClaw secret scanner
-24. Every network request passes through OpenShell's L7 proxy, checked against active policies
+1. User visits `http://localhost:18789` (or pairs via CLI)
+2. User sends a message → OpenClaw routes to the configured model (NVIDIA Build API)
+3. Every tool call (file writes, code execution) passes through the NemoClaw secret scanner
+4. Every network request passes through OpenShell's L7 proxy, checked against active policies
 
 ---
 
@@ -599,7 +599,7 @@ scripts/nemoclaw-start.sh
 
 Think of NemoClaw as **three concentric rings**:
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │  RING 3: HOST MACHINE                               │
 │  ┌──────────────────────────────────────────────┐   │
@@ -626,9 +626,9 @@ Think of NemoClaw as **three concentric rings**:
 └─────────────────────────────────────────────────────┘
 ```
 
-### When Contributing, Think:
+### When Contributing, Think
 
-**"Which ring am I modifying?"**
+#### "Which ring am I modifying?"
 
 - **Ring 3 (CLI/Host)**: Edit `src/lib/`. Test with `npm test`. Build with `npm run build:cli`. Your code runs on the user's machine — never leak secrets in output (`src/lib/runner.ts` redacts automatically).
 
