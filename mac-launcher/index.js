@@ -31,17 +31,69 @@ let proxyServer = null;
 // Launcher config persistence
 // ---------------------------------------------------------------------------
 
+const CONFIG_VERSION = 3;
+
+function migrateConfig(config) {
+  const v = config.configVersion || 0;
+
+  if (v < 1) {
+    // v0 → v1: restructure onboarding data with stable IDs
+    if (config.onboarding && !config.onboarding.workspace) {
+      const old = config.onboarding;
+      config.onboarding = {
+        completedAt: config.setupCompletedAt || null,
+        workspace: { type: old.purpose || "", teamSize: old.size || "" },
+        experience: old.techs || [],
+        invites: old.invites || [],
+        connectors: old.connectors || { "local-files": true },
+        microapps: old.microapps || [],
+      };
+    }
+    config.configVersion = 1;
+  }
+
+  if (v < 2) {
+    // v1 → v2: separate onboarding_complete from launcher_setup_complete
+    // If the old config had launcher_setup_complete but no onboarding_complete,
+    // check whether onboarding data exists to infer whether the user actually
+    // went through the wizard or bootstrap just set the flag.
+    if (config.onboarding_complete === undefined) {
+      const hasOnboardingData = config.onboarding &&
+        (config.onboarding.workspace?.type || config.onboarding.purpose);
+      config.onboarding_complete = !!hasOnboardingData;
+    }
+    config.configVersion = 2;
+  }
+
+  if (v < 3) {
+    // v2 → v3: credential storage moved from plaintext
+    // {OPENAI_API_KEY: "ollama"} to encrypted entry format in
+    // credentials.json (handled by migrateToEncrypted() at bootstrap).
+    config.credentialsEncryptionMigratedAt = new Date().toISOString();
+    config.configVersion = 3;
+  }
+
+  return config;
+}
+
 function readLauncherConfig() {
   try {
-    return JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
+    const config = JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
+    if ((config.configVersion || 0) < CONFIG_VERSION) {
+      const migrated = migrateConfig(config);
+      writeLauncherConfig(migrated);
+      return migrated;
+    }
+    return config;
   } catch {
-    return {};
+    return { configVersion: CONFIG_VERSION };
   }
 }
 
 function writeLauncherConfig(data) {
   const dir = path.dirname(LAUNCHER_CONFIG);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  data.configVersion = CONFIG_VERSION;
   fs.writeFileSync(LAUNCHER_CONFIG, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
@@ -353,9 +405,27 @@ async function bootstrap() {
       launcher_setup_complete: true,
       ollama_model: MODEL,
       gateway_port: GATEWAY_PORT,
+      connector_proxy_port: 11437,
       setupCompletedAt: new Date().toISOString(),
     });
     clearPkgInstallFlag();
+  }
+
+  // Step 5b — Upgrade any plaintext credentials to safeStorage-encrypted
+  // format. Runs BEFORE the gateway spawns so the agent subprocess never
+  // sees a plaintext token on disk.
+  try {
+    const secureCreds = require("./lib/secure-credentials");
+    if (secureCreds.isAvailable()) {
+      const result = secureCreds.migrateToEncrypted();
+      if (result.migrated > 0) {
+        console.log(`[bootstrap] encrypted ${result.migrated} credential(s) via safeStorage`);
+      }
+    } else {
+      console.warn("[bootstrap] safeStorage unavailable — credentials remain plaintext on disk");
+    }
+  } catch (e) {
+    console.warn(`[bootstrap] credential migration failed: ${e.code || e.message}`);
   }
 
   // Ensure gateway config has required settings
@@ -469,6 +539,15 @@ async function bootstrap() {
   sendStatus("Warming up AI model (VRAM)...");
   await warmUpModel(MODEL);
 
+  // 5c. Start connector proxy (third-party API calls on behalf of agent)
+  try {
+    const { startConnectorProxy } = require("./lib/connector-proxy");
+    const connectorServer = startConnectorProxy();
+    trackServer(connectorServer);
+  } catch (e) {
+    console.error(`[bootstrap] connector proxy failed to start: ${e.message}`);
+  }
+
   // 6. Start gateway
   sendStatus("Starting gateway...");
   const gatewayChild = startGateway(
@@ -560,14 +639,14 @@ ipcMain.handle("set-ollama-model", (_, modelName) => {
 
 ipcMain.handle("is-first-run", () => {
   const config = readLauncherConfig();
-  return !config.launcher_setup_complete;
+  return !config.onboarding_complete;
 });
 
 ipcMain.handle("reset-onboarding", () => {
   const existing = readLauncherConfig();
   writeLauncherConfig({
     ...existing,
-    launcher_setup_complete: false,
+    onboarding_complete: false,
     onboarding: {},
   });
   return { ok: true };
@@ -577,12 +656,52 @@ ipcMain.handle("mark-onboarding-complete", (_event, data) => {
   const existing = readLauncherConfig();
   writeLauncherConfig({
     ...existing,
-    launcher_setup_complete: true,
+    onboarding_complete: true,
     onboarding: data || {},
     gateway_port: GATEWAY_PORT,
-    setupCompletedAt: new Date().toISOString(),
   });
   return true;
+});
+
+// ---------------------------------------------------------------------------
+// Credential IPC — main-process-only custody of third-party API tokens.
+// Never expose decrypted values to the renderer; it only needs to know
+// which credentials exist. Decryption happens only inside the connector
+// proxy at request time.
+// ---------------------------------------------------------------------------
+
+ipcMain.handle("save-credential", (_event, key, value) => {
+  try {
+    require("./lib/secure-credentials").writeCredential(key, value);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, code: e.code || "SAVE_FAILED" };
+  }
+});
+
+ipcMain.handle("delete-credential", (_event, key) => {
+  try {
+    require("./lib/secure-credentials").deleteCredential(key);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, code: e.code || "DELETE_FAILED" };
+  }
+});
+
+ipcMain.handle("has-credential", (_event, key) => {
+  try {
+    return require("./lib/secure-credentials").hasCredential(key);
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle("list-credential-keys", () => {
+  try {
+    return require("./lib/secure-credentials").listCredentialKeys();
+  } catch {
+    return [];
+  }
 });
 
 // ---------------------------------------------------------------------------

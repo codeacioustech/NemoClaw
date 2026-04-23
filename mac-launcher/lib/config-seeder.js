@@ -134,7 +134,17 @@ function seedNemoclawConfig() {
   }
 
   const credPath = path.join(NEMOCLAW_DIR, "credentials.json");
-  writeSecure(credPath, { OPENAI_API_KEY: "ollama" });
+  // Use the encrypted-credentials shape so future third-party tokens
+  // added via the IPC API drop cleanly into the same file. safeStorage
+  // isn't usable yet here (pre-app.whenReady), so the placeholder
+  // OPENAI_API_KEY writes plaintext; migrateToEncrypted() upgrades
+  // real secrets after the Electron app is ready.
+  writeSecure(credPath, {
+    _version: 1,
+    entries: {
+      OPENAI_API_KEY: { value: "ollama", _encrypted: false },
+    },
+  });
 }
 
 function seedAll() {
