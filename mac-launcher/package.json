@@ -10,6 +10,7 @@
     "postinstall": "electron-rebuild",
     "dist": "electron-builder",
     "dist:dmg": "SKIP_OLLAMA=1 bash scripts/build-dmg.sh",
+    "dist:dmg:unsigned": "bash scripts/build-dmg-unsigned.sh",
     "download-ollama": "bash scripts/download-ollama.sh"
   },
   "dependencies": {
