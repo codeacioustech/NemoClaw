@@ -6,6 +6,9 @@
   <true/>
   <key>com.apple.security.get-task-allow</key>
   <true/>
+  <!-- App identity with CORRECT team ID (LG52X27XD9, not F94354ST5N) -->
+  <key>com.apple.application-identifier</key>
+  <string>LG52X27XD9.com.nemoclaw.launcher</string>
   <!-- Electron IPC: Mach port registration between main + helper processes -->
   <key>com.apple.security.application-groups</key>
   <array>
