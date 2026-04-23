@@ -4,15 +4,18 @@
 <dict>
   <key>com.apple.security.app-sandbox</key>
   <true/>
-  <!-- Required for development-signed sandboxed apps -->
   <key>com.apple.security.get-task-allow</key>
   <true/>
-  <!-- Required for Electron/V8 JIT compiler -->
+  <!-- Electron IPC: Mach port registration between main + helper processes -->
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>LG52X27XD9.com.nemoclaw.launcher</string>
+  </array>
+  <!-- Electron/V8 JIT requirements -->
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
-  <!-- Required for native .node modules (better-sqlite3, etc.) -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
   <!-- Network -->
