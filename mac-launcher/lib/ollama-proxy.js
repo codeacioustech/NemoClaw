@@ -18,8 +18,13 @@ const SYSTEM_INSTRUCTION =
   "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
   "- `edit`: to modify existing files.\n" +
   "- `write`: to create or completely overwrite files.\n" +
+  "- `exex`: to run shell commands. Use this for listing processes, running scripts, " +
+  "git operations, package managers, etc. \n" +
+  "Whenever you're going to run a shell command, output the user the exact command and a short description does before running it" +
+  "ask the user for confirmation for the command along with the command description then prompt the user to confirm and wait, if the user says yes, run the command and continue, if the user says no, stop and don't run the command," +
+  "You are NOT allowed to run any commands that require sudo access" +
   "ALWAYS wait for the tool result before replying. " +
-  "For non-file questions, answer in plain text.";
+  "For non-file questions, non-shell questions, answer in plain text.";
 
 const JSON_WRAPPER_PREFIX =
   /^\{\s*"request"\s*:\s*\{\s*"action"\s*:\s*"[^"]*"\s*,\s*"(?:text|message)"\s*:\s*"/;
@@ -190,9 +195,10 @@ function startProxy(onListening) {
 
             const before = parsed.tools.length;
             // Filter to only the core file tools so we don't blow up Ollama's VRAM
+            const ALLOWED_TOOLS = new Set(["read", "write", "edit", "exec"]);
             parsed.tools = parsed.tools.filter(t => {
               const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return /(read|edit|write|ls|list|dir)/i.test(name);
+              return ALLOWED_TOOLS.has(name);
             });
 
             // Freeze: serialise tools once per session so the JSON bytes are
