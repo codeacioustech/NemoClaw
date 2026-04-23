@@ -560,14 +560,13 @@ function waitForProxy(timeoutMs = 10000, intervalMs = 300) {
  * weights into VRAM before the user sends the first message.
  *
  * This eliminates the "cold start" penalty (loading several GB from disk)
- * that makes the very first reply extremely slow. Called from index.js right
- * after the proxy is confirmed ready.
+ * that makes the very first reply extremely slow.
  *
  * @param {string} model - The model ID to warm up (e.g. "gemma4:e4b")
+ * @returns {Promise<void>}
  */
 function warmUpModel(model) {
-  // Small delay to avoid racing the proxy listener registration
-  setTimeout(() => {
+  return new Promise((resolve) => {
     console.log(`[ollama-proxy] Warming up model "${model}" (load into VRAM)...`);
     const warmStart = Date.now();
 
@@ -597,6 +596,7 @@ function warmUpModel(model) {
               Date.now() - warmStart
             }ms — now resident in VRAM`
           );
+          resolve();
         });
       }
     );
@@ -604,11 +604,12 @@ function warmUpModel(model) {
     req.on("error", (err) => {
       // Non-fatal: the user will still get a reply, just with the usual cold-start delay.
       console.warn(`[ollama-proxy] Warm-up request failed (non-fatal): ${err.message}`);
+      resolve();
     });
 
     req.write(body);
     req.end();
-  }, 500); // 500 ms after proxy is confirmed up
+  });
 }
 
 module.exports = { startProxy, waitForProxy, warmUpModel, PROXY_PORT, THINK_PORT };

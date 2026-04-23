@@ -20,6 +20,7 @@ const db = require("./lib/db");
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
 const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
+const PKG_INSTALL_META = path.join(NEMOCLAW_DIR, "pkg-install-meta.json");
 const OPENCLAW_CONFIG = path.join(os.homedir(), ".openclaw", "openclaw.json");
 
 let splashWindow = null;
@@ -42,6 +43,30 @@ function writeLauncherConfig(data) {
   const dir = path.dirname(LAUNCHER_CONFIG);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.writeFileSync(LAUNCHER_CONFIG, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+function checkPkgInstallFlag() {
+  if (fs.existsSync(PKG_INSTALL_META)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(PKG_INSTALL_META, "utf-8"));
+      if (meta.firstLaunchNeeded) {
+        return true;
+      }
+    } catch {
+      // ignore malformed meta
+    }
+  }
+  return false;
+}
+
+function clearPkgInstallFlag() {
+  if (fs.existsSync(PKG_INSTALL_META)) {
+    try {
+      fs.unlinkSync(PKG_INSTALL_META);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -96,21 +121,51 @@ function downloadOllama() {
   const tgzPath = path.join(OLLAMA_DEST, "ollama-darwin.tgz");
 
   return new Promise((resolve, reject) => {
-    const dl = spawn("curl", ["-L", OLLAMA_URL, "-o", tgzPath]);
-    dl.on("exit", (code) => {
-      if (code !== 0) return reject(new Error(`curl exited with code ${code}`));
-      const ext = spawn("tar", ["-xzf", tgzPath, "-C", OLLAMA_DEST]);
-      ext.on("exit", (code2) => {
-        if (code2 !== 0) return reject(new Error(`tar exited with code ${code2}`));
-        try {
-          fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
-          fs.unlinkSync(tgzPath);
-        } catch (e) {
-          return reject(e);
+    function followRedirects(url, redirects) {
+      if (redirects > 5) return reject(new Error("Too many redirects"));
+      const mod = url.startsWith("https") ? require("https") : http;
+      mod.get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          return followRedirects(res.headers.location, redirects + 1);
         }
-        resolve();
-      });
-    });
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+        }
+
+        const total = parseInt(res.headers["content-length"] || "0", 10);
+        let downloaded = 0;
+        const fileStream = fs.createWriteStream(tgzPath);
+
+        res.on("data", (chunk) => {
+          downloaded += chunk.length;
+          if (total > 0) {
+            sendProgress({ completed: downloaded, total });
+          }
+        });
+
+        res.pipe(fileStream);
+        fileStream.on("finish", () => {
+          fileStream.close(() => {
+            try {
+              require("child_process").execSync(
+                `tar -xzf "${tgzPath}" -C "${OLLAMA_DEST}"`,
+                { stdio: "pipe" }
+              );
+              fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
+              fs.unlinkSync(tgzPath);
+              resolve();
+            } catch (err) {
+              reject(new Error(`Extract failed: ${err.message}`));
+            }
+          });
+        });
+        fileStream.on("error", reject);
+      }).on("error", reject);
+    }
+
+    followRedirects(OLLAMA_URL, 0);
   });
 }
 
@@ -246,19 +301,20 @@ async function ensureSplash() {
 
 async function bootstrap() {
   const config = readLauncherConfig();
-  const isFirstRun = !config.launcher_setup_complete;
+  const isPkgInstall = checkPkgInstallFlag();
+  const isFirstRun = !config.launcher_setup_complete || isPkgInstall;
 
-  // Step 1 — Ensure Ollama binary exists
+  // Step 1 — Ensure Ollama binary exists (bundled, runtime-downloaded, or system)
   let ollamaPath = paths.resolveOllama();
   if (!ollamaPath) {
     await ensureSplash();
-    sendStatus("Installing Ollama...");
+    sendStatus("Downloading AI engine...");
     try {
       await downloadOllama();
       ollamaPath = paths.resolveOllama();
       if (!ollamaPath) throw new Error("Binary not found after download");
     } catch (err) {
-      sendError(`Ollama install failed: ${err.message}`);
+      sendError(`Failed to download AI engine: ${err.message}`);
       return;
     }
   }
@@ -274,11 +330,11 @@ async function bootstrap() {
     return;
   }
 
-  // Step 3 + 4 — Check model, download if missing
+  // Step 3 — Always check model, download if missing
   const modelPresent = await checkModelExists(MODEL);
   if (!modelPresent) {
     await ensureSplash();
-    sendStatus(`Downloading model: ${MODEL}`);
+    sendStatus(`Downloading AI model: ${MODEL}...`);
     try {
       await pullModel();
     } catch (err) {
@@ -287,17 +343,19 @@ async function bootstrap() {
     }
   }
 
-  // Step 5 — First-run config seeding
+  // Step 4 — First-run config seeding
   if (isFirstRun) {
     sendStatus("Configuring NemoClaw...");
     seedAll();
 
     writeLauncherConfig({
+      ...config,
       launcher_setup_complete: true,
       ollama_model: MODEL,
       gateway_port: GATEWAY_PORT,
       setupCompletedAt: new Date().toISOString(),
     });
+    clearPkgInstallFlag();
   }
 
   // Ensure gateway config has required settings
@@ -406,9 +464,10 @@ async function bootstrap() {
     return;
   }
 
-  // Fire silent warm-up request so the model is in VRAM before the user
-  // sends their first message. Non-blocking — we don't await it.
-  warmUpModel(MODEL);
+  // Fire warm-up request so the model is in VRAM before the user
+  // sends their first message. We await this to prevent "cold start" lag.
+  sendStatus("Warming up AI model (VRAM)...");
+  await warmUpModel(MODEL);
 
   // 6. Start gateway
   sendStatus("Starting gateway...");

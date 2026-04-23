@@ -32,18 +32,31 @@ function resolveOpenclawDir() {
   return path.dirname(resolveOpenclawMjs());
 }
 
-function resolveOllama() {
+function ollamaDir() {
   if (isPackaged()) {
-    const packaged = path.join(process.resourcesPath, "ollama-mac", "ollama");
-    if (fs.existsSync(packaged)) return packaged;
+    return path.join(process.resourcesPath, "ollama-mac");
   }
+  return path.join(__dirname, "..", "resources", "ollama-mac");
+}
 
-  const dev = path.join(__dirname, "..", "resources", "ollama-mac", "ollama");
-  if (fs.existsSync(dev)) return dev;
+function isOllamaInstalled() {
+  return resolveOllama() !== null;
+}
 
-  // Runtime-downloaded fallback
+function resolveOllama() {
+  // 1. Bundled binary (DMG build)
+  const bundled = path.join(ollamaDir(), "ollama");
+  if (fs.existsSync(bundled)) return bundled;
+
+  // 2. Runtime-downloaded fallback (PKG first-launch download)
   const runtime = path.join(os.homedir(), ".nemoclaw", "ollama-mac", "ollama");
   if (fs.existsSync(runtime)) return runtime;
+
+  // 3. System-installed Ollama
+  const systemPaths = ["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"];
+  for (const p of systemPaths) {
+    if (fs.existsSync(p)) return p;
+  }
 
   return null;
 }
@@ -67,4 +80,4 @@ function resolveNemoclawPlugin() {
   return null;
 }
 
-module.exports = { resolveOpenclawMjs, resolveOpenclawDir, resolveOllama, resolveNemoclawPlugin };
+module.exports = { resolveOpenclawMjs, resolveOpenclawDir, resolveOllama, resolveNemoclawPlugin, isOllamaInstalled, ollamaDir };

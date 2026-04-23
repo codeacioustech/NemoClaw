@@ -8,7 +8,9 @@
     "start": "electron .",
     "rebuild": "electron-rebuild -f -v 37.0.0",
     "postinstall": "electron-rebuild",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "dist:dmg": "SKIP_OLLAMA=1 bash scripts/build-dmg.sh",
+    "download-ollama": "bash scripts/download-ollama.sh"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "0.17.1",
