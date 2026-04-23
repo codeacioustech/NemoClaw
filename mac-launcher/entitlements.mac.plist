@@ -6,28 +6,24 @@
   <true/>
   <key>com.apple.security.get-task-allow</key>
   <true/>
-  <!-- Allow Electron's Mach port IPC (multi-process architecture) -->
-  <key>com.apple.security.temporary-exception.mach-register.global-name</key>
+  <key>com.apple.application-identifier</key>
+  <string>F94354ST5N.com.nemoclaw.launcher</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>F94354ST5N</string>
+  <key>com.apple.security.application-groups</key>
   <array>
-    <string>com.nemoclaw.launcher.</string>
+    <string>F94354ST5N.com.nemoclaw.launcher</string>
   </array>
-  <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-  <array>
-    <string>com.nemoclaw.launcher.</string>
-  </array>
-  <!-- Electron/V8 JIT requirements -->
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
-  <!-- Network -->
   <key>com.apple.security.network.client</key>
   <true/>
   <key>com.apple.security.network.server</key>
   <true/>
-  <!-- File access -->
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
   <key>com.apple.security.files.bookmarks.app-scope</key>
