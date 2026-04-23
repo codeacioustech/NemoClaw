@@ -67,6 +67,35 @@ fi
 
 echo "==> Found app at: $APP_PATH"
 
+# Step 1b: Manually codesign the .app (electron-builder identity=null skips signing).
+# We sign manually to avoid electron-builder injecting wrong team-identifier
+# entitlements that cause sandbox launch failures.
+IDENTITY="Apple Development: piyush_mishra31@outlook.com (F94354ST5N)"
+ENT_MAIN="$PROJECT_DIR/entitlements.mac.plist"
+ENT_INHERIT="$PROJECT_DIR/entitlements.mac.inherit.plist"
+
+echo "==> Step 1b: Signing .app with identity: $IDENTITY"
+
+# Sign native .node modules first
+find "$APP_PATH" -name "*.node" -exec codesign --force --sign "$IDENTITY" {} \; 2>/dev/null || true
+
+# Sign helper apps with inherit entitlements
+for helper in "$APP_PATH/Contents/Frameworks/"*" Helper"*.app "$APP_PATH/Contents/Frameworks/"*"Helper"*.app; do
+  [ -d "$helper" ] && codesign --force --sign "$IDENTITY" --entitlements "$ENT_INHERIT" "$helper" && echo "  Signed: $(basename "$helper")"
+done
+
+# Sign frameworks
+for framework in "$APP_PATH/Contents/Frameworks/"*.framework; do
+  [ -d "$framework" ] && codesign --force --sign "$IDENTITY" "$framework" && echo "  Signed: $(basename "$framework")"
+done
+
+# Sign the main app last (outermost)
+codesign --force --sign "$IDENTITY" --entitlements "$ENT_MAIN" "$APP_PATH"
+echo "  Signed: $(basename "$APP_PATH")"
+
+# Verify
+codesign --verify --deep --strict "$APP_PATH" && echo "==> Signature verified OK" || { echo "ERROR: Signature verification failed"; exit 1; }
+
 # Step 2: Stage the DMG layout — the .app and an /Applications symlink so
 # the user can drag-to-install without opening Finder twice.
 echo "==> Step 2: Staging DMG contents..."

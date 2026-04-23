@@ -88,7 +88,7 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.developer-tools",
-      "identity": "Apple Development: piyush_mishra31@outlook.com (F94354ST5N)",
+      "identity": null,
       "hardenedRuntime": true,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.inherit.plist",
