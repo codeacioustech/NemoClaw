@@ -5,6 +5,26 @@ const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
+// Modules excluded from the app bundle to reduce size.
+// ONLY exclude modules that are confirmed lazy-loaded (not imported at
+// gateway startup). OpenClaw eagerly imports messaging SDKs (@slack,
+// grammy, matrix-js-sdk, etc.) at boot — excluding those crashes the gateway.
+//
+// Safe to exclude: binaries/engines that are only invoked when a specific
+// tool is triggered by the user, not at module load time.
+const EXCLUDE_PATTERNS = [
+  "playwright-core",        // 150 MB — browser automation, lazy-loaded by web-browse tool
+  "@playwright",
+  "@aws-sdk",               //  75 MB — Bedrock inference, lazy-loaded by provider selection
+  "node-edge-tts",          //  10 MB — text-to-speech, lazy-loaded
+  // ~235 MB saved. Messaging SDKs (@slack, grammy, matrix, @line,
+  // @larksuiteoapi, jimp) are NOT excluded — OpenClaw imports them eagerly.
+];
+
+function isExcluded(name) {
+  return EXCLUDE_PATTERNS.some((p) => name === p || name.startsWith(p + "/"));
+}
+
 function isModuleComplete(dir) {
   return fs.existsSync(path.join(dir, "package.json"));
 }
@@ -63,8 +83,15 @@ exports.default = async function (context) {
 
   let copied = 0;
 
+  let excluded = 0;
+
   // Copy direct production deps
   for (const dep of prodDeps) {
+    if (isExcluded(dep)) {
+      console.log(`[afterPack]   - ${dep} (excluded)`);
+      excluded++;
+      continue;
+    }
     if (copyModule(srcModules, destModules, dep)) copied++;
   }
 
@@ -90,6 +117,10 @@ exports.default = async function (context) {
     });
 
     for (const name of allDeps) {
+      if (isExcluded(name)) {
+        excluded++;
+        continue;
+      }
       if (copyModule(srcModules, destModules, name)) copied++;
 
       const nested = path.join(srcModules, name);
@@ -112,5 +143,5 @@ exports.default = async function (context) {
   // Verify critical module
   const carbonCheck = path.join(destModules, "@buape", "carbon", "package.json");
   console.log(`[afterPack] @buape/carbon present: ${fs.existsSync(carbonCheck)}`);
-  console.log(`[afterPack] Copied ${copied} missing modules.`);
+  console.log(`[afterPack] Copied ${copied} missing modules, excluded ${excluded} heavy modules.`);
 };

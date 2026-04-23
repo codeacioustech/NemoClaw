@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("launcher", {
   getMountedFolders: () => ipcRenderer.invoke("get-mounted-folders"),
   mountFolder: (data) => ipcRenderer.invoke("mount-folder", data),
   unmountFolder: (folderPath) => ipcRenderer.invoke("unmount-folder", folderPath),
+  reauthorizeFolder: (folderPath) => ipcRenderer.invoke("reauthorize-folder", folderPath),
 
   // Database channels
   db: {
@@ -32,6 +33,22 @@ contextBridge.exposeInMainWorld("launcher", {
     getMessages: (sessionId) => ipcRenderer.invoke("db-get-messages", sessionId),
     updateSessionTitle: (sessionId, title) => ipcRenderer.invoke("db-update-session-title", sessionId, title),
     deleteSession: (id) => ipcRenderer.invoke("db-delete-session", id)
+  },
+
+  // Workflows
+  workflows: {
+    list: () => ipcRenderer.invoke("wf-list"),
+    get: (id) => ipcRenderer.invoke("wf-get", id),
+    create: (input) => ipcRenderer.invoke("wf-create", input),
+    update: (id, patch) => ipcRenderer.invoke("wf-update", id, patch),
+    remove: (id) => ipcRenderer.invoke("wf-delete", id),
+    stepAdd: (workflowId, step) => ipcRenderer.invoke("wf-step-add", workflowId, step),
+    stepUpdate: (stepId, patch) => ipcRenderer.invoke("wf-step-update", stepId, patch),
+    stepDelete: (stepId) => ipcRenderer.invoke("wf-step-delete", stepId),
+    stepReorder: (workflowId, orderedIds) => ipcRenderer.invoke("wf-step-reorder", workflowId, orderedIds),
+    run: (workflowId) => ipcRenderer.invoke("wf-run", workflowId),
+    runsList: (workflowId) => ipcRenderer.invoke("wf-runs-list", workflowId),
+    runGet: (runId) => ipcRenderer.invoke("wf-run-get", runId),
   },
 
   // Model selection

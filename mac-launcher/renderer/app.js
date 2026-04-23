@@ -175,6 +175,7 @@ const app = (() => {
     // Lazy-populate section-specific content.
     if (label === "Connectors") refreshMountedFolders();
     else if (label === "Settings") refreshSettings();
+    else if (label === "Chat") { try { chat.open(); } catch {} }
   }
 
   // --- Keyboard navigation for role="button" elements ---
@@ -356,25 +357,46 @@ const app = (() => {
     }
   }
 
+  async function reauthorizeLocalFolder(folderPath) {
+    try {
+      const res = await window.launcher.reauthorizeFolder(folderPath);
+      if (res?.ok) appendToast("Folder re-authorized.");
+      else if (!res?.canceled) appendToast("Re-authorization failed.");
+      await refreshMountedFolders();
+    } catch (e) {
+      appendToast("Failed to re-authorize: " + e.message);
+    }
+  }
+
   function renderMountedFolderList(listEl, folders) {
     if (!listEl) return;
     listEl.replaceChildren(...folders.map((f) => {
       const name = f.path.split("/").pop() || f.path;
       const item = document.createElement("div");
-      item.className = "mounted-folder-item";
+      item.className = "mounted-folder-item" + (f.stale ? " stale" : "");
 
       const nameEl = document.createElement("span");
       nameEl.className = "mounted-folder-name";
-      nameEl.title = f.path;
+      nameEl.title = f.path + (f.stale ? " (access expired — re-authorize)" : "");
       nameEl.textContent = name;
+
+      item.appendChild(nameEl);
+
+      if (f.stale) {
+        const reauth = document.createElement("button");
+        reauth.className = "mounted-folder-reauth";
+        reauth.dataset.action = "reauthorize-local-folder";
+        reauth.dataset.path = f.path;
+        reauth.textContent = "Re-authorize";
+        item.appendChild(reauth);
+      }
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "mounted-folder-remove";
       removeBtn.dataset.action = "unmount-local-folder";
       removeBtn.dataset.path = f.path;
       removeBtn.textContent = "✕";
-
-      item.append(nameEl, removeBtn);
+      item.appendChild(removeBtn);
       return item;
     }));
   }
@@ -402,7 +424,7 @@ const app = (() => {
              modelSelect.appendChild(opt);
           }
         }
-        
+
         if (!modelSelect.dataset.handled) {
           modelSelect.dataset.handled = "true";
           modelSelect.addEventListener("change", (e) => {
@@ -476,20 +498,31 @@ const app = (() => {
           list.replaceChildren(...folders.map((f) => {
             const name = f.path.split("/").pop() || f.path;
             const item = document.createElement("div");
-            item.className = "mounted-folder-item";
+            item.className = "mounted-folder-item" + (f.stale ? " stale" : "");
 
             const nameEl = document.createElement("span");
             nameEl.className = "mounted-folder-name";
-            nameEl.title = f.path;
+            nameEl.title = f.path + (f.stale ? " (access expired — re-authorize)" : "");
             nameEl.textContent = name;
+
+            item.appendChild(nameEl);
+
+            if (f.stale) {
+              const reauth = document.createElement("button");
+              reauth.className = "mounted-folder-reauth";
+              reauth.dataset.action = "reauthorize-local-folder";
+              reauth.dataset.path = f.path;
+              reauth.textContent = "Re-authorize";
+              item.appendChild(reauth);
+            }
 
             const btn = document.createElement("button");
             btn.className = "mounted-folder-remove";
             btn.dataset.action = "unmount-local-folder";
             btn.dataset.path = f.path;
             btn.textContent = "✕";
+            item.appendChild(btn);
 
-            item.append(nameEl, btn);
             return item;
           }));
         }
@@ -536,53 +569,9 @@ const app = (() => {
     }
   }
 
-  // --- Avatar menu (Dashboard) ---
-
-  function toggleAvatarMenu() {
-    let menu = $(".avatar-menu");
-    if (menu) {
-      menu.remove();
-      return;
-    }
-    const avatar = $(".topbar-avatar");
-    if (!avatar) return;
-    menu = document.createElement("div");
-    menu.className = "avatar-menu";
-
-    const settingsItem = document.createElement("div");
-    settingsItem.className = "avatar-menu-item";
-    settingsItem.dataset.action = "avatar-settings";
-    settingsItem.textContent = "Settings";
-
-    const logoutItem = document.createElement("div");
-    logoutItem.className = "avatar-menu-item danger";
-    logoutItem.dataset.action = "logout";
-    logoutItem.textContent = "Log out";
-
-    menu.append(settingsItem, logoutItem);
-    avatar.style.position = "relative";
-    avatar.appendChild(menu);
-
-    // Close on outside click
-    setTimeout(() => {
-      document.addEventListener("click", _avatarOutsideClick, { once: true });
-    }, 0);
-  }
-
-  function _avatarOutsideClick(e) {
-    const menu = $(".avatar-menu");
-    if (menu && !menu.contains(e.target) && !$(".topbar-avatar").contains(e.target)) {
-      menu.remove();
-    }
-  }
-
-  function closeAvatarMenu() {
-    const menu = $(".avatar-menu");
-    if (menu) menu.remove();
-  }
+  // Avatar menu removed — Settings lives in sidebar nav.
 
   function logout() {
-    closeAvatarMenu();
     localStorage.removeItem("opencoot_onboarded");
     localStorage.removeItem("opencoot_onboarding");
     stopLlmPolling();
@@ -827,13 +816,12 @@ const app = (() => {
         case "remove-invite-row":    removeInviteRow(el); break;
         case "mount-local-folder":   mountLocalFolder(); break;
         case "unmount-local-folder": unmountLocalFolder(el.dataset.path); break;
+        case "reauthorize-local-folder": reauthorizeLocalFolder(el.dataset.path); break;
         case "toggle-connector":     toggleConnector(el); break;
         case "app-launch":           launch(); break;
         case "open-chat":            if (!el.disabled) chat.open(); break;
         case "new-workflow":         newWorkflow(); break;
-        case "toggle-avatar-menu":   toggleAvatarMenu(); break;
         case "navigate":             navigateTo(el.dataset.target); break;
-        case "avatar-settings":      navigateTo("Settings"); closeAvatarMenu(); break;
         case "logout":               logout(); break;
         case "reset-onboarding":     resetOnboarding(); break;
       }

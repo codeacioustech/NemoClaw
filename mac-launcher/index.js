@@ -12,12 +12,15 @@ const paths = require("./lib/paths");
 const { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR } = require("./lib/config-seeder");
 const { startGateway, waitForGateway } = require("./lib/gateway");
 const { startProxy, waitForProxy, warmUpModel } = require("./lib/ollama-proxy");
+const wfDb = require("./lib/workflow-db");
+const { runWorkflow, startRunsSSE } = require("./lib/workflow-runner");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 const db = require("./lib/db");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
 const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
+const PKG_INSTALL_META = path.join(NEMOCLAW_DIR, "pkg-install-meta.json");
 const OPENCLAW_CONFIG = path.join(os.homedir(), ".openclaw", "openclaw.json");
 
 let splashWindow = null;
@@ -94,6 +97,30 @@ function writeLauncherConfig(data) {
   fs.writeFileSync(LAUNCHER_CONFIG, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
+function checkPkgInstallFlag() {
+  if (fs.existsSync(PKG_INSTALL_META)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(PKG_INSTALL_META, "utf-8"));
+      if (meta.firstLaunchNeeded) {
+        return true;
+      }
+    } catch {
+      // ignore malformed meta
+    }
+  }
+  return false;
+}
+
+function clearPkgInstallFlag() {
+  if (fs.existsSync(PKG_INSTALL_META)) {
+    try {
+      fs.unlinkSync(PKG_INSTALL_META);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Splash window
 // ---------------------------------------------------------------------------
@@ -146,21 +173,51 @@ function downloadOllama() {
   const tgzPath = path.join(OLLAMA_DEST, "ollama-darwin.tgz");
 
   return new Promise((resolve, reject) => {
-    const dl = spawn("curl", ["-L", OLLAMA_URL, "-o", tgzPath]);
-    dl.on("exit", (code) => {
-      if (code !== 0) return reject(new Error(`curl exited with code ${code}`));
-      const ext = spawn("tar", ["-xzf", tgzPath, "-C", OLLAMA_DEST]);
-      ext.on("exit", (code2) => {
-        if (code2 !== 0) return reject(new Error(`tar exited with code ${code2}`));
-        try {
-          fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
-          fs.unlinkSync(tgzPath);
-        } catch (e) {
-          return reject(e);
+    function followRedirects(url, redirects) {
+      if (redirects > 5) return reject(new Error("Too many redirects"));
+      const mod = url.startsWith("https") ? require("https") : http;
+      mod.get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          return followRedirects(res.headers.location, redirects + 1);
         }
-        resolve();
-      });
-    });
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+        }
+
+        const total = parseInt(res.headers["content-length"] || "0", 10);
+        let downloaded = 0;
+        const fileStream = fs.createWriteStream(tgzPath);
+
+        res.on("data", (chunk) => {
+          downloaded += chunk.length;
+          if (total > 0) {
+            sendProgress({ completed: downloaded, total });
+          }
+        });
+
+        res.pipe(fileStream);
+        fileStream.on("finish", () => {
+          fileStream.close(() => {
+            try {
+              require("child_process").execSync(
+                `tar -xzf "${tgzPath}" -C "${OLLAMA_DEST}"`,
+                { stdio: "pipe" }
+              );
+              fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
+              fs.unlinkSync(tgzPath);
+              resolve();
+            } catch (err) {
+              reject(new Error(`Extract failed: ${err.message}`));
+            }
+          });
+        });
+        fileStream.on("error", reject);
+      }).on("error", reject);
+    }
+
+    followRedirects(OLLAMA_URL, 0);
   });
 }
 
@@ -276,6 +333,9 @@ function createMainWindow() {
       nodeIntegration: false,
     },
   });
+  if (process.platform === "darwin" && typeof mainWindow.setWindowButtonVisibility === "function") {
+    mainWindow.setWindowButtonVisibility(false);
+  }
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   return mainWindow;
 }
@@ -293,19 +353,20 @@ async function ensureSplash() {
 
 async function bootstrap() {
   const config = readLauncherConfig();
-  const isFirstRun = !config.launcher_setup_complete;
+  const isPkgInstall = checkPkgInstallFlag();
+  const isFirstRun = !config.launcher_setup_complete || isPkgInstall;
 
-  // Step 1 — Ensure Ollama binary exists
+  // Step 1 — Ensure Ollama binary exists (bundled, runtime-downloaded, or system)
   let ollamaPath = paths.resolveOllama();
   if (!ollamaPath) {
     await ensureSplash();
-    sendStatus("Installing Ollama...");
+    sendStatus("Downloading AI engine...");
     try {
       await downloadOllama();
       ollamaPath = paths.resolveOllama();
       if (!ollamaPath) throw new Error("Binary not found after download");
     } catch (err) {
-      sendError(`Ollama install failed: ${err.message}`);
+      sendError(`Failed to download AI engine: ${err.message}`);
       return;
     }
   }
@@ -321,11 +382,11 @@ async function bootstrap() {
     return;
   }
 
-  // Step 3 + 4 — Check model, download if missing
+  // Step 3 — Always check model, download if missing
   const modelPresent = await checkModelExists(MODEL);
   if (!modelPresent) {
     await ensureSplash();
-    sendStatus(`Downloading model: ${MODEL}`);
+    sendStatus(`Downloading AI model: ${MODEL}...`);
     try {
       await pullModel();
     } catch (err) {
@@ -334,18 +395,20 @@ async function bootstrap() {
     }
   }
 
-  // Step 5 — First-run config seeding
+  // Step 4 — First-run config seeding
   if (isFirstRun) {
     sendStatus("Configuring NemoClaw...");
     seedAll();
 
     writeLauncherConfig({
+      ...config,
       launcher_setup_complete: true,
       ollama_model: MODEL,
       gateway_port: GATEWAY_PORT,
       connector_proxy_port: 11437,
       setupCompletedAt: new Date().toISOString(),
     });
+    clearPkgInstallFlag();
   }
 
   // Step 5b — Upgrade any plaintext credentials to safeStorage-encrypted
@@ -457,6 +520,12 @@ async function bootstrap() {
   sendStatus("Starting inference proxy...");
   proxyServer = startProxy();
   trackServer(proxyServer);
+  try { trackServer(startRunsSSE()); } catch (e) { console.error("[wf] startRunsSSE failed:", e.message); }
+  try {
+    const probed = validateMountedFoldersAtBoot();
+    const stale = probed.filter((f) => f.stale);
+    if (stale.length) console.warn(`[bookmarks] ${stale.length} stale mount(s):`, stale.map((f) => f.path));
+  } catch (e) { console.error("[bookmarks] boot validation failed:", e.message); }
 
   try {
     await waitForProxy();
@@ -465,9 +534,10 @@ async function bootstrap() {
     return;
   }
 
-  // Fire silent warm-up request so the model is in VRAM before the user
-  // sends their first message. Non-blocking — we don't await it.
-  warmUpModel(MODEL);
+  // Fire warm-up request so the model is in VRAM before the user
+  // sends their first message. We await this to prevent "cold start" lag.
+  sendStatus("Warming up AI model (VRAM)...");
+  await warmUpModel(MODEL);
 
   // 5c. Start connector proxy (third-party API calls on behalf of agent)
   try {
@@ -529,6 +599,20 @@ ipcMain.handle("db-save-message", (_, sessionId, role, content) => db.saveMessag
 ipcMain.handle("db-get-messages", (_, sessionId) => db.getMessages(sessionId));
 ipcMain.handle("db-update-session-title", (_, sessionId, title) => db.updateSessionTitle(sessionId, title));
 ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
+
+// Workflow IPC
+ipcMain.handle("wf-list", () => wfDb.listWorkflows());
+ipcMain.handle("wf-get", (_, id) => wfDb.getWorkflow(id));
+ipcMain.handle("wf-create", (_, input) => wfDb.createWorkflow(input || {}));
+ipcMain.handle("wf-update", (_, id, patch) => wfDb.updateWorkflow(id, patch || {}));
+ipcMain.handle("wf-delete", (_, id) => wfDb.deleteWorkflow(id));
+ipcMain.handle("wf-step-add", (_, workflowId, step) => wfDb.addStep(workflowId, step || {}));
+ipcMain.handle("wf-step-update", (_, stepId, patch) => wfDb.updateStep(stepId, patch || {}));
+ipcMain.handle("wf-step-delete", (_, stepId) => wfDb.deleteStep(stepId));
+ipcMain.handle("wf-step-reorder", (_, workflowId, orderedIds) => wfDb.reorderSteps(workflowId, orderedIds || []));
+ipcMain.handle("wf-run", async (_, workflowId) => runWorkflow(workflowId));
+ipcMain.handle("wf-runs-list", (_, workflowId) => wfDb.listRuns(workflowId));
+ipcMain.handle("wf-run-get", (_, runId) => wfDb.getRun(runId));
 
 ipcMain.handle("get-ollama-models", () => {
   return new Promise((resolve) => {
@@ -624,60 +708,13 @@ ipcMain.handle("list-credential-keys", () => {
 // File system IPC — folder mounting & sandboxed file access
 // ---------------------------------------------------------------------------
 
-async function getMountedFolderForPath(resolvedPath) {
-  const folders = readLauncherConfig().mountedFolders || [];
-  for (const folder of folders) {
-    let root;
-    try {
-      root = await fs.promises.realpath(folder.path);
-    } catch {
-      root = path.resolve(folder.path);
-    }
-    if (resolvedPath === root || resolvedPath.startsWith(root + path.sep)) {
-      return folder;
-    }
-  }
-  return null;
-}
-
-async function validatePathInMountedFolders(filePath) {
-  // Block path traversal attempts
-  if (filePath.includes("..")) {
-    throw new Error("Path traversal not allowed");
-  }
-
-  let resolved;
-  try {
-    resolved = await fs.promises.realpath(filePath);
-  } catch (err) {
-    // If file doesn't exist, validate its real parent directory path
-    try {
-      const parentDir = await fs.promises.realpath(path.dirname(filePath));
-      resolved = path.join(parentDir, path.basename(filePath));
-    } catch (e) {
-      resolved = path.resolve(filePath);
-    }
-  }
-
-  const folder = await getMountedFolderForPath(resolved);
-  if (!folder) {
-    throw new Error("Path is not within a mounted folder");
-  }
-  return folder;
-}
-
-async function withBookmarkAccess(filePath, fn) {
-  const folder = await validatePathInMountedFolders(filePath);
-  let stopAccess = null;
-  if (folder.bookmark) {
-    stopAccess = app.startAccessingSecurityScopedResource(folder.bookmark);
-  }
-  try {
-    return await fn();
-  } finally {
-    if (stopAccess) stopAccess();
-  }
-}
+const {
+  withBookmarkAccess,
+  releaseHandlesForPath,
+  hasLiveHandles,
+  validateMountedFoldersAtBoot,
+  listMountedFoldersPublic,
+} = require("./lib/bookmarks");
 
 ipcMain.handle("select-folder", async () => {
   if (!mainWindow) return null;
@@ -690,7 +727,17 @@ ipcMain.handle("select-folder", async () => {
 });
 
 ipcMain.handle("fs-read-file", async (_, filePath) => {
-  return withBookmarkAccess(filePath, () => fs.promises.readFile(filePath, "utf-8"));
+  return withBookmarkAccess(filePath, async () => {
+    const st = await fs.promises.stat(filePath);
+    if (st.isDirectory()) {
+      const entries = await fs.promises.readdir(filePath, { withFileTypes: true });
+      return entries
+        .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+        .sort()
+        .join("\n");
+    }
+    return fs.promises.readFile(filePath, "utf-8");
+  });
 });
 
 ipcMain.handle("fs-write-file", async (_, filePath, content) => {
@@ -717,31 +764,63 @@ ipcMain.handle("fs-list-dir", async (_, dirPath) => {
   });
 });
 
-ipcMain.handle("get-mounted-folders", () => {
-  return readLauncherConfig().mountedFolders || [];
-});
+ipcMain.handle("get-mounted-folders", () => listMountedFoldersPublic());
 
 ipcMain.handle("mount-folder", (_, folderData) => {
+  if (!folderData || !folderData.path) return { ok: false, error: "path required" };
   const cfg = readLauncherConfig();
   cfg.mountedFolders = cfg.mountedFolders || [];
-  // Avoid duplicates
-  if (cfg.mountedFolders.some((f) => f.path === folderData.path)) {
-    return { ok: true, duplicate: true };
+  const now = Date.now();
+  const existing = cfg.mountedFolders.find((f) => f.path === folderData.path);
+  if (existing) {
+    // Refresh the bookmark in place (re-authorize via the same channel).
+    existing.bookmark = folderData.bookmark || existing.bookmark;
+    existing.addedAt = existing.addedAt || now;
+    delete existing.stale;
+  } else {
+    cfg.mountedFolders.push({
+      path: folderData.path,
+      bookmark: folderData.bookmark,
+      addedAt: now,
+    });
   }
-  cfg.mountedFolders.push({
-    path: folderData.path,
-    bookmark: folderData.bookmark,
-    addedAt: Date.now(),
-  });
   writeLauncherConfig(cfg);
-  return { ok: true };
+  return { ok: true, path: folderData.path, addedAt: existing ? existing.addedAt : now };
 });
 
 ipcMain.handle("unmount-folder", (_, folderPath) => {
+  if (hasLiveHandles(folderPath)) {
+    // Release any brokered fs ops still holding the bookmark before removing.
+    releaseHandlesForPath(folderPath);
+  }
   const cfg = readLauncherConfig();
   cfg.mountedFolders = (cfg.mountedFolders || []).filter((f) => f.path !== folderPath);
   writeLauncherConfig(cfg);
   return { ok: true };
+});
+
+ipcMain.handle("reauthorize-folder", async (_, folderPath) => {
+  if (!mainWindow) return { ok: false, error: "no window" };
+  const { canceled, filePaths, bookmarks } = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    defaultPath: folderPath,
+    securityScopedBookmarks: true,
+  });
+  if (canceled || !filePaths.length) return { ok: false, canceled: true };
+  const cfg = readLauncherConfig();
+  cfg.mountedFolders = cfg.mountedFolders || [];
+  const entry = cfg.mountedFolders.find((f) => f.path === folderPath);
+  const newPath = filePaths[0];
+  const newBookmark = (bookmarks && bookmarks[0]) || null;
+  if (entry) {
+    entry.path = newPath;
+    entry.bookmark = newBookmark;
+    delete entry.stale;
+  } else {
+    cfg.mountedFolders.push({ path: newPath, bookmark: newBookmark, addedAt: Date.now() });
+  }
+  writeLauncherConfig(cfg);
+  return { ok: true, path: newPath };
 });
 
 // ---------------------------------------------------------------------------

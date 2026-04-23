@@ -18,6 +18,11 @@ const SYSTEM_INSTRUCTION =
   "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
   "- `edit`: to modify existing files.\n" +
   "- `write`: to create or completely overwrite files.\n" +
+  "- `exex`: to run shell commands. Use this for listing processes, running scripts, " +
+  "git operations, package managers, etc. \n" +
+  "Whenever you're going to run a shell command, output the user the exact command and a short description does before running it" +
+  "ask the user for confirmation for the command along with the command description then prompt the user to confirm and wait, if the user says yes, run the command and continue, if the user says no, stop and don't run the command," +
+  "You are NOT allowed to run any commands that require sudo access" +
   "ALWAYS wait for the tool result before replying. " +
   "For non-file questions, answer in plain text. " +
   "Never read, list, edit, or write any file under `~/.nemoclaw/` or `~/.openclaw/`. " +
@@ -161,7 +166,7 @@ function startProxy(onListening) {
           }
 
           // Prevent model unloading and KV cache eviction (Ollama default is 5m)
-          parsed.keep_alive = -1; 
+          parsed.keep_alive = -1;
 
           // ── Session-aware Context Pruning + KV Prefix Cache Engine ───────────
           //
@@ -194,9 +199,10 @@ function startProxy(onListening) {
 
             const before = parsed.tools.length;
             // Filter to only the core file tools so we don't blow up Ollama's VRAM
+            const ALLOWED_TOOLS = new Set(["read", "write", "edit", "exec"]);
             parsed.tools = parsed.tools.filter(t => {
               const name = (t?.function?.name || t?.name || "").toLowerCase();
-              return /(read|edit|write|ls|list|dir)/i.test(name);
+              return ALLOWED_TOOLS.has(name);
             });
 
             // Freeze: serialise tools once per session so the JSON bytes are
@@ -564,14 +570,13 @@ function waitForProxy(timeoutMs = 10000, intervalMs = 300) {
  * weights into VRAM before the user sends the first message.
  *
  * This eliminates the "cold start" penalty (loading several GB from disk)
- * that makes the very first reply extremely slow. Called from index.js right
- * after the proxy is confirmed ready.
+ * that makes the very first reply extremely slow.
  *
  * @param {string} model - The model ID to warm up (e.g. "gemma4:e4b")
+ * @returns {Promise<void>}
  */
 function warmUpModel(model) {
-  // Small delay to avoid racing the proxy listener registration
-  setTimeout(() => {
+  return new Promise((resolve) => {
     console.log(`[ollama-proxy] Warming up model "${model}" (load into VRAM)...`);
     const warmStart = Date.now();
 
@@ -601,6 +606,7 @@ function warmUpModel(model) {
               Date.now() - warmStart
             }ms — now resident in VRAM`
           );
+          resolve();
         });
       }
     );
@@ -608,11 +614,12 @@ function warmUpModel(model) {
     req.on("error", (err) => {
       // Non-fatal: the user will still get a reply, just with the usual cold-start delay.
       console.warn(`[ollama-proxy] Warm-up request failed (non-fatal): ${err.message}`);
+      resolve();
     });
 
     req.write(body);
     req.end();
-  }, 500); // 500 ms after proxy is confirmed up
+  });
 }
 
 module.exports = { startProxy, waitForProxy, warmUpModel, PROXY_PORT, THINK_PORT };
