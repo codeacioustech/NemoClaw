@@ -70,7 +70,7 @@ function seedOpenclawConfig() {
         },
         skipBootstrap: true,
         llm: {
-          idleTimeoutSeconds: 600,  // 10 min — give gemma4:e4b time to eval large prompts
+          idleTimeoutSeconds: 600, // 10 min — give gemma4:e4b time to eval large prompts
         },
         heartbeat: {},
       },
@@ -84,15 +84,15 @@ function seedNemoclawConfig() {
 
   const configPath = path.join(NEMOCLAW_DIR, "config.json");
   writeSecure(configPath, {
-      endpointType: "ollama",
-      endpointUrl: "http://localhost:11435/v1",
-      ncpPartner: null,
-      model: MODEL,
-      profile: "inference-local",
-      credentialEnv: "OPENAI_API_KEY",
-      provider: "ollama-local",
-      providerLabel: "NemoClaw Mac",
-      onboardedAt: now,
+    endpointType: "ollama",
+    endpointUrl: "http://localhost:11435/v1",
+    ncpPartner: null,
+    model: MODEL,
+    profile: "inference-local",
+    credentialEnv: "OPENAI_API_KEY",
+    provider: "ollama-local",
+    providerLabel: "NemoClaw Mac",
+    onboardedAt: now,
   });
 
   const sessionPath = path.join(NEMOCLAW_DIR, "onboard-session.json");

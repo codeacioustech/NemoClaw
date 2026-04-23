@@ -4,8 +4,7 @@
 #
 # Build a macOS .dmg installer for NemoClaw.
 #
-# Mirrors build-pkg.sh's slimming strategy so the DMG ends up the same size
-# (~350-400 MB) as the PKG it replaces:
+# Slim installer (~350-400 MB):
 #   - Ollama binary is NOT bundled (downloaded on first app launch)
 #   - Heavy unused node_modules are excluded by afterPack.js
 #   - The Gemma 4 model is pulled on first launch via the splash screen
@@ -44,7 +43,6 @@ rm -rf "$STAGE_DIR" "$DMG_PATH"
 mkdir -p "$STAGE_DIR" "$DIST_DIR"
 
 # Step 1: Build .app with electron-builder (no Ollama, slim deps).
-# Identical invocation to build-pkg.sh so the .app contents are byte-equivalent.
 echo "==> Step 1: Building .app bundle (SKIP_OLLAMA=1)..."
 rm -rf "$PROJECT_DIR/resources/ollama-mac"
 mkdir -p "$PROJECT_DIR/resources/ollama-mac"
@@ -75,8 +73,7 @@ echo "==> Step 2: Staging DMG contents..."
 cp -R "$APP_PATH" "$STAGE_DIR/$APP_NAME.app"
 ln -s /Applications "$STAGE_DIR/Applications"
 
-# Step 3: Create a compressed DMG (UDZO = zlib, same compression family the
-# PKG payload uses, so final size tracks the PKG closely).
+# Step 3: Create a compressed DMG (UDZO = zlib, level 9 for smallest size).
 echo "==> Step 3: Creating DMG (UDZO)..."
 hdiutil create \
   -volname "$VOL_NAME" \
