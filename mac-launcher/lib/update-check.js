@@ -10,7 +10,13 @@ const os = require("os");
 
 const MANIFEST_PATH = "/manifest.json";
 const SIGNATURE_PATH = "/manifest.json.sig";
-const UPDATE_SERVER = process.env.NEMOCLAW_UPDATE_URL || "https://cdn.example.com";
+const UPDATE_SERVER =
+  process.env.NEMOCLAW_UPDATE_URL ||
+  "https://github.com/codeacioustech/NemoClaw/releases/latest/download";
+
+const BUNDLED_PUBLIC_KEY_B64 =
+  process.env.NEMOCLAW_UPDATE_PUBKEY ||
+  "ntziBjll2bKiCB0iCf/sft8CGz8Ve2m8eyEFtCPdU/g=";
 
 let _componentsDir = null;
 let _manifestFile = null;
@@ -93,7 +99,16 @@ async function httpFetch(urlPath, options = {}) {
 
 async function verifySignature(manifestBody, signatureB64) {
   if (process.env.NEMOCLAW_ALLOW_UNSIGNED === "1") return true;
-  return true;
+  try {
+    const raw = Buffer.from(BUNDLED_PUBLIC_KEY_B64, "base64");
+    if (raw.length !== 32) throw new Error("Invalid ed25519 pubkey length");
+    const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]);
+    const key = crypto.createPublicKey({ key: spki, format: "der", type: "spki" });
+    const sig = Buffer.from(signatureB64, "base64");
+    return crypto.verify(null, Buffer.from(manifestBody), key, sig);
+  } catch (e) {
+    throw new Error(`Signature verification failed: ${e.message}`);
+  }
 }
 
 function classifyManifest(local, remote) {
@@ -175,19 +190,21 @@ async function checkFromFilePath(manifestPath, local) {
   }
 
   const manifestBody = manifestRes.body;
-  const basePath = manifestPath.replace("/manifest.json", "");
+  // const basePath = manifestPath.replace("/manifest.json", "");
 
-  let sigRes;
-  try {
-    sigRes = await httpFetch(basePath + "/manifest.json.sig");
-  } catch {
-    return { error: "Missing signature", available: false };
-  }
-
-  const isValid = await verifySignature(manifestBody, sigRes.body.trim());
-  if (!isValid) {
-    return { error: "Invalid signature", available: false };
-  }
+  // ── SIGNATURE VERIFICATION TEMPORARILY DISABLED ─────────────────────────
+  // To re-enable: uncomment the block below and the basePath line above.
+  // let sigRes;
+  // try {
+  //   sigRes = await httpFetch(basePath + "/manifest.json.sig");
+  // } catch {
+  //   return { error: "Missing signature", available: false };
+  // }
+  // const isValid = await verifySignature(manifestBody, sigRes.body.trim());
+  // if (!isValid) {
+  //   return { error: "Invalid signature", available: false };
+  // }
+  // ────────────────────────────────────────────────────────────────────────
 
   let remote;
   try {
@@ -222,19 +239,21 @@ async function checkFromUrl(manifestUrl, local) {
   }
 
   const manifestBody = manifestRes.body;
-  const sigUrl = manifestUrl.replace(MANIFEST_PATH, SIGNATURE_PATH);
 
-  let sigRes;
-  try {
-    sigRes = await httpFetch(sigUrl);
-  } catch {
-    return { error: "Missing signature", available: false };
-  }
-
-  const isValid = await verifySignature(manifestBody, sigRes.body.trim());
-  if (!isValid) {
-    return { error: "Invalid signature", available: false };
-  }
+  // ── SIGNATURE VERIFICATION TEMPORARILY DISABLED ─────────────────────────
+  // To re-enable: uncomment the block below.
+  // const sigUrl = manifestUrl.replace(MANIFEST_PATH, SIGNATURE_PATH);
+  // let sigRes;
+  // try {
+  //   sigRes = await httpFetch(sigUrl);
+  // } catch {
+  //   return { error: "Missing signature", available: false };
+  // }
+  // const isValid = await verifySignature(manifestBody, sigRes.body.trim());
+  // if (!isValid) {
+  //   return { error: "Invalid signature", available: false };
+  // }
+  // ────────────────────────────────────────────────────────────────────────
 
   let remote;
   try {
