@@ -210,6 +210,28 @@ function waitForOllama(timeoutMs = 15000, intervalMs = 500) {
   });
 }
 
+function checkModelExists(model) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
+      let data = "";
+      res.on("data", (c) => (data += c));
+      res.on("end", () => {
+        try {
+          const { models = [] } = JSON.parse(data);
+          resolve(models.some((m) => m.name === model || m.name === `${model}:latest`));
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
 function pullModel() {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ name: MODEL, stream: true });
