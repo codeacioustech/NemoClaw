@@ -110,16 +110,16 @@ const app = (() => {
       dot.classList.remove("offline");
       if (models.length > 0) {
         const m = models[0];
-        info.textContent = `${m.name} · Running`;
+        info.textContent = `OpenCootAI · Running`;
         const sizeMB = m.size ? (m.size / 1e9).toFixed(1) + " GB" : "";
         detail.textContent = `Local${sizeMB ? " · " + sizeMB : ""}`;
       } else {
-        info.textContent = "Ollama · Running";
+        info.textContent = "OpenCootAI · Running";
         detail.textContent = "No models loaded";
       }
     } catch {
       dot.classList.add("offline");
-      info.textContent = "Ollama · Offline";
+      info.textContent = "OpenCootAI · Offline";
       detail.textContent = "Connection failed";
     }
   }
@@ -419,7 +419,7 @@ const app = (() => {
           for (const m of models) {
              const opt = document.createElement("option");
              opt.value = m.name;
-             opt.textContent = m.name;
+             opt.textContent = "OpenCootAI";
              if (m.name === activeModel) opt.selected = true;
              modelSelect.appendChild(opt);
           }
@@ -432,7 +432,7 @@ const app = (() => {
           });
         }
       } catch (e) {
-        modelSelect.innerHTML = "<option>Ollama offline</option>";
+        modelSelect.innerHTML = "<option>OpenCootAI offline</option>";
       }
     }
     // Gateway port

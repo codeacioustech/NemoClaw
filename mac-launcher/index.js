@@ -16,7 +16,7 @@ const wfDb = require("./lib/workflow-db");
 const { runWorkflow, startRunsSSE } = require("./lib/workflow-runner");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 const db = require("./lib/db");
-const { redactObject, redact } = require("./lib/brand");
+const { redactObject } = require("./lib/brand");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -641,17 +641,17 @@ ipcMain.handle("wf-run-get", (_, runId) => wfDb.getRun(runId));
 
 ipcMain.handle("get-ollama-models", () => {
   return new Promise((resolve) => {
-    http.get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
-        try {
-          resolve(redactObject(JSON.parse(data).models || []));
-        } catch { resolve([]); }
-      });
-    }).on("error", () => resolve([]));
-  });
-});
+    http
+      .get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            resolve(redactObject(JSON.parse(data).models || []));
+          } catch {
+            resolve([]);
+          }
+        });
       })
       .on("error", () => resolve([]));
   });
@@ -860,7 +860,7 @@ ipcMain.handle("reauthorize-folder", async (_, folderPath) => {
 
 app.whenReady().then(() => {
   hookElectronLifecycle(app);
-   bootstrap().catch((err) => {
+  bootstrap().catch((err) => {
     console.error("Bootstrap failed:", err);
     sendError(err.message);
   });
