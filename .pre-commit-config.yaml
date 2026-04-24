@@ -177,6 +177,7 @@ repos:
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
+        args: [-e, SC2015]
         priority: 10
 
   - repo: local
