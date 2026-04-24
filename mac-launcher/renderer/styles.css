@@ -882,6 +882,51 @@ details.chat-reasoning[open] .chat-reasoning-summary::before {
 .chat-empty-icon { opacity: 0.25; color: var(--text-muted); }
 .chat-empty-text { font-size: 14px; line-height: 1.5; }
 
+/* Chat loading overlay — shown while the model is downloading / warming up */
+.chat-loading {
+  padding: 24px 24px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(99,102,241,0.06), transparent);
+}
+.chat-loading[hidden] { display: none; }
+.chat-loading-stage {
+  font-size: 13px; font-weight: 600; color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.chat-loading-desc {
+  font-size: 12px; color: var(--text-muted);
+  margin-bottom: 12px; line-height: 1.45;
+}
+.chat-loading-bar {
+  height: 4px; background: var(--surface-2);
+  border-radius: 2px; overflow: hidden; margin-bottom: 6px;
+}
+.chat-loading-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #76b900, #00b4d8);
+  border-radius: 2px; transition: width 0.3s ease;
+}
+.chat-loading-fill.indeterminate {
+  width: 40% !important;
+  animation: chat-loading-sweep 1.4s ease-in-out infinite;
+}
+@keyframes chat-loading-sweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(300%); }
+}
+.chat-loading-meta {
+  font-size: 11px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 14px;
+}
+.chat-loading-error {
+  margin-top: 10px; font-size: 12px;
+  color: #f85149;
+}
+.chat-input.disabled, .chat-input:disabled {
+  opacity: 0.5; cursor: not-allowed;
+}
+
 /* ===================================================
    TOAST
 ==================================================== */

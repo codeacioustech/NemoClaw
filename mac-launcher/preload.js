@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld("launcher", {
   onProgress: (cb) => ipcRenderer.on("pull-progress", (_e, data) => cb(data)),
   onStatus: (cb) => ipcRenderer.on("status-update", (_e, msg) => cb(msg)),
 
+  // Model readiness — drives the chat loading overlay + disabled state.
+  getModelState: () => ipcRenderer.invoke("get-model-state"),
+  onModelState: (cb) => ipcRenderer.on("model-state", (_e, state) => cb(state)),
+
   // App channels
   getGatewayPort: () => ipcRenderer.invoke("get-gateway-port"),
   getConfig: () => ipcRenderer.invoke("get-config"),

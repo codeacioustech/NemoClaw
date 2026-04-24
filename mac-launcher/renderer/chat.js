@@ -15,8 +15,74 @@ const chat = (() => {
   let _currentThinkBody = null;     // <pre> inside the <details>
   let _thinkingActive = false;      // true while reasoning tokens are flowing
   let _accumulatedText = "";
+  let _modelReady = false;          // flipped true by the main process when
+                                    // download + warmup + gateway all finish
 
   const $ = (sel) => document.querySelector(sel);
+
+  function mb(n) { return (n / (1024 * 1024)).toFixed(1); }
+
+  function applyModelState(state) {
+    if (!state) return;
+    _modelReady = !!state.ready;
+
+    const loading = document.getElementById("chat-loading");
+    const stageEl = document.getElementById("chat-loading-stage");
+    const descEl  = document.getElementById("chat-loading-desc");
+    const fillEl  = document.getElementById("chat-loading-fill");
+    const metaEl  = document.getElementById("chat-loading-meta");
+    const errEl   = document.getElementById("chat-loading-error");
+    const input   = $(".chat-input");
+    const sendBtn = $(".chat-send");
+    const newBtn  = $(".chat-new-btn");
+
+    if (loading) loading.hidden = _modelReady;
+
+    if (_modelReady) {
+      if (input)   { input.disabled = false; input.placeholder = "Type a message..."; }
+      if (sendBtn) sendBtn.disabled = false;
+      if (newBtn)  newBtn.disabled = false;
+      return;
+    }
+
+    // Disable model-dependent UI while setup is in flight.
+    if (input)   { input.disabled = true; input.placeholder = "AI model is loading…"; }
+    if (sendBtn) sendBtn.disabled = true;
+    if (newBtn)  newBtn.disabled = true;
+
+    if (stageEl) stageEl.textContent = state.stageLabel || "Preparing local AI…";
+    if (descEl)  descEl.textContent  = state.description || "";
+
+    if (fillEl) {
+      if (state.total && state.total > 0) {
+        const pct = Math.min(100, Math.round((state.completed / state.total) * 100));
+        fillEl.classList.remove("indeterminate");
+        fillEl.style.width = pct + "%";
+      } else {
+        fillEl.classList.add("indeterminate");
+        fillEl.style.width = "";
+      }
+    }
+
+    if (metaEl) {
+      if (state.total && state.total > 0) {
+        const pct = Math.min(100, Math.round((state.completed / state.total) * 100));
+        metaEl.textContent = `${mb(state.completed)} MB / ${mb(state.total)} MB · ${pct}%`;
+      } else {
+        metaEl.textContent = state.status || "";
+      }
+    }
+
+    if (errEl) {
+      if (state.error) {
+        errEl.hidden = false;
+        errEl.textContent = state.error;
+      } else {
+        errEl.hidden = true;
+        errEl.textContent = "";
+      }
+    }
+  }
 
   function open() {
     $(".chat-overlay").classList.add("open");
@@ -318,6 +384,10 @@ const chat = (() => {
 
     const text = input.value.trim();
     if (!text || _streaming) return;
+    if (!_modelReady) {
+      appendSystemMessage("AI model is still loading. Please wait until setup finishes.");
+      return;
+    }
 
     input.value = "";
     input.style.height = "40px";
@@ -719,6 +789,16 @@ const chat = (() => {
     // Wire new chat button
     const newChatBtn = $(".chat-new-btn");
     if (newChatBtn) newChatBtn.addEventListener("click", newChat);
+
+    // Subscribe to model readiness so chat is gated until weights are in
+    // VRAM and the gateway is up. Pull the current snapshot on load so we
+    // don't miss progress that happened before this listener attached.
+    if (window.launcher?.onModelState) {
+      window.launcher.onModelState(applyModelState);
+    }
+    if (window.launcher?.getModelState) {
+      window.launcher.getModelState().then(applyModelState).catch(() => {});
+    }
 
     // Connect to the thinking-token SSE stream from the proxy
     connectThinkStream();

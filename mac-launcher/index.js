@@ -162,6 +162,31 @@ function sendProgress(data) {
 }
 
 // ---------------------------------------------------------------------------
+// Model readiness — broadcast to the main window while background work runs.
+// The renderer disables model-dependent UI (chat) until ready=true.
+// ---------------------------------------------------------------------------
+
+const modelState = {
+  ready: false,
+  stage: "init",              // init | ollama | download | warmup | gateway | ready | error
+  stageLabel: "Preparing local AI…",
+  description: "Getting things set up.",
+  completed: 0,
+  total: 0,
+  status: "",
+  error: null,
+};
+
+function broadcastModelState(patch) {
+  Object.assign(modelState, patch);
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) {
+      w.webContents.send("model-state", modelState);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Ollama management
 // ---------------------------------------------------------------------------
 
@@ -194,6 +219,14 @@ function downloadOllama() {
           downloaded += chunk.length;
           if (total > 0) {
             sendProgress({ completed: downloaded, total });
+            broadcastModelState({
+              stage: "ollama",
+              stageLabel: "Downloading AI engine",
+              description: "Fetching the Ollama runtime (one-time setup).",
+              completed: downloaded,
+              total,
+              status: "",
+            });
           }
         });
 
@@ -295,12 +328,40 @@ function pullModel() {
             if (!line.trim()) continue;
             try {
               const json = JSON.parse(line);
+              const statusText = json.status || "";
+              // Ollama pull statuses: "pulling manifest", "downloading",
+              // "pulling <sha>", "verifying sha256 digest", "writing manifest",
+              // "removing any unused layers", "success".
+              let description = "Fetching model weights from Ollama.";
+              if (/verify/i.test(statusText)) description = "Verifying SHA-256 checksum of downloaded weights.";
+              else if (/manifest/i.test(statusText)) description = "Fetching model manifest.";
+              else if (/writing/i.test(statusText)) description = "Writing weights to disk.";
+              else if (/pulling/i.test(statusText)) {
+                const sha = /pulling ([0-9a-f]{8,})/i.exec(statusText);
+                description = sha
+                  ? `Downloading layer ${sha[1].slice(0, 12)}…`
+                  : "Downloading model layers.";
+              }
               if (json.total) {
                 sendProgress({ completed: json.completed || 0, total: json.total });
-              } else if (json.status) {
-                sendProgress({ status: json.status });
+                broadcastModelState({
+                  stage: "download",
+                  stageLabel: `Downloading ${MODEL}`,
+                  description,
+                  completed: json.completed || 0,
+                  total: json.total,
+                  status: statusText,
+                });
+              } else if (statusText) {
+                sendProgress({ status: statusText });
+                broadcastModelState({
+                  stage: "download",
+                  stageLabel: `Downloading ${MODEL}`,
+                  description,
+                  status: statusText,
+                });
               }
-              if (json.status === "success") {
+              if (statusText === "success") {
                 resolve();
               }
             } catch {
@@ -356,46 +417,49 @@ async function bootstrap() {
   const isPkgInstall = checkPkgInstallFlag();
   const isFirstRun = !config.launcher_setup_complete || isPkgInstall;
 
-  // Step 1 — Ensure Ollama binary exists (bundled, runtime-downloaded, or system)
+  // Step 1 — Ensure Ollama binary exists. This is the only phase that still
+  // blocks the UI behind the splash, because we can't even start the Ollama
+  // server without it. Everything else (model pull, warmup, gateway) runs in
+  // the background after the main window opens.
   let ollamaPath = paths.resolveOllama();
   if (!ollamaPath) {
     await ensureSplash();
     sendStatus("Downloading AI engine...");
+    broadcastModelState({
+      stage: "ollama",
+      stageLabel: "Downloading AI engine",
+      description: "Fetching the Ollama runtime (one-time setup).",
+    });
     try {
       await downloadOllama();
       ollamaPath = paths.resolveOllama();
       if (!ollamaPath) throw new Error("Binary not found after download");
     } catch (err) {
       sendError(`Failed to download AI engine: ${err.message}`);
+      broadcastModelState({ stage: "error", error: `Failed to download AI engine: ${err.message}` });
       return;
     }
   }
 
-  // Step 2 — Start & wait for Ollama
+  // Step 2 — Start & wait for Ollama (fast)
   sendStatus("Starting Ollama...");
+  broadcastModelState({
+    stage: "ollama",
+    stageLabel: "Starting Ollama",
+    description: "Booting the local inference runtime.",
+  });
   spawnOllama();
 
   try {
     await waitForOllama();
   } catch (err) {
     sendError(`Ollama failed to start: ${err.message}`);
+    broadcastModelState({ stage: "error", error: `Ollama failed to start: ${err.message}` });
     return;
   }
 
-  // Step 3 — Always check model, download if missing
-  const modelPresent = await checkModelExists(MODEL);
-  if (!modelPresent) {
-    await ensureSplash();
-    sendStatus(`Downloading AI model: ${MODEL}...`);
-    try {
-      await pullModel();
-    } catch (err) {
-      console.error(`Model pull failed: ${err.message}`);
-      sendStatus(`Model pull failed (${err.message}) — continuing startup...`);
-    }
-  }
-
-  // Step 4 — First-run config seeding
+  // Step 3 — First-run config seeding runs BEFORE the main window opens so
+  // gateway config is consistent the moment the renderer connects.
   if (isFirstRun) {
     sendStatus("Configuring NemoClaw...");
     seedAll();
@@ -516,8 +580,60 @@ async function bootstrap() {
     // Config will be created by seedAll on first run
   }
 
-  // 5. Start inference proxy
-  sendStatus("Starting inference proxy...");
+  // Step 5 — Open the main window NOW. The expensive work (model pull,
+  // proxy boot, warmup, gateway) proceeds in the background. The renderer
+  // listens on the "model-state" channel and keeps chat disabled, showing
+  // a progress overlay, until we broadcast { ready: true }.
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+    splashWindow = null;
+  }
+  createMainWindow();
+
+  broadcastModelState({
+    stage: "download",
+    stageLabel: "Preparing AI model",
+    description: "Checking whether the model is already on disk.",
+  });
+
+  finishBootstrapInBackground().catch((err) => {
+    console.error("[bootstrap:bg] failed:", err);
+    broadcastModelState({
+      stage: "error",
+      error: err.message || String(err),
+    });
+  });
+}
+
+async function finishBootstrapInBackground() {
+  // Pull the model if missing
+  const modelPresent = await checkModelExists(MODEL);
+  if (!modelPresent) {
+    broadcastModelState({
+      stage: "download",
+      stageLabel: `Downloading ${MODEL}`,
+      description: "Fetching model weights from Ollama.",
+    });
+    try {
+      await pullModel();
+    } catch (err) {
+      console.error(`Model pull failed: ${err.message}`);
+      broadcastModelState({
+        stage: "error",
+        error: `Model download failed: ${err.message}`,
+      });
+      return;
+    }
+  }
+
+  // Start inference proxy
+  broadcastModelState({
+    stage: "warmup",
+    stageLabel: "Starting inference proxy",
+    description: "Routing requests through the local Ollama proxy.",
+    completed: 0,
+    total: 0,
+  });
   proxyServer = startProxy();
   trackServer(proxyServer);
   try { trackServer(startRunsSSE()); } catch (e) { console.error("[wf] startRunsSSE failed:", e.message); }
@@ -530,16 +646,24 @@ async function bootstrap() {
   try {
     await waitForProxy();
   } catch (err) {
-    sendError(`Inference proxy failed to start: ${err.message}`);
+    broadcastModelState({ stage: "error", error: `Inference proxy failed to start: ${err.message}` });
     return;
   }
 
-  // Fire warm-up request so the model is in VRAM before the user
-  // sends their first message. We await this to prevent "cold start" lag.
-  sendStatus("Warming up AI model (VRAM)...");
-  await warmUpModel(MODEL);
+  // Warm up — load model weights into VRAM so the first user message is fast.
+  broadcastModelState({
+    stage: "warmup",
+    stageLabel: "Warming up AI model",
+    description: "Loading weights into memory so your first reply is fast.",
+  });
+  try {
+    await warmUpModel(MODEL);
+  } catch (err) {
+    console.error(`[warmup] ${err.message}`);
+    // Non-fatal — Ollama will load on first request.
+  }
 
-  // 5c. Start connector proxy (third-party API calls on behalf of agent)
+  // Connector proxy (third-party API calls on behalf of agent)
   try {
     const { startConnectorProxy } = require("./lib/connector-proxy");
     const connectorServer = startConnectorProxy();
@@ -548,41 +672,35 @@ async function bootstrap() {
     console.error(`[bootstrap] connector proxy failed to start: ${e.message}`);
   }
 
-  // 6. Start gateway
-  sendStatus("Starting gateway...");
+  // Gateway
+  broadcastModelState({
+    stage: "gateway",
+    stageLabel: "Starting agent gateway",
+    description: "Connecting the OpenClaw agent to the local model.",
+  });
   const gatewayChild = startGateway(
-    (out) => {
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        // Forward gateway logs during startup
-      }
-    },
-    (err) => {
-      console.error("[gateway stderr]", err);
-    }
+    () => {},
+    (err) => { console.error("[gateway stderr]", err); }
   );
   trackProcess("gateway", gatewayChild);
-
   gatewayChild.on("exit", (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`Gateway exited with code ${code}`);
-    }
+    if (code !== 0 && code !== null) console.error(`Gateway exited with code ${code}`);
   });
 
-  // 6. Wait for gateway readiness
   try {
     await waitForGateway();
   } catch (err) {
-    sendError(`Gateway failed to start: ${err.message}`);
+    broadcastModelState({ stage: "error", error: `Gateway failed to start: ${err.message}` });
     return;
   }
 
-  // 7. Show main window
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.close();
-    splashWindow = null;
-  }
-
-  createMainWindow();
+  broadcastModelState({
+    ready: true,
+    stage: "ready",
+    stageLabel: "Ready",
+    description: "Local AI is ready to chat.",
+    error: null,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -590,6 +708,10 @@ async function bootstrap() {
 // ---------------------------------------------------------------------------
 
 ipcMain.handle("get-gateway-port", () => GATEWAY_PORT);
+
+// Current model-readiness snapshot. Renderer calls this on load so it can
+// pick up progress already in flight before its "model-state" listener binds.
+ipcMain.handle("get-model-state", () => modelState);
 
 ipcMain.handle("get-config", () => readLauncherConfig());
 
