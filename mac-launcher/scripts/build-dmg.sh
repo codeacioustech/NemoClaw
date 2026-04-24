@@ -94,7 +94,12 @@ codesign --force --sign "$IDENTITY" --entitlements "$ENT_MAIN" "$APP_PATH"
 echo "  Signed: $(basename "$APP_PATH")"
 
 # Verify
-codesign --verify --deep --strict "$APP_PATH" && echo "==> Signature verified OK" || { echo "ERROR: Signature verification failed"; exit 1; }
+if codesign --verify --deep --strict "$APP_PATH"; then
+  echo "==> Signature verified OK"
+else
+  echo "ERROR: Signature verification failed"
+  exit 1
+fi
 
 # Step 2: Stage the DMG layout — the .app and an /Applications symlink so
 # the user can drag-to-install without opening Finder twice.
