@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -548,6 +549,14 @@ async function bootstrap() {
     console.error(`[bootstrap] connector proxy failed to start: ${e.message}`);
   }
 
+  // 5d. Start Slack Socket listener
+  try {
+    const { initSlackSocket } = require('./lib/slack-socket');
+    initSlackSocket();
+  } catch (e) {
+    console.error(`[bootstrap] Slack socket failed to start: ${e.message}`);
+  }
+
   // 6. Start gateway
   sendStatus("Starting gateway...");
   const gatewayChild = startGateway(
@@ -701,6 +710,17 @@ ipcMain.handle("list-credential-keys", () => {
     return require("./lib/secure-credentials").listCredentialKeys();
   } catch {
     return [];
+  }
+});
+
+ipcMain.handle("slack-start-auth", (event) => {
+  try {
+    const { startSlackAuthFlow } = require('./lib/slack-auth');
+    startSlackAuthFlow(event.sender);
+    return { ok: true };
+  } catch (e) {
+    console.error('[slack-auth] failed to start:', e);
+    return { ok: false, error: e.message };
   }
 });
 

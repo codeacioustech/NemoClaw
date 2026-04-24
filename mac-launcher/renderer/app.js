@@ -288,25 +288,37 @@ const app = (() => {
     btn.style.opacity = '0.7';
     btn.style.cursor = 'wait';
 
-    setTimeout(async () => {
-      btn.innerHTML = originalText;
-      btn.disabled = false;
-      btn.style.opacity = '1';
-      btn.style.cursor = 'pointer';
-      
-      window.open(`https://dummy-oauth.com/${id || 'auth'}`, '_blank');
-      
-      // Simulate that the callback was received and token was saved successfully
+    if (id === 'slack') {
       try {
-        const dummyToken = `oauth_${id}_${Date.now()}`;
-        const res = await window.launcher.saveCredential(key, dummyToken);
-        if (res && res.ok === false) throw new Error(res.code || "save_failed");
-        setConnectorConnectedUI(card, true);
-        appendToast(`${name} connected.`);
+        await window.launcher.startSlackAuth();
       } catch (e) {
-        appendToast(`Failed to save ${name} credential.`);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        appendToast(`Failed to start Slack auth: ${e.message}`);
       }
-    }, 800);
+    } else {
+      setTimeout(async () => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        
+        window.open(`https://dummy-oauth.com/${id || 'auth'}`, '_blank');
+        
+        // Simulate that the callback was received and token was saved successfully
+        try {
+          const dummyToken = `oauth_${id}_${Date.now()}`;
+          const res = await window.launcher.saveCredential(key, dummyToken);
+          if (res && res.ok === false) throw new Error(res.code || "save_failed");
+          setConnectorConnectedUI(card, true);
+          appendToast(`${name} connected.`);
+        } catch (e) {
+          appendToast(`Failed to save ${name} credential.`);
+        }
+      }, 800);
+    }
   }
 
   async function hydrateConnectorStates() {
@@ -842,6 +854,30 @@ const app = (() => {
     // Init sub-modules
     chat.init();
     initKeyboardNav();
+    
+    if (window.launcher.onSlackAuthSuccess) {
+      window.launcher.onSlackAuthSuccess(() => {
+        appendToast('Slack connected successfully!');
+        hydrateConnectorStates();
+        // Reset the Slack connect button if it was in loading state
+        const slackBtn = document.querySelector('.conn-card[data-connector-id="slack"] .conn-btn');
+        if (slackBtn) {
+          slackBtn.disabled = false;
+          slackBtn.style.opacity = '1';
+          slackBtn.style.cursor = 'pointer';
+        }
+      });
+      window.launcher.onSlackAuthError((err) => {
+        appendToast(`Slack connection failed: ${err}`);
+        const slackBtn = document.querySelector('.conn-card[data-connector-id="slack"] .conn-btn');
+        if (slackBtn && !slackBtn.classList.contains('active')) {
+          slackBtn.innerHTML = 'Connect Slack';
+          slackBtn.disabled = false;
+          slackBtn.style.opacity = '1';
+          slackBtn.style.cursor = 'pointer';
+        }
+      });
+    }
 
     // Check if already onboarded
     let firstRun = true;

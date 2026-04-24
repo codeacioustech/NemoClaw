@@ -60,5 +60,10 @@ contextBridge.exposeInMainWorld("launcher", {
   saveCredential: (key, value) => ipcRenderer.invoke("save-credential", key, value),
   deleteCredential: (key) => ipcRenderer.invoke("delete-credential", key),
   hasCredential: (key) => ipcRenderer.invoke("has-credential", key),
-  listCredentialKeys: () => ipcRenderer.invoke("list-credential-keys")
+  listCredentialKeys: () => ipcRenderer.invoke("list-credential-keys"),
+
+  // Slack Auth
+  startSlackAuth: () => ipcRenderer.invoke("slack-start-auth"),
+  onSlackAuthSuccess: (cb) => ipcRenderer.on("slack-auth-success", cb),
+  onSlackAuthError: (cb) => ipcRenderer.on("slack-auth-error", (_e, err) => cb(err))
 });
