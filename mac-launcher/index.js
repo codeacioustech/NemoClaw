@@ -573,43 +573,6 @@ ipcMain.handle("set-ollama-model", (_, modelName) => {
   return true;
 });
 
-ipcMain.handle("db-create-session", (_, title) => db.createSession(title));
-ipcMain.handle("db-get-sessions", () => db.getSessions());
-ipcMain.handle("db-save-message", (_, sessionId, role, content) =>
-  db.saveMessage(sessionId, role, content),
-);
-ipcMain.handle("db-get-messages", (_, sessionId) => db.getMessages(sessionId));
-ipcMain.handle("db-update-session-title", (_, sessionId, title) =>
-  db.updateSessionTitle(sessionId, title),
-);
-ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
-
-ipcMain.handle("get-ollama-models", () => {
-  return new Promise((resolve) => {
-    http
-      .get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data).models || []);
-          } catch {
-            resolve([]);
-          }
-        });
-      })
-      .on("error", () => resolve([]));
-  });
-});
-
-ipcMain.handle("set-ollama-model", (_, modelName) => {
-  const existing = readLauncherConfig();
-  writeLauncherConfig({
-    ...existing,
-    ollama_model: modelName,
-  });
-  return true;
-});
 ipcMain.handle("is-first-run", () => {
   const config = readLauncherConfig();
   return !config.onboarding_complete;
