@@ -552,6 +552,24 @@ const app = (() => {
     }
   }
 
+  // --- YAML-defined workflows ---
+
+  // Fires the workflow-runner for a button declared as
+  // <button data-action="run-workflow" data-workflow="my-id">. The workflow
+  // itself lives in <userData>/workflows/my-id.yaml and is loaded into the
+  // DB at launch — so the UI no longer needs a dedicated JS handler for
+  // every scripted sequence.
+  async function runWorkflowAction(el) {
+    const id = el.dataset.workflow;
+    if (!id) return appendToast("run-workflow: missing data-workflow attribute");
+    try {
+      const res = await window.launcher.workflows.run(id);
+      appendToast(`Workflow ${id} ${res?.status || "started"}`);
+    } catch (e) {
+      appendToast("Workflow failed: " + e.message);
+    }
+  }
+
   // --- New Workflow (Dashboard) ---
 
   function newWorkflow() {
@@ -805,26 +823,33 @@ const app = (() => {
     // CSP (default-src 'self', no script-src 'unsafe-inline') forbids
     // inline onclick="..." — every interactive element uses data-action
     // instead, dispatched here.
+    // Action registry — replaces the old hardcoded switch. Adding a new
+    // data-action means registering a handler here (or, for scripted
+    // sequences, dropping a YAML file into <userData>/workflows/ and
+    // referencing it via data-action="run-workflow" data-workflow="<id>").
+    const actions = {
+      "single":                   (el) => single(el, "." + el.dataset.group),
+      "toggle":                   (el) => toggle(el),
+      "go":                       (el) => go(Number(el.dataset.step)),
+      "add-invite-row":           ()   => addInviteRow(),
+      "remove-invite-row":        (el) => removeInviteRow(el),
+      "mount-local-folder":       ()   => mountLocalFolder(),
+      "unmount-local-folder":     (el) => unmountLocalFolder(el.dataset.path),
+      "reauthorize-local-folder": (el) => reauthorizeLocalFolder(el.dataset.path),
+      "toggle-connector":         (el) => toggleConnector(el),
+      "app-launch":               ()   => launch(),
+      "open-chat":                (el) => { if (!el.disabled) chat.open(); },
+      "new-workflow":             ()   => newWorkflow(),
+      "navigate":                 (el) => navigateTo(el.dataset.target),
+      "logout":                   ()   => logout(),
+      "reset-onboarding":         ()   => resetOnboarding(),
+      "run-workflow":             (el) => runWorkflowAction(el),
+    };
     document.addEventListener("click", (e) => {
       const el = e.target.closest("[data-action]");
       if (!el) return;
-      switch (el.dataset.action) {
-        case "single":               single(el, "." + el.dataset.group); break;
-        case "toggle":               toggle(el); break;
-        case "go":                   go(Number(el.dataset.step)); break;
-        case "add-invite-row":       addInviteRow(); break;
-        case "remove-invite-row":    removeInviteRow(el); break;
-        case "mount-local-folder":   mountLocalFolder(); break;
-        case "unmount-local-folder": unmountLocalFolder(el.dataset.path); break;
-        case "reauthorize-local-folder": reauthorizeLocalFolder(el.dataset.path); break;
-        case "toggle-connector":     toggleConnector(el); break;
-        case "app-launch":           launch(); break;
-        case "open-chat":            if (!el.disabled) chat.open(); break;
-        case "new-workflow":         newWorkflow(); break;
-        case "navigate":             navigateTo(el.dataset.target); break;
-        case "logout":               logout(); break;
-        case "reset-onboarding":     resetOnboarding(); break;
-      }
+      const fn = actions[el.dataset.action];
+      if (fn) fn(el);
     });
 
     // Init sub-modules
