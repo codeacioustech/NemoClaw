@@ -16,6 +16,7 @@ const wfDb = require("./lib/workflow-db");
 const { runWorkflow, startRunsSSE } = require("./lib/workflow-runner");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 const db = require("./lib/db");
+const { redactObject, redact } = require("./lib/brand");
 
 const OLLAMA_HOST = "127.0.0.1";
 const OLLAMA_PORT = 11434;
@@ -58,8 +59,8 @@ function migrateConfig(config) {
     // check whether onboarding data exists to infer whether the user actually
     // went through the wizard or bootstrap just set the flag.
     if (config.onboarding_complete === undefined) {
-      const hasOnboardingData = config.onboarding &&
-        (config.onboarding.workspace?.type || config.onboarding.purpose);
+      const hasOnboardingData =
+        config.onboarding && (config.onboarding.workspace?.type || config.onboarding.purpose);
       config.onboarding_complete = !!hasOnboardingData;
     }
     config.configVersion = 2;
@@ -176,45 +177,46 @@ function downloadOllama() {
     function followRedirects(url, redirects) {
       if (redirects > 5) return reject(new Error("Too many redirects"));
       const mod = url.startsWith("https") ? require("https") : http;
-      mod.get(url, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume();
-          return followRedirects(res.headers.location, redirects + 1);
-        }
-        if (res.statusCode !== 200) {
-          res.resume();
-          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
-        }
-
-        const total = parseInt(res.headers["content-length"] || "0", 10);
-        let downloaded = 0;
-        const fileStream = fs.createWriteStream(tgzPath);
-
-        res.on("data", (chunk) => {
-          downloaded += chunk.length;
-          if (total > 0) {
-            sendProgress({ completed: downloaded, total });
+      mod
+        .get(url, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.resume();
+            return followRedirects(res.headers.location, redirects + 1);
           }
-        });
+          if (res.statusCode !== 200) {
+            res.resume();
+            return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+          }
 
-        res.pipe(fileStream);
-        fileStream.on("finish", () => {
-          fileStream.close(() => {
-            try {
-              require("child_process").execSync(
-                `tar -xzf "${tgzPath}" -C "${OLLAMA_DEST}"`,
-                { stdio: "pipe" }
-              );
-              fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
-              fs.unlinkSync(tgzPath);
-              resolve();
-            } catch (err) {
-              reject(new Error(`Extract failed: ${err.message}`));
+          const total = parseInt(res.headers["content-length"] || "0", 10);
+          let downloaded = 0;
+          const fileStream = fs.createWriteStream(tgzPath);
+
+          res.on("data", (chunk) => {
+            downloaded += chunk.length;
+            if (total > 0) {
+              sendProgress({ completed: downloaded, total });
             }
           });
-        });
-        fileStream.on("error", reject);
-      }).on("error", reject);
+
+          res.pipe(fileStream);
+          fileStream.on("finish", () => {
+            fileStream.close(() => {
+              try {
+                require("child_process").execSync(`tar -xzf "${tgzPath}" -C "${OLLAMA_DEST}"`, {
+                  stdio: "pipe",
+                });
+                fs.chmodSync(path.join(OLLAMA_DEST, "ollama"), 0o755);
+                fs.unlinkSync(tgzPath);
+                resolve();
+              } catch (err) {
+                reject(new Error(`Extract failed: ${err.message}`));
+              }
+            });
+          });
+          fileStream.on("error", reject);
+        })
+        .on("error", reject);
     }
 
     followRedirects(OLLAMA_URL, 0);
@@ -230,11 +232,16 @@ function checkModelExists(model) {
         try {
           const { models = [] } = JSON.parse(data);
           resolve(models.some((m) => m.name === model || m.name === `${model}:latest`));
-        } catch { resolve(false); }
+        } catch {
+          resolve(false);
+        }
       });
     });
     req.on("error", () => resolve(false));
-    req.setTimeout(5000, () => { req.destroy(); resolve(false); });
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve(false);
+    });
   });
 }
 
@@ -310,7 +317,7 @@ function pullModel() {
         });
         res.on("end", () => resolve());
         res.on("error", reject);
-      }
+      },
     );
     req.on("error", reject);
     req.write(body);
@@ -496,15 +503,17 @@ async function bootstrap() {
         baseUrl: "http://127.0.0.1:11435",
         apiKey: "OLLAMA_API_KEY",
         api: "ollama",
-        models: [{
-          id: MODEL,
-          name: "Gemma 4 E4B",
-          reasoning: false,
-          input: ["text"],
-          cost: { input: 0, output: 0 },
-          contextWindow: 32768,
-          maxTokens: 8192,
-        }],
+        models: [
+          {
+            id: MODEL,
+            name: "Gemma 4 E4B",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0 },
+            contextWindow: 32768,
+            maxTokens: 8192,
+          },
+        ],
       };
       dirty = true;
     }
@@ -520,12 +529,22 @@ async function bootstrap() {
   sendStatus("Starting inference proxy...");
   proxyServer = startProxy();
   trackServer(proxyServer);
-  try { trackServer(startRunsSSE()); } catch (e) { console.error("[wf] startRunsSSE failed:", e.message); }
+  try {
+    trackServer(startRunsSSE());
+  } catch (e) {
+    console.error("[wf] startRunsSSE failed:", e.message);
+  }
   try {
     const probed = validateMountedFoldersAtBoot();
     const stale = probed.filter((f) => f.stale);
-    if (stale.length) console.warn(`[bookmarks] ${stale.length} stale mount(s):`, stale.map((f) => f.path));
-  } catch (e) { console.error("[bookmarks] boot validation failed:", e.message); }
+    if (stale.length)
+      console.warn(
+        `[bookmarks] ${stale.length} stale mount(s):`,
+        stale.map((f) => f.path),
+      );
+  } catch (e) {
+    console.error("[bookmarks] boot validation failed:", e.message);
+  }
 
   try {
     await waitForProxy();
@@ -558,7 +577,7 @@ async function bootstrap() {
     },
     (err) => {
       console.error("[gateway stderr]", err);
-    }
+    },
   );
   trackProcess("gateway", gatewayChild);
 
@@ -595,9 +614,13 @@ ipcMain.handle("get-config", () => readLauncherConfig());
 
 ipcMain.handle("db-create-session", (_, title) => db.createSession(title));
 ipcMain.handle("db-get-sessions", () => db.getSessions());
-ipcMain.handle("db-save-message", (_, sessionId, role, content) => db.saveMessage(sessionId, role, content));
+ipcMain.handle("db-save-message", (_, sessionId, role, content) =>
+  db.saveMessage(sessionId, role, content),
+);
 ipcMain.handle("db-get-messages", (_, sessionId) => db.getMessages(sessionId));
-ipcMain.handle("db-update-session-title", (_, sessionId, title) => db.updateSessionTitle(sessionId, title));
+ipcMain.handle("db-update-session-title", (_, sessionId, title) =>
+  db.updateSessionTitle(sessionId, title),
+);
 ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
 
 // Workflow IPC
@@ -609,7 +632,9 @@ ipcMain.handle("wf-delete", (_, id) => wfDb.deleteWorkflow(id));
 ipcMain.handle("wf-step-add", (_, workflowId, step) => wfDb.addStep(workflowId, step || {}));
 ipcMain.handle("wf-step-update", (_, stepId, patch) => wfDb.updateStep(stepId, patch || {}));
 ipcMain.handle("wf-step-delete", (_, stepId) => wfDb.deleteStep(stepId));
-ipcMain.handle("wf-step-reorder", (_, workflowId, orderedIds) => wfDb.reorderSteps(workflowId, orderedIds || []));
+ipcMain.handle("wf-step-reorder", (_, workflowId, orderedIds) =>
+  wfDb.reorderSteps(workflowId, orderedIds || []),
+);
 ipcMain.handle("wf-run", async (_, workflowId) => runWorkflow(workflowId));
 ipcMain.handle("wf-runs-list", (_, workflowId) => wfDb.listRuns(workflowId));
 ipcMain.handle("wf-run-get", (_, runId) => wfDb.getRun(runId));
@@ -621,10 +646,14 @@ ipcMain.handle("get-ollama-models", () => {
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
         try {
-          resolve(JSON.parse(data).models || []);
+          resolve(redactObject(JSON.parse(data).models || []));
         } catch { resolve([]); }
       });
     }).on("error", () => resolve([]));
+  });
+});
+      })
+      .on("error", () => resolve([]));
   });
 });
 
@@ -632,7 +661,7 @@ ipcMain.handle("set-ollama-model", (_, modelName) => {
   const existing = readLauncherConfig();
   writeLauncherConfig({
     ...existing,
-    ollama_model: modelName
+    ollama_model: modelName,
   });
   return true;
 });
@@ -741,7 +770,9 @@ ipcMain.handle("fs-read-file", async (_, filePath) => {
 });
 
 ipcMain.handle("fs-write-file", async (_, filePath, content) => {
-  console.log(`[fs-write-file] request path=${filePath} bytes=${content ? Buffer.byteLength(content) : 0}`);
+  console.log(
+    `[fs-write-file] request path=${filePath} bytes=${content ? Buffer.byteLength(content) : 0}`,
+  );
   try {
     const result = await withBookmarkAccess(filePath, async () => {
       const dir = path.dirname(filePath);
@@ -829,7 +860,7 @@ ipcMain.handle("reauthorize-folder", async (_, folderPath) => {
 
 app.whenReady().then(() => {
   hookElectronLifecycle(app);
-  bootstrap().catch((err) => {
+   bootstrap().catch((err) => {
     console.error("Bootstrap failed:", err);
     sendError(err.message);
   });

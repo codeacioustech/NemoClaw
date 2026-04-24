@@ -5,6 +5,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { NEMOCLAW_DIR } = require("./config-seeder");
+const { redact, redactObject } = require("./brand");
 const LAUNCHER_CONFIG = path.join(NEMOCLAW_DIR, "launcher_config.json");
 
 const OLLAMA_HOST = "127.0.0.1";
@@ -15,7 +16,7 @@ const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the r
 const SYSTEM_INSTRUCTION =
   "You are a helpful assistant running inside the NemoClaw desktop app. " +
   "You must use the following tools to interact with the filesystem:\n" +
-  "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
+  '- `read`: to read a file OR to list the contents of a directory (e.g. pass "." or a folder path).\n' +
   "- `edit`: to modify existing files.\n" +
   "- `write`: to create or completely overwrite files.\n" +
   "- `exex`: to run shell commands. Use this for listing processes, running scripts, " +
@@ -44,7 +45,11 @@ const _thinkSubscribers = new Set();
 function _broadcastThink(payload) {
   const data = `data: ${JSON.stringify(payload)}\n\n`;
   for (const sub of _thinkSubscribers) {
-    try { sub.res.write(data); } catch { _thinkSubscribers.delete(sub); }
+    try {
+      sub.res.write(data);
+    } catch {
+      _thinkSubscribers.delete(sub);
+    }
   }
 }
 
@@ -73,9 +78,7 @@ const _sessionStore = new Map();
 function deriveSessionId(headers, parsedBody) {
   // 1. Explicit session header (most reliable)
   const explicit =
-    headers["x-session-id"] ||
-    headers["x-openclaw-session"] ||
-    headers["x-request-id"];
+    headers["x-session-id"] || headers["x-openclaw-session"] || headers["x-request-id"];
   if (explicit) return explicit.slice(0, 40);
 
   // 2. Stable suffix of the Authorization token (first 32 chars of bearer)
@@ -86,7 +89,7 @@ function deriveSessionId(headers, parsedBody) {
   // 3. Stable hash of the system prompt + first user message content.
   // Falls back to a per-process ephemeral session (single session mode).
   const msgs = Array.isArray(parsedBody?.messages) ? parsedBody.messages : [];
-  const firstUser = msgs.find(m => m.role === "user");
+  const firstUser = msgs.find((m) => m.role === "user");
   const seed = SYSTEM_INSTRUCTION.slice(0, 40) + (firstUser?.content?.slice?.(0, 80) ?? "");
   // djb2 hash — fast, no crypto module needed
   let h = 5381;
@@ -101,7 +104,9 @@ function deriveSessionId(headers, parsedBody) {
  */
 function startProxy(onListening) {
   const server = http.createServer((clientReq, clientRes) => {
-    console.log(`[ollama-proxy] ${clientReq.method} ${clientReq.url} content-length=${clientReq.headers["content-length"] || "none"}`);
+    console.log(
+      `[ollama-proxy] ${clientReq.method} ${clientReq.url} content-length=${clientReq.headers["content-length"] || "none"}`,
+    );
 
     // Renderer-triggered reset: wipe proxy-side session store so a new chat
     // starts with zero prior messages regardless of static bearer token.
@@ -124,7 +129,10 @@ function startProxy(onListening) {
           const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
           const msgs = Array.isArray(body.messages) ? body.messages : [];
           const clean = msgs
-            .filter((m) => m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
+            .filter(
+              (m) =>
+                m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"),
+            )
             .map((m) => ({ role: m.role, content: m.content }));
           _sessionStore.set("auth-ollama-local", {
             messages: clean,
@@ -142,8 +150,7 @@ function startProxy(onListening) {
       return;
     }
 
-    const isChatEndpoint =
-      clientReq.method === "POST" && clientReq.url === "/api/chat";
+    const isChatEndpoint = clientReq.method === "POST" && clientReq.url === "/api/chat";
 
     const bodyChunks = [];
     clientReq.on("data", (chunk) => bodyChunks.push(chunk));
@@ -185,22 +192,26 @@ function startProxy(onListening) {
           //      messages — cache MISS, but prefix is correct for next turn.
           //   e) Save the resulting message array as the new anchor.
           //
-          const MAX_HISTORY     = 4;    // messages kept when starting fresh
-          const MAX_TOOL_OUTPUT = 800;  // chars per tool-result before truncation
+          const MAX_HISTORY = 4; // messages kept when starting fresh
+          const MAX_TOOL_OUTPUT = 800; // chars per tool-result before truncation
 
           const sessionId = deriveSessionId(clientReq.headers, parsed);
-          const session   = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
+          const session = _sessionStore.get(sessionId) || { messages: null, toolsJson: null };
 
           // ── Tool override: Inject the 3 exact tools the chat.js UI natively supports ──
           // ── Tool intercept: Capture and filter native OpenClaw tools ──
           if (Array.isArray(parsed.tools)) {
             // Find tools that look related to files to debug their OpenClaw schema
-            console.log("\n[DEBUG] ALL NATIVE TOOLS:\n", parsed.tools.map(t => t?.function?.name || t?.name).join(", "), "\n");
+            console.log(
+              "\n[DEBUG] ALL NATIVE TOOLS:\n",
+              parsed.tools.map((t) => t?.function?.name || t?.name).join(", "),
+              "\n",
+            );
 
             const before = parsed.tools.length;
             // Filter to only the core file tools so we don't blow up Ollama's VRAM
             const ALLOWED_TOOLS = new Set(["read", "write", "edit", "exec"]);
-            parsed.tools = parsed.tools.filter(t => {
+            parsed.tools = parsed.tools.filter((t) => {
               const name = (t?.function?.name || t?.name || "").toLowerCase();
               return ALLOWED_TOOLS.has(name);
             });
@@ -214,7 +225,7 @@ function startProxy(onListening) {
 
             console.log(
               `[ollama-proxy] [${sessionId}] Tools: ${before} → ${parsed.tools.length} ` +
-              `(stripped ${before - parsed.tools.length} unused definitions. frozen for KV cache)`
+                `(stripped ${before - parsed.tools.length} unused definitions. frozen for KV cache)`,
             );
           }
 
@@ -222,15 +233,14 @@ function startProxy(onListening) {
           if (Array.isArray(parsed.messages)) {
             // Strip system messages injected by gateway (we inject our own below)
             // NOTE: SYSTEM_INSTRUCTION was already unshifted above; filter dupes.
-            let chatHistory = parsed.messages.filter(m => m.role !== 'system');
+            let chatHistory = parsed.messages.filter((m) => m.role !== "system");
 
             // Truncate massive tool results
-            chatHistory = chatHistory.map(msg => {
-              if (msg.role === 'tool' && msg.content && typeof msg.content === 'string') {
+            chatHistory = chatHistory.map((msg) => {
+              if (msg.role === "tool" && msg.content && typeof msg.content === "string") {
                 if (msg.content.length > MAX_TOOL_OUTPUT) {
                   msg.content =
-                    msg.content.substring(0, MAX_TOOL_OUTPUT) +
-                    "\n...[TRUNCATED FOR CONTEXT]...";
+                    msg.content.substring(0, MAX_TOOL_OUTPUT) + "\n...[TRUNCATED FOR CONTEXT]...";
                 }
               }
               return msg;
@@ -246,9 +256,8 @@ function startProxy(onListening) {
               // anchor (i.e. gateway simply appended new turns at the end).
               const prefixMatch =
                 chatHistory.length >= al &&
-                anchor.every((m, i) =>
-                  chatHistory[i].role    === m.role &&
-                  chatHistory[i].content === m.content
+                anchor.every(
+                  (m, i) => chatHistory[i].role === m.role && chatHistory[i].content === m.content,
                 );
 
               if (prefixMatch) {
@@ -266,7 +275,9 @@ function startProxy(onListening) {
               if (session.primed && Array.isArray(session.messages) && session.messages.length) {
                 chatHistory = [...session.messages, ...chatHistory];
                 session.primed = false;
-                console.log(`[ollama-proxy] primed anchor merged (${session.messages.length} prior msgs)`);
+                console.log(
+                  `[ollama-proxy] primed anchor merged (${session.messages.length} prior msgs)`,
+                );
               } else if (chatHistory.length > MAX_HISTORY) {
                 // Fresh session or prefix diverged: safe fallback to tail slice.
                 chatHistory = chatHistory.slice(-MAX_HISTORY);
@@ -274,10 +285,7 @@ function startProxy(onListening) {
             }
 
             // Always place our canonical system prompt first.
-            parsed.messages = [
-              { role: "system", content: SYSTEM_INSTRUCTION },
-              ...chatHistory,
-            ];
+            parsed.messages = [{ role: "system", content: SYSTEM_INSTRUCTION }, ...chatHistory];
 
             // Save the non-system portion as the anchor for the next turn.
             session.messages = chatHistory;
@@ -285,8 +293,8 @@ function startProxy(onListening) {
 
             console.log(
               `[ollama-proxy] [${sessionId}] Context: ${chatHistory.length} msgs, ` +
-              `${parsed.tools?.length ?? 0} tools, ` +
-              `prefix-cache=${cacheHit ? "HIT" : "MISS"}`
+                `${parsed.tools?.length ?? 0} tools, ` +
+                `prefix-cache=${cacheHit ? "HIT" : "MISS"}`,
             );
           }
           // ─────────────────────────────────────────────────────────────────────
@@ -357,8 +365,10 @@ function startProxy(onListening) {
           proxyRes.on("data", (chunk) => {
             if (!_firstTokenLogged) {
               _firstTokenLogged = true;
-              console.timeLog(`[ollama-proxy] ${_reqId} total-round-trip`,
-                "← first chunk from Ollama");
+              console.timeLog(
+                `[ollama-proxy] ${_reqId} total-round-trip`,
+                "← first chunk from Ollama",
+              );
             }
             const lines = chunk.toString().split("\n").filter(Boolean);
 
@@ -367,7 +377,7 @@ function startProxy(onListening) {
               try {
                 obj = JSON.parse(line);
               } catch {
-                clientRes.write(line + "\n");
+                clientRes.write(redact(line) + "\n");
                 continue;
               }
 
@@ -387,7 +397,7 @@ function startProxy(onListening) {
               if (typeof token !== "string" || obj?.message?.tool_calls || obj?.done) {
                 if (obj?.done && accumulator && !obj.message) obj.message = { role: "assistant" };
                 if (accumulator) obj.message.content = accumulator;
-                clientRes.write(JSON.stringify(obj) + "\n");
+                clientRes.write(JSON.stringify(redactObject(obj)) + "\n");
                 accumulator = "";
                 continue;
               }
@@ -423,10 +433,10 @@ function startProxy(onListening) {
                   const toSend = accumulator.slice(0, -10);
                   accumulator = accumulator.slice(-10);
                   obj.message.content = toSend;
-                  clientRes.write(JSON.stringify(obj) + "\n");
+                  clientRes.write(JSON.stringify(redactObject(obj)) + "\n");
                 }
               } else {
-                clientRes.write(JSON.stringify(obj) + "\n");
+                clientRes.write(JSON.stringify(redactObject(obj)) + "\n");
               }
             }
           });
@@ -441,25 +451,29 @@ function startProxy(onListening) {
             if (isWrapped && accumulator) {
               const cleaned = accumulator.replace(JSON_WRAPPER_SUFFIX, "");
               if (cleaned) {
-                const flush = JSON.stringify({
-                  model: "",
-                  message: { role: "assistant", content: cleaned },
-                  done: false,
-                });
+                const flush = JSON.stringify(
+                  redactObject({
+                    model: "",
+                    message: { role: "assistant", content: cleaned },
+                    done: false,
+                  }),
+                );
                 clientRes.write(flush + "\n");
               }
             } else if (accumulator && !detected) {
               // Short response that never hit detection threshold
-              const flush = JSON.stringify({
-                model: "",
-                message: { role: "assistant", content: accumulator },
-                done: false,
-              });
+              const flush = JSON.stringify(
+                redactObject({
+                  model: "",
+                  message: { role: "assistant", content: accumulator },
+                  done: false,
+                }),
+              );
               clientRes.write(flush + "\n");
             }
             clientRes.end();
           });
-        }
+        },
       );
 
       proxyReq.on("error", (err) => {
@@ -501,7 +515,7 @@ function startProxy(onListening) {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       });
       // Send a keepalive comment immediately so the client knows it's connected
@@ -513,7 +527,12 @@ function startProxy(onListening) {
 
       // Heartbeat every 15 s to prevent idle connection teardown
       const hb = setInterval(() => {
-        try { res.write(": ping\n\n"); } catch { clearInterval(hb); _thinkSubscribers.delete(sub); }
+        try {
+          res.write(": ping\n\n");
+        } catch {
+          clearInterval(hb);
+          _thinkSubscribers.delete(sub);
+        }
       }, 15000);
 
       req.on("close", () => {
@@ -547,9 +566,7 @@ function waitForProxy(timeoutMs = 10000, intervalMs = 300) {
   return new Promise((resolve, reject) => {
     function poll() {
       if (Date.now() > deadline) {
-        return reject(
-          new Error(`Ollama proxy did not respond within ${timeoutMs / 1000}s`)
-        );
+        return reject(new Error(`Ollama proxy did not respond within ${timeoutMs / 1000}s`));
       }
       const req = http.get(url, (res) => {
         res.resume();
@@ -582,9 +599,9 @@ function warmUpModel(model) {
 
     const body = JSON.stringify({
       model,
-      prompt: "",          // empty prompt — just loads the model
+      prompt: "", // empty prompt — just loads the model
       stream: false,
-      keep_alive: "10m",   // keep weights in VRAM for 10 minutes
+      keep_alive: "10m", // keep weights in VRAM for 10 minutes
     });
 
     const req = http.request(
@@ -604,11 +621,11 @@ function warmUpModel(model) {
           console.log(
             `[ollama-proxy] Model "${model}" warm-up complete in ${
               Date.now() - warmStart
-            }ms — now resident in VRAM`
+            }ms — now resident in VRAM`,
           );
           resolve();
         });
-      }
+      },
     );
 
     req.on("error", (err) => {
