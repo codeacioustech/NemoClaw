@@ -821,11 +821,19 @@ const app = (() => {
         case "app-launch":           launch(); break;
         case "open-chat":            if (!el.disabled) chat.open(); break;
         case "new-workflow":         newWorkflow(); break;
+        case "toggle-theme":         if (window.__theme) window.__theme.toggle(); break;
         case "navigate":             navigateTo(el.dataset.target); break;
         case "logout":               logout(); break;
         case "reset-onboarding":     resetOnboarding(); break;
       }
     });
+
+    // Sync the theme toggle's aria-pressed with the currently applied theme
+    // (theme.js ran pre-paint; the button didn't exist yet at that point).
+    if (window.__theme) {
+      const _tbtn = document.querySelector('[data-action="toggle-theme"]');
+      if (_tbtn) _tbtn.setAttribute("aria-pressed", window.__theme.get() === "light" ? "true" : "false");
+    }
 
     // Init sub-modules
     chat.init();
