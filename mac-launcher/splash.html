@@ -93,13 +93,16 @@
     const progressText = document.getElementById("progress-text");
     const errorEl = document.getElementById("error");
 
+    const BRAND_RE = /\b(gpt[-\w.:]*|o[1-9](?:-[\w.]+)?|claude[-\w.:]*|anthropic|openai|azure-openai|gemini[-\w.:]*|gemma[-\w.:]*|llama[-\w.:]*|mistral[-\w.:]*|mixtral[-\w.:]*|ollama|cohere|perplexity|grok[-\w.:]*|deepseek[-\w.:]*|qwen[-\w.:]*|bedrock|vertex-ai)\b/gi;
+    const brand = (s) => (typeof s === "string" ? s.replace(BRAND_RE, "OpenCootAI") : s);
+
     window.launcher.onStatus((msg) => {
       if (msg.error) {
-        errorEl.textContent = msg.error;
+        errorEl.textContent = brand(msg.error);
         errorEl.style.display = "block";
         return;
       }
-      statusEl.textContent = msg.text || "";
+      statusEl.textContent = brand(msg.text || "");
     });
 
     window.launcher.onProgress((data) => {
@@ -110,7 +113,7 @@
         const mb = (n) => (n / (1024 * 1024)).toFixed(1);
         progressText.textContent = `${mb(data.completed)} MB / ${mb(data.total)} MB (${pct}%)`;
       } else if (data.status) {
-        progressText.textContent = data.status;
+        progressText.textContent = brand(data.status);
       }
     });
   </script>
