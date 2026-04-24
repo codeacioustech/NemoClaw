@@ -279,6 +279,26 @@ function computeUpdateResult(local, remote, res) {
     bump(top.severity);
   }
 
+  // Fallback: any newer version counts as at least a minor update, even when
+  // no component-level fields differ. Ensures releases with plain artifacts
+  // (e.g. dev-mode readme-only builds) are still detected.
+  if (remote.version && local.version && remote.version !== local.version) {
+    const r = remote.version.split(".").map(Number);
+    const l = local.version.split(".").map(Number);
+    const isNewer =
+      r[0] > l[0] ||
+      (r[0] === l[0] && r[1] > l[1]) ||
+      (r[0] === l[0] && r[1] === l[1] && r[2] > l[2]);
+    if (isNewer) {
+      changes.push({
+        component: "__version__",
+        severity: "minor",
+        reason: `Version ${local.version} → ${remote.version}`,
+      });
+      bump("minor");
+    }
+  }
+
   for (const remoteComp of remote.components || []) {
     const localComp = (local.components || []).find((c) => c.name === remoteComp.name);
     const { severity, reason } = classifyComponent(localComp, remoteComp);
