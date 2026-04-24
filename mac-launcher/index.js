@@ -14,6 +14,7 @@ const { startGateway, waitForGateway } = require("./lib/gateway");
 const { startProxy, waitForProxy, warmUpModel } = require("./lib/ollama-proxy");
 const wfDb = require("./lib/workflow-db");
 const { runWorkflow, startRunsSSE } = require("./lib/workflow-runner");
+const wfYaml = require("./lib/workflow-yaml");
 const { trackProcess, trackServer, hookElectronLifecycle } = require("./lib/cleanup");
 const db = require("./lib/db");
 
@@ -522,6 +523,10 @@ async function bootstrap() {
   trackServer(proxyServer);
   try { trackServer(startRunsSSE()); } catch (e) { console.error("[wf] startRunsSSE failed:", e.message); }
   try {
+    const n = wfYaml.syncYamlToDb();
+    console.log(`[wf-yaml] loaded ${n} workflow(s) from ${wfYaml.yamlDir()}`);
+  } catch (e) { console.error("[wf-yaml] sync failed:", e.message); }
+  try {
     const probed = validateMountedFoldersAtBoot();
     const stale = probed.filter((f) => f.stale);
     if (stale.length) console.warn(`[bookmarks] ${stale.length} stale mount(s):`, stale.map((f) => f.path));
@@ -601,16 +606,26 @@ ipcMain.handle("db-update-session-title", (_, sessionId, title) => db.updateSess
 ipcMain.handle("db-delete-session", (_, id) => db.deleteSession(id));
 
 // Workflow IPC
+// Any write that mutates workflow structure also dumps back to YAML so
+// <userData>/workflows/<id>.yaml stays the source of truth.
+const dump = (id) => { try { wfYaml.dumpWorkflow(id); } catch (e) { console.warn("[wf-yaml] dump failed:", e.message); } };
+const stepOwner = (stepId) => {
+  try {
+    const row = wfDb.initDb().prepare(`SELECT workflow_id FROM workflow_steps WHERE id=?`).get(stepId);
+    return row?.workflow_id || null;
+  } catch { return null; }
+};
 ipcMain.handle("wf-list", () => wfDb.listWorkflows());
 ipcMain.handle("wf-get", (_, id) => wfDb.getWorkflow(id));
-ipcMain.handle("wf-create", (_, input) => wfDb.createWorkflow(input || {}));
-ipcMain.handle("wf-update", (_, id, patch) => wfDb.updateWorkflow(id, patch || {}));
-ipcMain.handle("wf-delete", (_, id) => wfDb.deleteWorkflow(id));
-ipcMain.handle("wf-step-add", (_, workflowId, step) => wfDb.addStep(workflowId, step || {}));
-ipcMain.handle("wf-step-update", (_, stepId, patch) => wfDb.updateStep(stepId, patch || {}));
-ipcMain.handle("wf-step-delete", (_, stepId) => wfDb.deleteStep(stepId));
-ipcMain.handle("wf-step-reorder", (_, workflowId, orderedIds) => wfDb.reorderSteps(workflowId, orderedIds || []));
+ipcMain.handle("wf-create", (_, input) => { const wf = wfDb.createWorkflow(input || {}); dump(wf.id); return wf; });
+ipcMain.handle("wf-update", (_, id, patch) => { const wf = wfDb.updateWorkflow(id, patch || {}); if (wf) dump(id); return wf; });
+ipcMain.handle("wf-delete", (_, id) => { const r = wfDb.deleteWorkflow(id); wfYaml.deleteWorkflowYaml(id); return r; });
+ipcMain.handle("wf-step-add", (_, workflowId, step) => { const s = wfDb.addStep(workflowId, step || {}); dump(workflowId); return s; });
+ipcMain.handle("wf-step-update", (_, stepId, patch) => { const s = wfDb.updateStep(stepId, patch || {}); const owner = stepOwner(stepId); if (owner) dump(owner); return s; });
+ipcMain.handle("wf-step-delete", (_, stepId) => { const owner = stepOwner(stepId); const r = wfDb.deleteStep(stepId); if (owner) dump(owner); return r; });
+ipcMain.handle("wf-step-reorder", (_, workflowId, orderedIds) => { const r = wfDb.reorderSteps(workflowId, orderedIds || []); dump(workflowId); return r; });
 ipcMain.handle("wf-run", async (_, workflowId) => runWorkflow(workflowId));
+ipcMain.handle("wf-yaml-reload", () => wfYaml.syncYamlToDb());
 ipcMain.handle("wf-runs-list", (_, workflowId) => wfDb.listRuns(workflowId));
 ipcMain.handle("wf-run-get", (_, runId) => wfDb.getRun(runId));
 

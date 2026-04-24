@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld("launcher", {
     run: (workflowId) => ipcRenderer.invoke("wf-run", workflowId),
     runsList: (workflowId) => ipcRenderer.invoke("wf-runs-list", workflowId),
     runGet: (runId) => ipcRenderer.invoke("wf-run-get", runId),
+    reloadYaml: () => ipcRenderer.invoke("wf-yaml-reload"),
   },
 
   // Model selection
