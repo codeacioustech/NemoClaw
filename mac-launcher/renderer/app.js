@@ -552,8 +552,9 @@ const app = (() => {
       startLlmPolling();
       connectGateway();
       refreshMountedFolders();
-      initUpdatePanel();
     }
+    // Wire the update panel regardless of path (onboarding or dashboard).
+    initUpdatePanel();
   }
 
     // --- Update panel state machine ---
@@ -702,20 +703,25 @@ const app = (() => {
       }
     }
   
+    let _updatePanelInited = false;
     function initUpdatePanel() {
-      const panel = $("#update-panel");
-      if (!panel) return;
-  
-      const checkBtn = $("#btn-check-updates");
-      const applyBtn = $("#btn-apply-update");
-  
-      if (checkBtn) {
-        checkBtn.addEventListener("click", checkForUpdates);
+      if (_updatePanelInited) {
+        refreshUpdatePanel();
+        return;
       }
-      if (applyBtn) {
-        applyBtn.addEventListener("click", applyUpdate);
-      }
-  
+      _updatePanelInited = true;
+
+      // Event delegation — survives DOM re-renders and doesn't care about timing.
+      document.addEventListener("click", (e) => {
+        const t = e.target;
+        if (!t || !(t instanceof Element)) return;
+        if (t.id === "btn-check-updates" && !t.disabled) {
+          checkForUpdates();
+        } else if (t.id === "btn-apply-update" && !t.disabled) {
+          applyUpdate();
+        }
+      });
+
       refreshUpdatePanel();
     }
 
