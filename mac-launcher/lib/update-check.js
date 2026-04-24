@@ -312,7 +312,16 @@ function computeUpdateResult(local, remote, res) {
     return { error: null, available: false, version: remote.version, current: true };
   }
 
+  if (isPoisoned(remote.version)) {
+    return { error: null, available: false, version: local.version, current: true, poisoned: remote.version };
+  }
+
   const totalSize = changes.reduce((sum, c) => sum + (c.size || 0), 0);
+
+  // Persist: ETag into local manifest, full remote manifest into pending.json
+  // so applyUpdate() can find it on the next click.
+  writeLocalManifest({ ...local, etag: res.headers.etag || "" });
+  writeJson(pendingFile(), remote);
 
   return {
     error: null,
@@ -323,6 +332,111 @@ function computeUpdateResult(local, remote, res) {
     totalSize,
     etag: res.headers.etag || "",
   };
+}
+
+function pendingFile() { return path.join(getComponentsDir(), "pending.json"); }
+function poisonFile()  { return path.join(getComponentsDir(), "poison.json"); }
+
+function readJson(p, fallback) {
+  try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch { return fallback; }
+}
+function writeJson(p, obj) {
+  ensureComponentsDir();
+  fs.writeFileSync(p, JSON.stringify(obj, null, 2), { mode: 0o600 });
+}
+
+function isPoisoned(version) {
+  return readJson(poisonFile(), []).some((e) => e.version === version);
+}
+function addPoison(version, reason) {
+  const p = readJson(poisonFile(), []);
+  if (!p.some((e) => e.version === version)) {
+    p.push({ version, reason, ts: new Date().toISOString() });
+    writeJson(poisonFile(), p);
+  }
+}
+
+async function downloadToFile(url, destPath, expectedSha) {
+  const hash = crypto.createHash("sha256");
+  await new Promise((resolve, reject) => {
+    const proto = url.startsWith("https") ? https : http;
+    proto.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return downloadToFile(res.headers.location, destPath, expectedSha).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`Download ${url}: HTTP ${res.statusCode}`));
+      }
+      const ws = fs.createWriteStream(destPath);
+      res.on("data", (c) => hash.update(c));
+      res.pipe(ws);
+      ws.on("finish", resolve);
+      ws.on("error", reject);
+      res.on("error", reject);
+    }).on("error", reject);
+  });
+  if (expectedSha) {
+    const got = hash.digest("hex");
+    if (got !== expectedSha) {
+      try { fs.unlinkSync(destPath); } catch {}
+      throw new Error(`Hash mismatch for ${url}: ${got} != ${expectedSha}`);
+    }
+  }
+}
+
+async function applyUpdate(onProgress) {
+  const local = readLocalManifest();
+  const remote = readJson(pendingFile(), null);
+  if (!remote) throw new Error("No pending update; run checkForUpdates first");
+
+  ensureComponentsDir();
+  const stagingDir = path.join(getComponentsDir(), `v${remote.version}.staging`);
+  fs.mkdirSync(stagingDir, { recursive: true });
+
+  try {
+    const comps = remote.components || [];
+    for (let i = 0; i < comps.length; i++) {
+      const c = comps[i];
+      if (!c.url) continue;
+      const dest = path.join(stagingDir, path.basename(new URL(c.url).pathname));
+      await downloadToFile(c.url, dest, c.sha256 || c.weightsHash);
+      onProgress?.({ done: i + 1, total: comps.length });
+    }
+
+    const finalDir = path.join(getComponentsDir(), `v${remote.version}`);
+    try { fs.rmSync(finalDir, { recursive: true, force: true }); } catch {}
+    fs.renameSync(stagingDir, finalDir);
+
+    const currentLink = path.join(getComponentsDir(), "current");
+    const prevLink    = path.join(getComponentsDir(), "previous");
+    try {
+      const old = fs.readlinkSync(currentLink);
+      try { fs.unlinkSync(prevLink); } catch {}
+      fs.symlinkSync(old, prevLink);
+    } catch {}
+    try { fs.unlinkSync(currentLink); } catch {}
+    fs.symlinkSync(finalDir, currentLink);
+
+    writeLocalManifest({ ...remote, etag: local.etag });
+    try { fs.unlinkSync(pendingFile()); } catch {}
+    return { version: remote.version, dir: finalDir };
+  } catch (err) {
+    try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch {}
+    throw err;
+  }
+}
+
+async function rollback() {
+  const dir = getComponentsDir();
+  const currentLink = path.join(dir, "current");
+  const prevLink    = path.join(dir, "previous");
+  if (!fs.existsSync(prevLink)) throw new Error("No previous version");
+  const prev = fs.readlinkSync(prevLink);
+  try { fs.unlinkSync(currentLink); } catch {}
+  fs.symlinkSync(prev, currentLink);
+  return { rolledBackTo: prev };
 }
 
 function setUpdateAvailable(manifest) {
@@ -353,6 +467,9 @@ module.exports = {
     return getManifestFile();
   },
   checkForUpdates,
+  applyUpdate,
+  rollback,
+  addPoison,
   setUpdateAvailable,
   getCurrentVersion,
   canHotReload,
