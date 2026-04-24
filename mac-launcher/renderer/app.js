@@ -235,9 +235,10 @@ const app = (() => {
     if (!card) return;
     card.classList.toggle("connected", connected);
     const btn = card.querySelector(".conn-btn");
+    const name = card.querySelector(".conn-name")?.textContent?.trim() || "Connector";
     if (btn) {
       btn.className = connected ? "conn-btn active" : "conn-btn idle";
-      btn.textContent = connected ? "Disconnect" : "Connect";
+      btn.textContent = connected ? "Disconnect" : `Connect ${name}`;
     }
     const dot = card.querySelector(".status-dot");
     if (dot) {
@@ -280,21 +281,32 @@ const app = (() => {
       return;
     }
 
-    // Connect — placeholder UX (OAuth lands later). Prompt for the token
-    // inline; never persist it anywhere other than the encrypted store.
-    const token = window.prompt(
-      `Enter your ${name} API token.\nIt will be encrypted via the macOS Keychain (safeStorage).`,
-      ""
-    );
-    if (!token) return;
-    try {
-      const res = await window.launcher.saveCredential(key, token);
-      if (res && res.ok === false) throw new Error(res.code || "save_failed");
-      setConnectorConnectedUI(card, true);
-      appendToast(`${name} connected.`);
-    } catch (e) {
-      appendToast(`Failed to save ${name} credential.`);
-    }
+    // Connect — Dummy OAuth Flow
+    const originalText = btn.textContent;
+    btn.innerHTML = `⏳ Connecting...`;
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    btn.style.cursor = 'wait';
+
+    setTimeout(async () => {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      
+      window.open(`https://dummy-oauth.com/${id || 'auth'}`, '_blank');
+      
+      // Simulate that the callback was received and token was saved successfully
+      try {
+        const dummyToken = `oauth_${id}_${Date.now()}`;
+        const res = await window.launcher.saveCredential(key, dummyToken);
+        if (res && res.ok === false) throw new Error(res.code || "save_failed");
+        setConnectorConnectedUI(card, true);
+        appendToast(`${name} connected.`);
+      } catch (e) {
+        appendToast(`Failed to save ${name} credential.`);
+      }
+    }, 800);
   }
 
   async function hydrateConnectorStates() {
