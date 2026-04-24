@@ -356,27 +356,37 @@ function addPoison(version, reason) {
   }
 }
 
-async function downloadToFile(url, destPath, expectedSha) {
+async function downloadToFile(url, destPath, expectedSha, redirects = 0) {
+  if (redirects > 5) throw new Error(`Too many redirects for ${url}`);
   const hash = crypto.createHash("sha256");
-  await new Promise((resolve, reject) => {
+
+  // Resolve the final non-redirect URL by following 3xx responses without
+  // consuming the body. Only then do we stream + hash the actual content.
+  const location = await new Promise((resolve, reject) => {
     const proto = url.startsWith("https") ? https : http;
     proto.get(url, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        return downloadToFile(res.headers.location, destPath, expectedSha).then(resolve).catch(reject);
+        return resolve({ redirect: res.headers.location });
       }
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error(`Download ${url}: HTTP ${res.statusCode}`));
       }
+      // 200 — stream body into file + hash
       const ws = fs.createWriteStream(destPath);
       res.on("data", (c) => hash.update(c));
       res.pipe(ws);
-      ws.on("finish", resolve);
+      ws.on("finish", () => resolve({ done: true }));
       ws.on("error", reject);
       res.on("error", reject);
     }).on("error", reject);
   });
+
+  if (location.redirect) {
+    return downloadToFile(location.redirect, destPath, expectedSha, redirects + 1);
+  }
+
   if (expectedSha) {
     const got = hash.digest("hex");
     if (got !== expectedSha) {
