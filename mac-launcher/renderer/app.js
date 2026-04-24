@@ -44,45 +44,15 @@ const app = (() => {
   // --- Onboarding state ---
 
   function getOnboardingData() {
-    // Step 1 — workspace config
-    const purposeCard = $(".purpose-card.sel");
-    const workspaceType = purposeCard?.dataset.purposeId || "";
-    const experience = Array.from($$(".tech-pill.sel")).map((p) => p.dataset.toolId || p.textContent.trim());
-    const sizeCard = $(".size-card.sel");
-    const teamSize = sizeCard?.dataset.sizeId || "";
+    // Step 1
+    const purpose = $(".purpose-card.sel .purpose-label")?.textContent || "";
+    const techs = Array.from($$(".tech-pill.sel")).map((p) => p.textContent.trim());
+    const size = $(".size-card.sel .size-num")?.textContent || "";
 
-    // Step 2 — invites
-    const invites = [];
-    $$(".invite-row").forEach((row) => {
-      const email = row.querySelector("input[type=email]")?.value?.trim();
-      const role = row.querySelector(".role-select")?.value?.toLowerCase() || "member";
-      if (email && email.includes("@")) {
-        invites.push({ email, role });
-      }
-    });
+    // Step 4
+    const microapps = Array.from($$(".ma-card.sel .ma-name")).map((n) => n.textContent);
 
-    // Step 3 — connectors
-    const connectors = {};
-    $$(".conn-card").forEach((card) => {
-      const id = card.dataset.connectorId;
-      if (id) {
-        connectors[id] = card.classList.contains("connected");
-      }
-    });
-
-    // Step 4 — microapps
-    const microapps = Array.from($$(".ma-card.sel")).map(
-      (card) => card.dataset.microappId || card.querySelector(".ma-name")?.textContent || ""
-    ).filter(Boolean);
-
-    return {
-      completedAt: new Date().toISOString(),
-      workspace: { type: workspaceType, teamSize },
-      experience,
-      invites,
-      connectors,
-      microapps,
-    };
+    return { purpose, techs, size, microapps };
   }
 
   function saveOnboarding() {
@@ -106,16 +76,24 @@ const app = (() => {
     if (!dot || !info) return;
 
     try {
-      const models = await window.launcher.getModels();
-      dot.classList.remove("offline");
-      if (models.length > 0) {
-        const m = models[0];
-        info.textContent = `${m.name} · Running`;
-        const sizeMB = m.size ? (m.size / 1e9).toFixed(1) + " GB" : "";
-        detail.textContent = `Local${sizeMB ? " · " + sizeMB : ""}`;
+      const res = await fetch("http://127.0.0.1:11434/api/tags");
+      if (res.ok) {
+        const data = await res.json();
+        const models = data.models || [];
+        dot.classList.remove("offline");
+        if (models.length > 0) {
+          const m = models[0];
+          info.textContent = `${m.name} · Running`;
+          const sizeMB = m.size ? (m.size / 1e9).toFixed(1) + " GB" : "";
+          detail.textContent = `Local${sizeMB ? " · " + sizeMB : ""}`;
+        } else {
+          info.textContent = "Ollama · Running";
+          detail.textContent = "No models loaded";
+        }
       } else {
-        info.textContent = "Ollama · Running";
-        detail.textContent = "No models loaded";
+        dot.classList.add("offline");
+        info.textContent = "Ollama · Offline";
+        detail.textContent = "Not responding";
       }
     } catch {
       dot.classList.add("offline");
@@ -163,10 +141,7 @@ const app = (() => {
       const text = item.textContent.trim().replace(/\d+$/, "").trim();
       if ((dt && dt === label) || (!dt && text === label)) target = item;
     });
-    items.forEach((i) => {
-      i.classList.remove("active");
-      i.removeAttribute("aria-current");
-    });
+    items.forEach((i) => { i.classList.remove("active"); i.removeAttribute("aria-current"); });
     if (target) {
       target.classList.add("active");
       target.setAttribute("aria-current", "page");
@@ -178,7 +153,6 @@ const app = (() => {
     // Lazy-populate section-specific content.
     if (label === "Connectors") refreshMountedFolders();
     else if (label === "Settings") refreshSettings();
-    else if (label === "Chat") { try { chat.open(); } catch {} }
   }
 
   // --- Keyboard navigation for role="button" elements ---
@@ -221,105 +195,15 @@ const app = (() => {
 
   // --- Connector toggle (Screen 3) ---
 
-  // Maps a connector card's data-connector-id to the credential key used
-  // by the connector proxy (lib/connector-proxy.js). IDs not listed here
-  // (e.g., local-files) are handled by their own flow and fall through
-  // to the legacy toast.
-  const CONNECTOR_KEY_MAP = {
-    slack: "slack_token",
-    gmail: "gmail_token",
-    gdrive: "gdrive_token",
-    notion: "notion_token",
-    github: "github_token",
-    onedrive: "onedrive_token",
-  };
-
-  function setConnectorConnectedUI(card, connected) {
-    if (!card) return;
-    card.classList.toggle("connected", connected);
-    const btn = card.querySelector(".conn-btn");
-    if (btn) {
-      btn.className = connected ? "conn-btn active" : "conn-btn idle";
-      btn.textContent = connected ? "Disconnect" : "Connect";
-    }
-    const dot = card.querySelector(".status-dot");
-    if (dot) {
-      dot.classList.toggle("running", connected);
-      dot.classList.toggle("inactive", !connected);
-    }
-  }
-
-  async function toggleConnector(btn) {
+  function toggleConnector(btn) {
     const card = btn.closest(".conn-card");
     if (!card) return;
-    const id = card.dataset.connectorId;
-    const key = id ? CONNECTOR_KEY_MAP[id] : null;
     const name = card.querySelector(".conn-name")?.textContent?.trim() || "This connector";
-
-    if (!key) {
-      appendToast(`${name} integration is not yet available. For local file access, use Mount a Folder.`);
-      return;
-    }
-
-    let alreadyConnected = false;
-    try {
-      alreadyConnected = await window.launcher.hasCredential(key);
-    } catch {
-      alreadyConnected = card.classList.contains("connected");
-    }
-
-    if (alreadyConnected) {
-      // Disconnect
-      const ok = window.confirm(`Disconnect ${name}? The stored token will be removed.`);
-      if (!ok) return;
-      try {
-        const res = await window.launcher.deleteCredential(key);
-        if (res && res.ok === false) throw new Error(res.code || "delete_failed");
-        setConnectorConnectedUI(card, false);
-        appendToast(`${name} disconnected.`);
-      } catch (e) {
-        appendToast(`Failed to disconnect ${name}.`);
-      }
-      return;
-    }
-
-    // Connect — placeholder UX (OAuth lands later). Prompt for the token
-    // inline; never persist it anywhere other than the encrypted store.
-    const token = window.prompt(
-      `Enter your ${name} API token.\nIt will be encrypted via the macOS Keychain (safeStorage).`,
-      ""
-    );
-    if (!token) return;
-    try {
-      const res = await window.launcher.saveCredential(key, token);
-      if (res && res.ok === false) throw new Error(res.code || "save_failed");
-      setConnectorConnectedUI(card, true);
-      appendToast(`${name} connected.`);
-    } catch (e) {
-      appendToast(`Failed to save ${name} credential.`);
-    }
-  }
-
-  async function hydrateConnectorStates() {
-    try {
-      const keys = await window.launcher.listCredentialKeys();
-      const saved = new Set(keys || []);
-      $$(".conn-card").forEach((card) => {
-        const id = card.dataset.connectorId;
-        const key = id ? CONNECTOR_KEY_MAP[id] : null;
-        if (!key) return;
-        setConnectorConnectedUI(card, saved.has(key));
-      });
-    } catch {
-      // listCredentialKeys isn't available pre-app-ready — silently ignore.
-    }
     // OAuth integrations (Google Drive, Slack, Notion, GitHub, OneDrive)
     // aren't wired to any real provider yet. Don't paint a fake
     // "Connected" state — be honest so users aren't surprised when
     // their assistant can't actually reach these services.
-    appendToast(
-      `${name} integration is not yet available. For local file access, use Mount a Folder.`,
-    );
+    appendToast(`${name} integration is not yet available. For local file access, use Mount a Folder.`);
   }
 
   // --- Toast helper ---
@@ -335,12 +219,8 @@ const app = (() => {
     toast.className = "toast";
     toast.textContent = msg;
     container.appendChild(toast);
-    setTimeout(() => {
-      toast.classList.add("fade-out");
-    }, 3500);
-    setTimeout(() => {
-      toast.remove();
-    }, 4000);
+    setTimeout(() => { toast.classList.add("fade-out"); }, 3500);
+    setTimeout(() => { toast.remove(); }, 4000);
   }
 
   // --- Local Files / Folder mounting ---
@@ -356,6 +236,7 @@ const app = (() => {
         appendToast("Folder mounted: " + result.path.split("/").pop());
       }
       await refreshMountedFolders();
+      initUpdatePanel();
     } catch (e) {
       appendToast("Failed to mount folder: " + e.message);
     }
@@ -366,19 +247,9 @@ const app = (() => {
       await window.launcher.unmountFolder(folderPath);
       appendToast("Folder unmounted.");
       await refreshMountedFolders();
+      initUpdatePanel();
     } catch (e) {
       appendToast("Failed to unmount: " + e.message);
-    }
-  }
-
-  async function reauthorizeLocalFolder(folderPath) {
-    try {
-      const res = await window.launcher.reauthorizeFolder(folderPath);
-      if (res?.ok) appendToast("Folder re-authorized.");
-      else if (!res?.canceled) appendToast("Re-authorization failed.");
-      await refreshMountedFolders();
-    } catch (e) {
-      appendToast("Failed to re-authorize: " + e.message);
     }
   }
 
@@ -387,87 +258,38 @@ const app = (() => {
     listEl.replaceChildren(...folders.map((f) => {
       const name = f.path.split("/").pop() || f.path;
       const item = document.createElement("div");
-      item.className = "mounted-folder-item" + (f.stale ? " stale" : "");
+      item.className = "mounted-folder-item";
 
       const nameEl = document.createElement("span");
       nameEl.className = "mounted-folder-name";
-      nameEl.title = f.path + (f.stale ? " (access expired — re-authorize)" : "");
+      nameEl.title = f.path;
       nameEl.textContent = name;
-
-      item.appendChild(nameEl);
-
-      if (f.stale) {
-        const reauth = document.createElement("button");
-        reauth.className = "mounted-folder-reauth";
-        reauth.dataset.action = "reauthorize-local-folder";
-        reauth.dataset.path = f.path;
-        reauth.textContent = "Re-authorize";
-        item.appendChild(reauth);
-      }
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "mounted-folder-remove";
       removeBtn.dataset.action = "unmount-local-folder";
       removeBtn.dataset.path = f.path;
       removeBtn.textContent = "✕";
-      item.appendChild(removeBtn);
+
+      item.append(nameEl, removeBtn);
       return item;
     }));
-    listEl.replaceChildren(
-      ...folders.map((f) => {
-        const name = f.path.split("/").pop() || f.path;
-        const item = document.createElement("div");
-        item.className = "mounted-folder-item";
-
-        const nameEl = document.createElement("span");
-        nameEl.className = "mounted-folder-name";
-        nameEl.title = f.path;
-        nameEl.textContent = name;
-
-        const removeBtn = document.createElement("button");
-        removeBtn.className = "mounted-folder-remove";
-        removeBtn.dataset.action = "unmount-local-folder";
-        removeBtn.dataset.path = f.path;
-        removeBtn.textContent = "✕";
-
-        item.append(nameEl, removeBtn);
-        return item;
-      }),
-    );
   }
 
   async function refreshSettings() {
     // Model
-    const modelSelect = $("#model-selector");
-    if (modelSelect) {
+    const modelEl = $(".settings-model");
+    if (modelEl) {
       try {
-        const models = await window.launcher.getModels();
-        const currentConfig = await window.launcher.getConfig();
-        const activeModel = currentConfig.ollama_model || (models.length ? models[0].name : "");
-
-        modelSelect.innerHTML = "";
-        if (models.length === 0) {
-          const opt = document.createElement("option");
-          opt.textContent = "No models loaded";
-          modelSelect.appendChild(opt);
+        const res = await fetch("http://127.0.0.1:11434/api/tags");
+        if (res.ok) {
+          const data = await res.json();
+          modelEl.textContent = data.models?.[0]?.name || "No models loaded";
         } else {
-          for (const m of models) {
-             const opt = document.createElement("option");
-             opt.value = m.name;
-             opt.textContent = m.name;
-             if (m.name === activeModel) opt.selected = true;
-             modelSelect.appendChild(opt);
-          }
+          modelEl.textContent = "Ollama offline";
         }
-
-        if (!modelSelect.dataset.handled) {
-          modelSelect.dataset.handled = "true";
-          modelSelect.addEventListener("change", (e) => {
-             window.launcher.setModel(e.target.value);
-          });
-        }
-      } catch (e) {
-        modelSelect.innerHTML = "<option>Ollama offline</option>";
+      } catch {
+        modelEl.textContent = "Ollama offline";
       }
     }
     // Gateway port
@@ -483,8 +305,6 @@ const app = (() => {
         countEl.textContent = "unavailable";
       }
     }
-    // Update panel
-    await refreshUpdatePanel();
   }
 
   async function resetOnboarding() {
@@ -497,171 +317,6 @@ const app = (() => {
       appendToast("Reset failed: " + e.message);
     }
   }
-
-  // --- Update panel state machine ---
-
-  let _updateState = "idle-current";
-  let _updateAvailable = null;
-
-  function getUpdateBtnLabel(severity) {
-    if (severity === "critical") return "Update & Restart App";
-    if (severity === "major") return "Update & Reload Service";
-    return "Update";
-  }
-
-  async function refreshUpdatePanel() {
-    const panel = $("#update-panel");
-    if (!panel) return;
-
-    const statusText = $(".update-status-text");
-    const checkBtn = $("#btn-check-updates");
-    const applyBtn = $("#btn-apply-update");
-    const progress = $(".update-progress");
-    const progressFill = $(".progress-fill");
-    const progressText = $(".progress-text");
-    const changesEl = $(".update-changes");
-    const versionEl = $(".update-version");
-
-    if (!statusText || !checkBtn || !applyBtn || !progress || !changesEl || !versionEl) return;
-
-    try {
-      const currentVersion = await window.launcher.getCurrentVersion();
-      versionEl.textContent = `v${currentVersion}`;
-    } catch {
-      versionEl.textContent = "v—";
-    }
-
-    applyBtn.style.display = "none";
-    progress.style.display = "none";
-    changesEl.innerHTML = "";
-
-    checkBtn.disabled = !_updateState.startsWith("idle");
-  }
-
-  async function checkForUpdates() {
-    const panel = $("#update-panel");
-    if (!panel) return;
-
-    const statusText = $(".update-status-text");
-    const checkBtn = $("#btn-check-updates");
-    const applyBtn = $("#btn-apply-update");
-    const changesEl = $(".update-changes");
-
-    if (!statusText || !checkBtn || !applyBtn) return;
-
-    statusText.textContent = "Checking...";
-    checkBtn.disabled = true;
-    applyBtn.style.display = "none";
-    changesEl.innerHTML = "";
-
-    try {
-      const result = await window.launcher.checkForUpdates();
-      _updateState = result.state;
-
-      if (result.error) {
-        statusText.textContent = result.error;
-        checkBtn.disabled = false;
-        return;
-      }
-
-      if (result.current) {
-        statusText.textContent = `You're up to date (v${result.version})`;
-        checkBtn.disabled = false;
-        _updateAvailable = null;
-        return;
-      }
-
-      _updateAvailable = { version: result.version, severity: result.severity };
-      statusText.textContent = `v${result.version} available (${(result.totalSize / 1e6).toFixed(0)} MB)`;
-      checkBtn.disabled = false;
-
-      if (result.severity) {
-        applyBtn.textContent = getUpdateBtnLabel(result.severity);
-        applyBtn.style.display = "inline-block";
-        applyBtn.disabled = false;
-      }
-
-      if (result.changes && result.changes.length > 0) {
-        changesEl.innerHTML = result.changes
-          .map(
-            (c) =>
-              `<div>• ${c.component}: <span class="${c.severity === "critical" ? "text-danger" : c.severity === "major" ? "text-warning" : ""}">${c.severity}</span> — ${c.reason}</div>`,
-          )
-          .join("");
-      }
-    } catch (e) {
-      statusText.textContent = "Check failed: " + e.message;
-      checkBtn.disabled = false;
-    }
-  }
-
-  async function applyUpdate() {
-    if (!_updateAvailable) return;
-
-    const panel = $("#update-panel");
-    const statusText = $(".update-status-text");
-    const checkBtn = $("#btn-check-updates");
-    const applyBtn = $("#btn-apply-update");
-    const progress = $(".update-progress");
-    const progressFill = $(".progress-fill");
-    const progressText = $(".progress-text");
-
-    statusText.textContent = "Applying update...";
-    checkBtn.disabled = true;
-    applyBtn.disabled = true;
-    progress.style.display = "block";
-
-    try {
-      const { stage, severity } = await window.launcher.applyUpdate(_updateAvailable.severity);
-
-      if (stage === "restart") {
-        statusText.textContent = "Installing update, app will relaunch...";
-      } else if (stage === "restart-service") {
-        statusText.textContent = "Restarting inference service...";
-      } else {
-        statusText.textContent = "Reloading model...";
-      }
-
-      for (let i = 0; i <= 100; i += 10) {
-        progressFill.style.width = i + "%";
-        progressText.textContent = i + "%";
-        await new Promise((r) => setTimeout(r, 200));
-      }
-
-      const success = true;
-      const finalState = await window.launcher.updateComplete(success, _updateAvailable.version);
-      _updateState = finalState.state;
-
-      if (success) {
-        statusText.textContent = `You're up to date (v${_updateAvailable.version})`;
-        _updateAvailable = null;
-      } else {
-        statusText.textContent = "Update failed — reverted to previous version";
-      }
-    } catch (e) {
-      statusText.textContent = "Update failed: " + e.message;
-      await window.launcher.updateComplete(false, "");
-    }
-  }
-
-  function initUpdatePanel() {
-    const panel = $("#update-panel");
-    if (!panel) return;
-
-    const checkBtn = $("#btn-check-updates");
-    const applyBtn = $("#btn-apply-update");
-
-    if (checkBtn) {
-      checkBtn.addEventListener("click", checkForUpdates);
-    }
-    if (applyBtn) {
-      applyBtn.addEventListener("click", applyUpdate);
-    }
-
-    refreshUpdatePanel();
-  }
-
-  // --- Mounted folders ---
 
   async function refreshMountedFolders() {
     try {
@@ -683,10 +338,7 @@ const app = (() => {
 
       if (folders.length > 0) {
         card.classList.add("connected");
-        if (dot) {
-          dot.classList.remove("inactive");
-          dot.classList.add("running");
-        }
+        if (dot) { dot.classList.remove("inactive"); dot.classList.add("running"); }
         if (status) {
           status.style.color = "var(--success)";
           status.innerHTML = `<span class="status-dot running"></span> ${folders.length} folder${folders.length > 1 ? "s" : ""} mounted`;
@@ -703,61 +355,26 @@ const app = (() => {
           list.replaceChildren(...folders.map((f) => {
             const name = f.path.split("/").pop() || f.path;
             const item = document.createElement("div");
-            item.className = "mounted-folder-item" + (f.stale ? " stale" : "");
+            item.className = "mounted-folder-item";
 
             const nameEl = document.createElement("span");
             nameEl.className = "mounted-folder-name";
-            nameEl.title = f.path + (f.stale ? " (access expired — re-authorize)" : "");
+            nameEl.title = f.path;
             nameEl.textContent = name;
-
-            item.appendChild(nameEl);
-
-            if (f.stale) {
-              const reauth = document.createElement("button");
-              reauth.className = "mounted-folder-reauth";
-              reauth.dataset.action = "reauthorize-local-folder";
-              reauth.dataset.path = f.path;
-              reauth.textContent = "Re-authorize";
-              item.appendChild(reauth);
-            }
 
             const btn = document.createElement("button");
             btn.className = "mounted-folder-remove";
             btn.dataset.action = "unmount-local-folder";
             btn.dataset.path = f.path;
             btn.textContent = "✕";
-            item.appendChild(btn);
 
+            item.append(nameEl, btn);
             return item;
           }));
-          list.replaceChildren(
-            ...folders.map((f) => {
-              const name = f.path.split("/").pop() || f.path;
-              const item = document.createElement("div");
-              item.className = "mounted-folder-item";
-
-              const nameEl = document.createElement("span");
-              nameEl.className = "mounted-folder-name";
-              nameEl.title = f.path;
-              nameEl.textContent = name;
-
-              const btn = document.createElement("button");
-              btn.className = "mounted-folder-remove";
-              btn.dataset.action = "unmount-local-folder";
-              btn.dataset.path = f.path;
-              btn.textContent = "✕";
-
-              item.append(nameEl, btn);
-              return item;
-            }),
-          );
         }
       } else {
         card.classList.remove("connected");
-        if (dot) {
-          dot.classList.remove("running");
-          dot.classList.add("inactive");
-        }
+        if (dot) { dot.classList.remove("running"); dot.classList.add("inactive"); }
         if (status) {
           status.style.color = "var(--text-muted)";
           status.innerHTML = `<span class="status-dot inactive"></span> No folders mounted`;
@@ -772,10 +389,9 @@ const app = (() => {
       // Update dashboard meta
       const dashMeta = $(".local-files-dash-meta");
       if (dashMeta) {
-        dashMeta.textContent =
-          folders.length > 0
-            ? `${folders.length} folder${folders.length > 1 ? "s" : ""} mounted`
-            : "No folders mounted";
+        dashMeta.textContent = folders.length > 0
+          ? `${folders.length} folder${folders.length > 1 ? "s" : ""} mounted`
+          : "No folders mounted";
       }
     } catch (e) {
       console.warn("[app] failed to refresh mounted folders:", e.message);
@@ -799,9 +415,53 @@ const app = (() => {
     }
   }
 
-  // Avatar menu removed — Settings lives in sidebar nav.
+  // --- Avatar menu (Dashboard) ---
+
+  function toggleAvatarMenu() {
+    let menu = $(".avatar-menu");
+    if (menu) {
+      menu.remove();
+      return;
+    }
+    const avatar = $(".topbar-avatar");
+    if (!avatar) return;
+    menu = document.createElement("div");
+    menu.className = "avatar-menu";
+
+    const settingsItem = document.createElement("div");
+    settingsItem.className = "avatar-menu-item";
+    settingsItem.dataset.action = "avatar-settings";
+    settingsItem.textContent = "Settings";
+
+    const logoutItem = document.createElement("div");
+    logoutItem.className = "avatar-menu-item danger";
+    logoutItem.dataset.action = "logout";
+    logoutItem.textContent = "Log out";
+
+    menu.append(settingsItem, logoutItem);
+    avatar.style.position = "relative";
+    avatar.appendChild(menu);
+
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener("click", _avatarOutsideClick, { once: true });
+    }, 0);
+  }
+
+  function _avatarOutsideClick(e) {
+    const menu = $(".avatar-menu");
+    if (menu && !menu.contains(e.target) && !$(".topbar-avatar").contains(e.target)) {
+      menu.remove();
+    }
+  }
+
+  function closeAvatarMenu() {
+    const menu = $(".avatar-menu");
+    if (menu) menu.remove();
+  }
 
   function logout() {
+    closeAvatarMenu();
     localStorage.removeItem("opencoot_onboarded");
     localStorage.removeItem("opencoot_onboarding");
     stopLlmPolling();
@@ -809,119 +469,6 @@ const app = (() => {
   }
 
   // --- Gateway connection ---
-
-  async function performBackgroundWarmup() {
-    const btn = document.querySelector('.topbar-btn[data-action="open-chat"]');
-
-    const setBusy = (msg) => {
-      if (!btn) return;
-      // Snapshot original HTML the first time so setReady can restore it exactly
-      if (!btn.dataset.originalHtml) {
-        btn.dataset.originalHtml = btn.innerHTML;
-      }
-      btn.disabled = true;
-      btn.classList.add("topbar-btn--warming");
-      btn.innerHTML = msg;
-    };
-
-    const setReady = () => {
-      if (!btn) return;
-      btn.disabled = false;
-      btn.classList.remove("topbar-btn--warming");
-      if (btn.dataset.originalHtml) {
-        btn.innerHTML = btn.dataset.originalHtml;
-        delete btn.dataset.originalHtml;
-      }
-    };
-
-    setBusy("Connecting...");
-
-    // Phase 1 — wait for gateway handshake
-    await new Promise((resolve) => {
-      if (gateway.connected) return resolve();
-      const onConn = () => resolve();
-      gateway.on("connected", onConn);
-      setTimeout(() => { gateway.off("connected", onConn); resolve(); }, 8000);
-      setTimeout(() => {
-        gateway.off("connected", onConn);
-        resolve();
-      }, 8000);
-    });
-
-    if (!gateway.connected) {
-      console.warn("[warmup] Gateway not reachable — unlocking button.");
-      setReady();
-      return;
-    }
-
-    setBusy("Warming up AI...");
-
-    // Phase 2 — create warmup session
-    let warmupKey = null;
-    try {
-      const sess = await gateway.createSession("__warmup__");
-      // Defensive: OpenClaw may return key or sessionKey
-      warmupKey = sess.key ?? sess.sessionKey ?? null;
-      console.log("[warmup] session created, key =", warmupKey, "| full response:", JSON.stringify(sess));
-      console.log(
-        "[warmup] session created, key =",
-        warmupKey,
-        "| full response:",
-        JSON.stringify(sess),
-      );
-    } catch (e) {
-      console.warn("[warmup] createSession failed:", e.message);
-      setReady();
-      return;
-    }
-
-    if (!warmupKey) {
-      console.warn("[warmup] No session key in response — cannot warmup.");
-      setReady();
-      return;
-    }
-
-    // Phase 3 — send ping and wait for ANY event from the warmup session
-    await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.warn("[warmup] 60s timeout — Ollama may be loading model from disk.");
-        gateway.off("event", rawHandler);
-        resolve();
-      }, 60000);
-
-      const rawHandler = (frame) => {
-        // frame = { type, event, payload }
-        // Extract session key from any location the gateway may embed it
-        const key =
-          frame.payload?.sessionKey ??
-          frame.payload?.key ??
-          frame.payload?.session?.key ??
-          null;
-          frame.payload?.sessionKey ?? frame.payload?.key ?? frame.payload?.session?.key ?? null;
-        console.log("[warmup] event:", frame.event, "| key in payload:", key);
-        if (key && key === warmupKey) {
-          clearTimeout(timeout);
-          gateway.off("event", rawHandler);
-          resolve();
-        }
-      };
-      gateway.on("event", rawHandler);
-
-      gateway.sendMessage(warmupKey, "Ping. Reply OK.").catch((e) => {
-        console.warn("[warmup] sendMessage failed:", e.message);
-        clearTimeout(timeout);
-        gateway.off("event", rawHandler);
-        resolve();
-      });
-    });
-
-    // Phase 4 — cleanup silently
-    gateway.deleteSession(warmupKey).catch(() => {});
-
-    setReady();
-    console.log("[warmup] ✅ AI is hot — KV cache anchored, button unlocked.");
-  }
-
 
   async function connectGateway() {
     try {
@@ -933,91 +480,9 @@ const app = (() => {
     try {
       await gateway.connect(_gatewayPort);
       console.log("[app] connected to gateway on port", _gatewayPort);
-      performBackgroundWarmup();
     } catch (e) {
       console.error("[app] gateway connection failed:", e.message);
       // Will auto-reconnect
-    }
-  }
-
-  // --- Apply onboarding config to dashboard ---
-
-  const MICROAPP_LABELS = {
-    "finance": "Finance Tracker",
-    "knowledge-base": "Knowledge Base",
-    "projects": "Project Manager",
-    "hr": "HR Assistant",
-    "support": "Customer Support",
-    "custom": "Custom Microapp",
-  };
-
-  async function applyOnboardingConfig() {
-    let config;
-    try {
-      config = await window.launcher.getConfig();
-    } catch {
-      return;
-    }
-
-    const ob = config?.onboarding;
-    if (!ob) return;
-
-    // Update stat cards with real counts
-    const statValues = $$(".stat-value");
-    const statTrends = $$(".stat-trend");
-
-    // Connectors count
-    if (statValues[2] && ob.connectors) {
-      const activeCount = Object.values(ob.connectors).filter(Boolean).length;
-      statValues[2].textContent = String(activeCount);
-      if (statTrends[2]) {
-        statTrends[2].textContent = activeCount > 0 ? `${activeCount} source${activeCount > 1 ? "s" : ""} connected` : "No sources connected";
-      }
-    }
-
-    // Team members count
-    if (statValues[3] && ob.invites) {
-      const memberCount = 1 + (ob.invites.length || 0); // +1 for the user
-      statValues[3].textContent = String(memberCount);
-      if (statTrends[3]) {
-        statTrends[3].textContent = memberCount > 1 ? `You + ${memberCount - 1} invited` : "You";
-      }
-    }
-
-    // Populate active microapps panel
-    const microappsPanel = document.querySelector('.dash-section[data-section="Dashboard"] .panel-header .panel-title');
-    const microappsPanelParent = microappsPanel?.closest(".dash-panel");
-    if (microappsPanelParent && ob.microapps && ob.microapps.length > 0) {
-      const container = microappsPanelParent.querySelector(".cp-row")?.parentElement;
-      if (container) {
-        // Clear existing static rows after the panel-header
-        const existingRows = container.querySelectorAll(".cp-row");
-        // Keep only microapps the user selected
-        const selectedSet = new Set(ob.microapps);
-        existingRows.forEach((row) => {
-          const name = row.querySelector(".cp-name")?.textContent || "";
-          // Find matching ID by label
-          const matchId = Object.entries(MICROAPP_LABELS).find(([, label]) => label === name)?.[0];
-          if (matchId && !selectedSet.has(matchId)) {
-            row.style.display = "none";
-          }
-        });
-      }
-    }
-
-    // Show workspace type in settings
-    const workspaceLabel = ob.workspace?.type;
-    if (workspaceLabel) {
-      const settingsList = document.querySelector(".settings-list");
-      if (settingsList && !settingsList.querySelector(".settings-workspace")) {
-        const dt = document.createElement("dt");
-        dt.textContent = "Workspace type";
-        const dd = document.createElement("dd");
-        dd.className = "settings-workspace";
-        dd.textContent = workspaceLabel;
-        settingsList.prepend(dd);
-        settingsList.prepend(dt);
-      }
     }
   }
 
@@ -1033,7 +498,6 @@ const app = (() => {
     }
 
     go(5); // dashboard
-    applyOnboardingConfig();
     startLlmPolling();
     connectGateway();
     refreshMountedFolders();
@@ -1057,70 +521,21 @@ const app = (() => {
         case "remove-invite-row":    removeInviteRow(el); break;
         case "mount-local-folder":   mountLocalFolder(); break;
         case "unmount-local-folder": unmountLocalFolder(el.dataset.path); break;
-        case "reauthorize-local-folder": reauthorizeLocalFolder(el.dataset.path); break;
         case "toggle-connector":     toggleConnector(el); break;
         case "app-launch":           launch(); break;
-        case "open-chat":            if (!el.disabled) chat.open(); break;
+        case "open-chat":            chat.open(); break;
         case "new-workflow":         newWorkflow(); break;
+        case "toggle-avatar-menu":   toggleAvatarMenu(); break;
         case "navigate":             navigateTo(el.dataset.target); break;
+        case "avatar-settings":      navigateTo("Settings"); closeAvatarMenu(); break;
         case "logout":               logout(); break;
         case "reset-onboarding":     resetOnboarding(); break;
-        case "single":
-          single(el, "." + el.dataset.group);
-          break;
-        case "toggle":
-          toggle(el);
-          break;
-        case "go":
-          go(Number(el.dataset.step));
-          break;
-        case "add-invite-row":
-          addInviteRow();
-          break;
-        case "remove-invite-row":
-          removeInviteRow(el);
-          break;
-        case "mount-local-folder":
-          mountLocalFolder();
-          break;
-        case "unmount-local-folder":
-          unmountLocalFolder(el.dataset.path);
-          break;
-        case "toggle-connector":
-          toggleConnector(el);
-          break;
-        case "app-launch":
-          launch();
-          break;
-        case "open-chat":
-          if (!el.disabled) chat.open();
-          break;
-        case "new-workflow":
-          newWorkflow();
-          break;
-        case "toggle-avatar-menu":
-          toggleAvatarMenu();
-          break;
-        case "navigate":
-          navigateTo(el.dataset.target);
-          break;
-        case "avatar-settings":
-          navigateTo("Settings");
-          closeAvatarMenu();
-          break;
-        case "logout":
-          logout();
-          break;
-        case "reset-onboarding":
-          resetOnboarding();
-          break;
       }
     });
 
     // Init sub-modules
     chat.init();
     initKeyboardNav();
-    initUpdatePanel();
 
     // Check if already onboarded
     let firstRun = true;
@@ -1134,17 +549,175 @@ const app = (() => {
       go(1); // onboarding step 1
     } else {
       go(5); // dashboard
-      applyOnboardingConfig();
       startLlmPolling();
       connectGateway();
       refreshMountedFolders();
+      initUpdatePanel();
     }
-
-    // Mark connector cards connected/disconnected based on saved
-    // credentials so returning users see the correct state on both
-    // the onboarding Connectors step and the dashboard Connectors section.
-    hydrateConnectorStates();
   }
+
+    // --- Update panel state machine ---
+  
+    let _updateState = "idle-current";
+    let _updateAvailable = null;
+  
+    function getUpdateBtnLabel(severity) {
+      if (severity === "critical") return "Update & Restart App";
+      if (severity === "major") return "Update & Reload Service";
+      return "Update";
+    }
+  
+    async function refreshUpdatePanel() {
+      const panel = $("#update-panel");
+      if (!panel) return;
+  
+      const statusText = $(".update-status-text");
+      const checkBtn = $("#btn-check-updates");
+      const applyBtn = $("#btn-apply-update");
+      const progress = $(".update-progress");
+      const progressFill = $(".progress-fill");
+      const progressText = $(".progress-text");
+      const changesEl = $(".update-changes");
+      const versionEl = $(".update-version");
+  
+      if (!statusText || !checkBtn || !applyBtn || !progress || !changesEl || !versionEl) return;
+  
+      try {
+        const currentVersion = await window.launcher.getCurrentVersion();
+        versionEl.textContent = `v${currentVersion}`;
+      } catch {
+        versionEl.textContent = "v—";
+      }
+  
+      applyBtn.style.display = "none";
+      progress.style.display = "none";
+      changesEl.innerHTML = "";
+  
+      checkBtn.disabled = !_updateState.startsWith("idle");
+    }
+  
+    async function checkForUpdates() {
+      const panel = $("#update-panel");
+      if (!panel) return;
+  
+      const statusText = $(".update-status-text");
+      const checkBtn = $("#btn-check-updates");
+      const applyBtn = $("#btn-apply-update");
+      const changesEl = $(".update-changes");
+  
+      if (!statusText || !checkBtn || !applyBtn) return;
+  
+      statusText.textContent = "Checking...";
+      checkBtn.disabled = true;
+      applyBtn.style.display = "none";
+      changesEl.innerHTML = "";
+  
+      try {
+        const result = await window.launcher.checkForUpdates();
+        _updateState = result.state;
+  
+        if (result.error) {
+          statusText.textContent = result.error;
+          checkBtn.disabled = false;
+          return;
+        }
+  
+        if (result.current) {
+          statusText.textContent = `You're up to date (v${result.version})`;
+          checkBtn.disabled = false;
+          _updateAvailable = null;
+          return;
+        }
+  
+        _updateAvailable = { version: result.version, severity: result.severity };
+        statusText.textContent = `v${result.version} available (${(result.totalSize / 1e6).toFixed(0)} MB)`;
+        checkBtn.disabled = false;
+  
+        if (result.severity) {
+          applyBtn.textContent = getUpdateBtnLabel(result.severity);
+          applyBtn.style.display = "inline-block";
+          applyBtn.disabled = false;
+        }
+  
+        if (result.changes && result.changes.length > 0) {
+          changesEl.innerHTML = result.changes
+            .map(
+              (c) =>
+                `<div>• ${c.component}: <span class="${c.severity === "critical" ? "text-danger" : c.severity === "major" ? "text-warning" : ""}">${c.severity}</span> — ${c.reason}</div>`,
+            )
+            .join("");
+        }
+      } catch (e) {
+        statusText.textContent = "Check failed: " + e.message;
+        checkBtn.disabled = false;
+      }
+    }
+  
+    async function applyUpdate() {
+      if (!_updateAvailable) return;
+  
+      const panel = $("#update-panel");
+      const statusText = $(".update-status-text");
+      const checkBtn = $("#btn-check-updates");
+      const applyBtn = $("#btn-apply-update");
+      const progress = $(".update-progress");
+      const progressFill = $(".progress-fill");
+      const progressText = $(".progress-text");
+  
+      statusText.textContent = "Applying update...";
+      checkBtn.disabled = true;
+      applyBtn.disabled = true;
+      progress.style.display = "block";
+  
+      try {
+        const { stage, severity } = await window.launcher.applyUpdate(_updateAvailable.severity);
+  
+        if (stage === "restart") {
+          statusText.textContent = "Installing update, app will relaunch...";
+        } else if (stage === "restart-service") {
+          statusText.textContent = "Restarting inference service...";
+        } else {
+          statusText.textContent = "Reloading model...";
+        }
+  
+        for (let i = 0; i <= 100; i += 10) {
+          progressFill.style.width = i + "%";
+          progressText.textContent = i + "%";
+          await new Promise((r) => setTimeout(r, 200));
+        }
+  
+        const success = true;
+        const finalState = await window.launcher.updateComplete(success, _updateAvailable.version);
+        _updateState = finalState.state;
+  
+        if (success) {
+          statusText.textContent = `You're up to date (v${_updateAvailable.version})`;
+          _updateAvailable = null;
+        } else {
+          statusText.textContent = "Update failed — reverted to previous version";
+        }
+      } catch (e) {
+        statusText.textContent = "Update failed: " + e.message;
+        await window.launcher.updateComplete(false, "");
+      }
+    }
+  
+    function initUpdatePanel() {
+      const panel = $("#update-panel");
+      if (!panel) return;
+  
+      const checkBtn = $("#btn-check-updates");
+      const applyBtn = $("#btn-apply-update");
+  
+      if (checkBtn) {
+        checkBtn.addEventListener("click", checkForUpdates);
+      }
+      if (applyBtn) {
+        applyBtn.addEventListener("click", applyUpdate);
+      }
+  
+      refreshUpdatePanel();
+    }
 
   return { init, go, launch };
 })();
