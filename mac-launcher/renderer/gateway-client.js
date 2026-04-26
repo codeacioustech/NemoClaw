@@ -6,7 +6,7 @@
  * Protocol v3 — JSON RPC over WebSocket.
  */
 
-class GatewayClient {
+export class GatewayClient {
   constructor() {
     this._ws = null;
     this._port = null;
@@ -150,7 +150,7 @@ class GatewayClient {
           version: "0.1.0",
           platform: "electron",
           mode: "ui",
-          displayName: "NemoClaw Desktop",
+          displayName: "OpenCoot Desktop",
         },
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
@@ -159,7 +159,7 @@ class GatewayClient {
         permissions: {},
         auth: {},
         locale: "en-US",
-        userAgent: "nemoclaw-mac-launcher/0.1.0",
+        userAgent: "opencoot-mac-launcher/0.1.0",
         // device omitted: gateway runs with dangerouslyDisableDeviceAuth=true,
         // and the device subschema requires a full signed bundle (id, publicKey,
         // signature, signedAt, nonce) if present at all. Sending a partial
@@ -268,4 +268,4 @@ class GatewayClient {
 }
 
 // Singleton
-const gateway = new GatewayClient();
+export const gateway = new GatewayClient();

@@ -6,7 +6,9 @@
  * message rendering, and streaming responses.
  */
 
-const chat = (() => {
+import { gateway } from "./gateway-client.js";
+
+export const chat = (() => {
   let _sessionKey = null;
   let _dbSessionId = null;
   let _streaming = false;
@@ -175,7 +177,7 @@ const chat = (() => {
       });
     } catch {}
     try {
-      const res = await gateway.createSession("open-coot Chat");
+      const res = await gateway.createSession("OpenCoot Chat");
       _sessionKey = res.key;
     } catch {
        _sessionKey = null;
@@ -222,7 +224,7 @@ const chat = (() => {
     }
 
     try {
-      const res = await gateway.createSession("open-coot Chat");
+      const res = await gateway.createSession("OpenCoot Chat");
       _sessionKey = res.key;
       return _sessionKey;
     } catch (e) {
@@ -254,7 +256,7 @@ const chat = (() => {
       appendSystemMessage("Failed to create DB session: " + e.message);
     }
     try {
-      const res = await gateway.createSession("open-coot Chat");
+      const res = await gateway.createSession("OpenCoot Chat");
       _sessionKey = res.key;
     } catch (e) {
       appendSystemMessage("Failed to create gateway session: " + e.message);
@@ -658,7 +660,7 @@ const chat = (() => {
        await fetch("http://127.0.0.1:11435/session/reset", { method: "POST" });
      } catch {}
      try {
-       const res = await gateway.createSession("open-coot Chat");
+      const res = await gateway.createSession("OpenCoot Chat");
        _sessionKey = res.key;
      } catch (e) {
        console.error("[chat] createSession after stop failed:", e.message);
