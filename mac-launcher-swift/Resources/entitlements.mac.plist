@@ -6,14 +6,6 @@
   <true/>
   <key>com.apple.security.get-task-allow</key>
   <true/>
-  <key>com.apple.application-identifier</key>
-  <string>2RJ6WNWK99.com.nemoclaw.launcher</string>
-  <key>com.apple.developer.team-identifier</key>
-  <string>2RJ6WNWK99</string>
-  <key>com.apple.security.application-groups</key>
-  <array>
-    <string>2RJ6WNWK99.com.nemoclaw.launcher</string>
-  </array>
   <key>com.apple.security.network.client</key>
   <true/>
   <key>com.apple.security.network.server</key>

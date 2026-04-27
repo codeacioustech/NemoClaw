@@ -27,7 +27,6 @@ enum CredentialsError: Error, LocalizedError {
 
 enum Credentials {
     private static let service = "com.nemoclaw.launcher.credentials"
-    private static let accessGroup = "2RJ6WNWK99.com.nemoclaw.launcher"
     private static let hiddenKeys: Set<String> = ["OPENAI_API_KEY"]
 
     static func write(key: String, value: String) throws {
@@ -37,8 +36,7 @@ enum Credentials {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup
+            kSecAttrAccount as String: key
         ]
         let attrs: [String: Any] = [
             kSecValueData as String: data,
@@ -63,7 +61,6 @@ enum Credentials {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -83,8 +80,7 @@ enum Credentials {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup
+            kSecAttrAccount as String: key
         ]
         let status = SecItemDelete(query as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
@@ -100,7 +96,6 @@ enum Credentials {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccessGroup as String: accessGroup,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll
         ]
