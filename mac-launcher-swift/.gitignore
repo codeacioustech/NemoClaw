@@ -1,0 +1,13 @@
+# Swift build artifacts
+.build/
+.swiftpm/
+Package.resolved
+
+# Build outputs
+dist/
+dmg-stage/
+
+# Bundled binaries — drop in at build time, do not commit
+Resources/node
+Resources/openclaw/
+Resources/ollama-mac/
