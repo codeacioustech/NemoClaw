@@ -5,7 +5,10 @@
  * App controller — screen navigation, onboarding, sidebar, LLM status.
  */
 
-const app = (() => {
+import { gateway } from "./gateway-client.js";
+import { chat } from "./chat.js";
+
+export const app = (() => {
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
 

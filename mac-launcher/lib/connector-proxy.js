@@ -8,7 +8,8 @@ const { URL } = require("url");
 const { getDecrypted, hasCredential, listCredentialKeys } = require("./secure-credentials");
 
 const BIND_HOST = "127.0.0.1";
-const CONNECTOR_PORT = 11437;
+// Keep this distinct from RUNS_PORT (workflow runner SSE) to avoid EADDRINUSE.
+const CONNECTOR_PORT = 11438;
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 // service → { base URL, credKey, auth scheme, extraHeaders? }

@@ -21,6 +21,26 @@ research/
 specs/
 vdr-notes/
 
+# mac-launcher (Electron + Vite) build artifacts
+mac-launcher/node_modules/
+mac-launcher/dist/
+mac-launcher/dist-renderer/
+mac-launcher/dmg-stage/
+mac-launcher/out/
+mac-launcher/release/
+mac-launcher/.vite/
+mac-launcher/.cache/
+mac-launcher/.electron/
+mac-launcher/*.dmg
+mac-launcher/*.zip
+mac-launcher/*.blockmap
+mac-launcher/latest*.yml
+mac-launcher/builder-debug*.yml
+mac-launcher/builder-effective-config*.yaml
+mac-launcher/npm-debug.log*
+mac-launcher/yarn-debug.log*
+mac-launcher/yarn-error.log*
+
 # Security: secrets, credentials, and keys
 *_ecdsa
 *_ed25519

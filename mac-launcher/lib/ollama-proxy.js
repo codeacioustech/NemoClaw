@@ -13,7 +13,7 @@ const PROXY_PORT = 11435;
 const THINK_PORT = 11436; // SSE endpoint that streams reasoning tokens to the renderer
 
 const SYSTEM_INSTRUCTION =
-  "You are a helpful assistant running inside the NemoClaw desktop app. " +
+  "You are a helpful assistant running inside the OpenCoot desktop app. " +
   "You must use the following tools to interact with the filesystem:\n" +
   "- `read`: to read a file OR to list the contents of a directory (e.g. pass \".\" or a folder path).\n" +
   "- `edit`: to modify existing files.\n" +
@@ -299,7 +299,12 @@ function startProxy(onListening) {
 
           try {
             const config = JSON.parse(fs.readFileSync(LAUNCHER_CONFIG, "utf-8"));
-            if (config.ollama_model) {
+            // `ollama_model` is user-facing (may be an alias like `opencoot:seed`).
+            // `ollama_model_canonical` is the actual Ollama tag to run.
+            if (config.ollama_model_canonical) {
+              parsed.model = config.ollama_model_canonical;
+            } else if (config.ollama_model) {
+              // Back-compat: older configs stored canonical tag in `ollama_model`.
               parsed.model = config.ollama_model;
             }
           } catch (e) {
