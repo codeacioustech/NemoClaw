@@ -7,6 +7,7 @@ const os = require("os");
 
 const NEMOCLAW_DIR = path.join(os.homedir(), ".nemoclaw");
 const OPENCLAW_DIR = path.join(os.homedir(), ".openclaw");
+const OPENCLAW_WORKSPACE_DIR = path.join(OPENCLAW_DIR, "workspace");
 const GATEWAY_PORT = 18789;
 const MODEL = "gemma4:e4b";
 
@@ -26,6 +27,7 @@ function writeSecure(filePath, data) {
 function seedOpenclawConfig() {
   ensureDir(OPENCLAW_DIR);
   ensureDir(path.join(OPENCLAW_DIR, "extensions"));
+  ensureDir(OPENCLAW_WORKSPACE_DIR);
   const configPath = path.join(OPENCLAW_DIR, "openclaw.json");
 
   writeSecure(configPath, {
@@ -78,6 +80,14 @@ function seedOpenclawConfig() {
   });
 }
 
+function seedWorkspaceFiles() {
+  ensureDir(OPENCLAW_WORKSPACE_DIR);
+  const hb = path.join(OPENCLAW_WORKSPACE_DIR, "HEARTBEAT.md");
+  if (!fs.existsSync(hb)) {
+    writeSecure(hb, "OpenCoot heartbeat file.\n");
+  }
+}
+
 function seedNemoclawConfig() {
   ensureDir(NEMOCLAW_DIR);
   const now = new Date().toISOString();
@@ -91,7 +101,7 @@ function seedNemoclawConfig() {
     profile: "inference-local",
     credentialEnv: "OPENAI_API_KEY",
     provider: "ollama-local",
-    providerLabel: "NemoClaw Mac",
+    providerLabel: "OpenCoot Mac",
     onboardedAt: now,
   });
 
@@ -150,6 +160,7 @@ function seedNemoclawConfig() {
 function seedAll() {
   seedOpenclawConfig();
   seedNemoclawConfig();
+  seedWorkspaceFiles();
 }
 
 module.exports = { seedAll, GATEWAY_PORT, MODEL, NEMOCLAW_DIR };

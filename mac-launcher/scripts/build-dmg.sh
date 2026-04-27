@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build a macOS .dmg installer for NemoClaw.
+# Build a macOS .dmg installer for OpenCoot.
 #
 # Slim installer (~350-400 MB):
 #   - Ollama binary is NOT bundled (downloaded on first app launch)
 #   - Heavy unused node_modules are excluded by afterPack.js
 #   - The Gemma 4 model is pulled on first launch via the splash screen
 #
-# Drag-to-install model: user mounts the DMG and drags NemoClaw.app to
+# Drag-to-install model: user mounts the DMG and drags OpenCoot.app to
 # /Applications. No postinstall script runs — the app self-initialises on
 # first launch (creates ~/.nemoclaw with 700 perms via writeLauncherConfig,
 # downloads Ollama, pulls Gemma 4, warms up the model).
@@ -18,7 +18,7 @@
 #   cd mac-launcher && bash scripts/build-dmg.sh
 #
 # Output:
-#   dist/NemoClaw-<version>.dmg
+#   dist/OpenCoot-<version>.dmg
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ cd "$PROJECT_DIR"
 
 # Read version from package.json
 VERSION=$(node -e "console.log(require('./package.json').version)")
-APP_NAME="NemoClaw"
+APP_NAME="OpenCoot"
 VOL_NAME="$APP_NAME $VERSION"
 
 DIST_DIR="$PROJECT_DIR/dist"
@@ -47,6 +47,10 @@ echo "==> Step 1: Building .app bundle (SKIP_OLLAMA=1)..."
 rm -rf "$PROJECT_DIR/resources/ollama-mac"
 mkdir -p "$PROJECT_DIR/resources/ollama-mac"
 touch "$PROJECT_DIR/resources/ollama-mac/.gitkeep"
+
+# Build renderer bundle (Vite) so dist-renderer/ is packaged into the app.
+echo "==> Step 1a: Building renderer bundle..."
+npm run build:renderer
 
 SKIP_OLLAMA=1 npx electron-builder --mac --dir --config.mac.target=dir
 
@@ -125,6 +129,6 @@ rm -rf "$STAGE_DIR"
 DMG_SIZE=$(du -sh "$DMG_PATH" | cut -f1)
 echo ""
 echo "==> Done! Built: $DMG_PATH ($DMG_SIZE)"
-echo "    Drag NemoClaw.app to Applications to install."
+echo "    Drag OpenCoot.app to Applications to install."
 echo "    Ollama will be downloaded on first app launch."
 echo "    Gemma 4 model will be pulled on first app launch."
