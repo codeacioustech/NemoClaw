@@ -69,7 +69,7 @@ actor ConnectorProxy {
         for (k, v) in headers where !["authorization", "host", "connection"].contains(k.lowercased()) {
             req.setValue(v, forHTTPHeaderField: k)
         }
-        if let token = try? Credentials.read(key: route.credentialKey), let token {
+        if let token = try? Credentials.read(key: route.credentialKey) {
             req.setValue("\(route.scheme) \(token)", forHTTPHeaderField: route.headerName)
         }
 
