@@ -27,7 +27,7 @@ enum CredentialsError: Error, LocalizedError {
 
 enum Credentials {
     private static let service = "com.nemoclaw.launcher.credentials"
-    private static let accessGroup = "F94354ST5N.com.nemoclaw.launcher"
+    private static let accessGroup = "AN98B8AJMS.com.nemoclaw.launcher"
     private static let hiddenKeys: Set<String> = ["OPENAI_API_KEY"]
 
     static func write(key: String, value: String) throws {

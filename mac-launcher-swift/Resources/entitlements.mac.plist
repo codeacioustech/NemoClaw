@@ -7,12 +7,12 @@
   <key>com.apple.security.get-task-allow</key>
   <true/>
   <key>com.apple.application-identifier</key>
-  <string>F94354ST5N.com.nemoclaw.launcher</string>
+  <string>AN98B8AJMS.com.nemoclaw.launcher</string>
   <key>com.apple.developer.team-identifier</key>
-  <string>F94354ST5N</string>
+  <string>AN98B8AJMS</string>
   <key>com.apple.security.application-groups</key>
   <array>
-    <string>F94354ST5N.com.nemoclaw.launcher</string>
+    <string>AN98B8AJMS.com.nemoclaw.launcher</string>
   </array>
   <key>com.apple.security.network.client</key>
   <true/>

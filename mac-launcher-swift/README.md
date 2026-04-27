@@ -35,7 +35,7 @@ bash scripts/build-app.sh --notarize   # also notarize + staple
 The Swift build is designed to coexist with an installed Electron NemoClaw:
 
 - Bundle identifier `com.nemoclaw.launcher` and app-group
-  `F94354ST5N.com.nemoclaw.launcher` are unchanged, so sandbox container and
+  `AN98B8AJMS.com.nemoclaw.launcher` are unchanged, so sandbox container and
   app-group Keychain items are shared.
 - SQLite file at `~/Library/Application Support/NemoClaw/chat_history.db` is
   opened with the same schema (chat + workflow tables in one file).

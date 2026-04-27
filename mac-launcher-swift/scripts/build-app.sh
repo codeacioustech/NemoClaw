@@ -20,7 +20,7 @@ cd "$PROJECT_DIR"
 
 APP_NAME="NemoClaw"
 VERSION="0.1.0"
-IDENTITY="Apple Development: piyush_mishra31@outlook.com (F94354ST5N)"
+IDENTITY="Apple Development: sanket@hr.codeacious.tech (AN98B8AJMS)"
 ENT_MAIN="$PROJECT_DIR/Resources/entitlements.mac.plist"
 ENT_INHERIT="$PROJECT_DIR/Resources/entitlements.mac.inherit.plist"
 BUILD_DIR="$PROJECT_DIR/.build/release"
