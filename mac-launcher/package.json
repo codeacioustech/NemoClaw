@@ -1,14 +1,17 @@
 {
   "name": "nemoclaw-mac-launcher",
   "version": "0.1.0",
-  "description": "macOS desktop launcher for NemoClaw",
+  "description": "macOS desktop launcher for OpenCoot",
   "main": "index.js",
   "scripts": {
     "prestart": "test -f ../nemoclaw/dist/index.js || (cd ../nemoclaw && npm install --ignore-scripts && npx tsc)",
-    "start": "electron .",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "dev:renderer": "vite",
+    "build:renderer": "vite build",
+    "dev": "concurrently -k -r \"npm:dev:renderer\" \"wait-on http://127.0.0.1:5174 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5174 env -u ELECTRON_RUN_AS_NODE electron .\"",
     "rebuild": "electron-rebuild -f -v 37.0.0",
     "postinstall": "electron-rebuild",
-    "dist": "electron-builder",
+    "dist": "npm run build:renderer && electron-builder",
     "dist:dmg": "SKIP_OLLAMA=1 bash scripts/build-dmg.sh",
     "dist:dmg:unsigned": "bash scripts/build-dmg-unsigned.sh",
     "download-ollama": "bash scripts/download-ollama.sh"
@@ -80,12 +83,17 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
     "electron": "^37.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.0.0",
+    "electronmon": "^2.0.4",
+    "vite": "^7.3.2",
+    "wait-on": "^8.0.5"
   },
   "build": {
     "appId": "com.nemoclaw.launcher",
-    "productName": "NemoClaw",
+    "productName": "OpenCoot",
     "mac": {
       "target": "dmg",
       "category": "public.app-category.developer-tools",

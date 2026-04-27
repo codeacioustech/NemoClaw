@@ -326,14 +326,22 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "open-coot",
+    title: "OpenCoot",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
-  mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+
+  // Dev: load Vite dev server (HMR). Prod: load the built renderer bundle.
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) {
+    mainWindow.loadURL(devUrl);
+    try { mainWindow.webContents.openDevTools({ mode: "detach" }); } catch {}
+  } else {
+    mainWindow.loadFile(path.join(__dirname, "dist-renderer", "index.html"));
+  }
   return mainWindow;
 }
 
@@ -394,15 +402,19 @@ async function bootstrap() {
 
   // Step 4 — First-run config seeding
   if (isFirstRun) {
-    sendStatus("Configuring NemoClaw...");
+    sendStatus("Configuring OpenCoot...");
     seedAll();
 
     writeLauncherConfig({
       ...config,
       launcher_setup_complete: true,
-      ollama_model: MODEL,
+      // User-facing model label (alias) + canonical Ollama tag.
+      // The UI should show a stable OpenCoot tier name, while the proxy
+      // runs the canonical installed model tag.
+      ollama_model: "opencoot:seed",
+      ollama_model_canonical: MODEL,
       gateway_port: GATEWAY_PORT,
-      connector_proxy_port: 11437,
+      connector_proxy_port: 11438,
       setupCompletedAt: new Date().toISOString(),
     });
     clearPkgInstallFlag();
@@ -611,27 +623,112 @@ ipcMain.handle("wf-run", async (_, workflowId) => runWorkflow(workflowId));
 ipcMain.handle("wf-runs-list", (_, workflowId) => wfDb.listRuns(workflowId));
 ipcMain.handle("wf-run-get", (_, runId) => wfDb.getRun(runId));
 
-ipcMain.handle("get-ollama-models", () => {
-  return new Promise((resolve) => {
-    http.get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(data).models || []);
-        } catch { resolve([]); }
-      });
-    }).on("error", () => resolve([]));
+// ---------------------------------------------------------------------------
+// Model aliasing (UI-friendly tiers)
+// ---------------------------------------------------------------------------
+
+function buildModelAliases(models) {
+  // Sort smallest→largest by size when available, otherwise keep original order.
+  const withSize = Array.isArray(models) ? [...models] : [];
+  withSize.sort((a, b) => {
+    const as = Number(a?.size ?? Number.POSITIVE_INFINITY);
+    const bs = Number(b?.size ?? Number.POSITIVE_INFINITY);
+    if (Number.isFinite(as) && Number.isFinite(bs) && as !== bs) return as - bs;
+    return String(a?.name ?? "").localeCompare(String(b?.name ?? ""));
   });
+
+  const tiers = ["opencoot:seed", "opencoot:sprout", "opencoot:sapling", "opencoot:apex"];
+  const aliasToCanonical = new Map();
+  const canonicalToAlias = new Map();
+
+  for (let i = 0; i < Math.min(tiers.length, withSize.length); i++) {
+    const canonical = withSize[i]?.name;
+    if (!canonical) continue;
+    const alias = tiers[i];
+    aliasToCanonical.set(alias, canonical);
+    canonicalToAlias.set(canonical, alias);
+  }
+
+  return { tiers, withSize, aliasToCanonical, canonicalToAlias };
+}
+
+async function fetchOllamaTags() {
+  return new Promise((resolve) => {
+    http
+      .get(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/tags`, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data).models || []);
+          } catch {
+            resolve([]);
+          }
+        });
+      })
+      .on("error", () => resolve([]));
+  });
+}
+
+ipcMain.handle("get-ollama-models", () => {
+  return (async () => {
+    const models = await fetchOllamaTags();
+    const { tiers, withSize } = buildModelAliases(models);
+
+    // Return a tiered view where `name` is always the alias, so the UI never
+    // exposes raw Ollama model tags. Order is always seed→apex.
+    const out = [];
+    for (let i = 0; i < Math.min(tiers.length, withSize.length); i++) {
+      const m = withSize[i];
+      const canonical = m?.name || "";
+      if (!canonical) continue;
+      out.push({
+        ...m,
+        canonicalName: canonical,
+        name: tiers[i],
+      });
+    }
+    return out;
+  })();
 });
 
 ipcMain.handle("set-ollama-model", (_, modelName) => {
-  const existing = readLauncherConfig();
-  writeLauncherConfig({
-    ...existing,
-    ollama_model: modelName
-  });
-  return true;
+  return (async () => {
+    // Renderer sends alias like `opencoot:seed`.
+    const requested = String(modelName || "").trim();
+
+    const existing = readLauncherConfig();
+
+    let alias = requested;
+    let canonical = null;
+
+    const models = await fetchOllamaTags();
+    const { aliasToCanonical } = buildModelAliases(models);
+
+    if (requested.startsWith("opencoot:")) {
+      canonical = aliasToCanonical.get(requested) || null;
+    } else {
+      // Back-compat: accept canonical input.
+      canonical = requested || null;
+      // Keep whatever alias is currently selected (if any).
+      alias = existing.ollama_model || requested;
+    }
+
+    // If we couldn't resolve (e.g. Ollama offline), don't change canonical.
+    if (!canonical) {
+      canonical = existing.ollama_model_canonical || existing.ollama_model || MODEL;
+    }
+
+    writeLauncherConfig({
+      ...existing,
+      // User-facing value used by renderer dropdown/status.
+      ollama_model: alias,
+      // Internal canonical Ollama tag used by the proxy.
+      ollama_model_canonical: canonical,
+    });
+
+    return true;
+  })();
 });
 
 ipcMain.handle("is-first-run", () => {

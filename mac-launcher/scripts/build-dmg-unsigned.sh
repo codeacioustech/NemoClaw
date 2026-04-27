@@ -2,13 +2,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build a macOS .dmg installer for NemoClaw (UNSIGNED for dev testing).
+# Build a macOS .dmg installer for OpenCoot (UNSIGNED for dev testing).
 #
 # Usage:
 #   cd mac-launcher && bash scripts/build-dmg-unsigned.sh
 #
 # Output:
-#   dist/NemoClaw-<version>.dmg
+#   dist/OpenCoot-<version>.dmg
 
 set -euo pipefail
 
@@ -19,7 +19,7 @@ cd "$PROJECT_DIR"
 
 # Read version from package.json
 VERSION=$(node -e "console.log(require('./package.json').version)")
-APP_NAME="NemoClaw"
+APP_NAME="OpenCoot"
 VOL_NAME="$APP_NAME $VERSION"
 
 DIST_DIR="$PROJECT_DIR/dist"
@@ -37,6 +37,10 @@ echo "==> Step 1: Building .app bundle (SKIP_OLLAMA=1)..."
 rm -rf "$PROJECT_DIR/resources/ollama-mac"
 mkdir -p "$PROJECT_DIR/resources/ollama-mac"
 touch "$PROJECT_DIR/resources/ollama-mac/.gitkeep"
+
+# Build renderer bundle (Vite) so dist-renderer/ is packaged into the app.
+echo "==> Step 1a: Building renderer bundle..."
+npm run build:renderer
 
 SKIP_OLLAMA=1 npx electron-builder --mac --dir --config.mac.target=dir
 
@@ -86,4 +90,4 @@ rm -rf "$STAGE_DIR"
 DMG_SIZE=$(du -sh "$DMG_PATH" | cut -f1)
 echo ""
 echo "==> Done! Built: $DMG_PATH ($DMG_SIZE)"
-echo "    Drag NemoClaw.app to Applications to install."
+echo "    Drag OpenCoot.app to Applications to install."
