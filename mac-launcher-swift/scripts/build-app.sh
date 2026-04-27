@@ -36,7 +36,7 @@ rm -rf "$APP_BUNDLE" "$DMG_PATH" "$STAGE_DIR"
 mkdir -p "$DIST_DIR" "$STAGE_DIR"
 
 echo "==> Step 1: Build Swift binary (release, universal)"
-swift build -c release --arch arm64 --arch x86_64
+swift build -c release --arch arm64
 
 echo "==> Step 2: Assemble .app bundle"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
